@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0b0f1a;
+  --surface: #101728;
+  --surface-2: #151d33;
+  --border: #232c42;
+  --text: #e8ecf4;
+  --text-muted: #7c8aa5;
+  --text-faint: #4c5876;
+  --accent: #d4a94b;
+  --accent-dim: #8a7239;
+  --gain: #2fbf6e;
+  --gain-dim: #143823;
+  --loss: #e5484d;
+  --loss-dim: #3a1518;
+
+  --font-display: "Space Grotesk", "Segoe UI", sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+body {
+  min-height: 100vh;
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(212, 169, 75, 0.06), transparent 40%),
+    radial-gradient(circle at 85% 20%, rgba(47, 191, 110, 0.04), transparent 35%);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker-scroll 40s linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+}
+
+@keyframes flash-gain {
+  0% { background-color: rgba(47, 191, 110, 0.25); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-loss {
+  0% { background-color: rgba(229, 72, 77, 0.25); }
+  100% { background-color: transparent; }
+}
+
+.flash-gain { animation: flash-gain 900ms ease-out; }
+.flash-loss { animation: flash-loss 900ms ease-out; }
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
