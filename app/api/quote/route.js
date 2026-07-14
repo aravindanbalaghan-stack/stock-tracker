@@ -6,15 +6,39 @@
 // Symbols are plain NSE tickers, e.g. "RELIANCE", "TCS", "INFY".
 // We append ".NS" for Yahoo's NSE namespace (use ".BO" for BSE if you
 // prefer BSE pricing for a given symbol).
+//
+// NOTE: this uses Yahoo's "chart" endpoint rather than "v7/finance/quote".
+// The quote endpoint started rejecting unauthenticated requests from cloud
+// hosts (Vercel, AWS, etc.) with a 401 — the chart endpoint (same data
+// Yahoo's own stock-price charts use) has proven more reliable for
+// unauthenticated server-side calls.
 
 export const dynamic = "force-dynamic"; // never cache — this is a live-data endpoint
 
-const YAHOO_QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote";
+const UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 function toYahooSymbol(sym) {
   const s = sym.trim().toUpperCase();
   if (s.endsWith(".NS") || s.endsWith(".BO")) return s;
   return `${s}.NS`;
+}
+
+async function fetchChartMeta(yahooSymbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    yahooSymbol
+  )}?interval=1d&range=5d`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.chart?.result?.[0]?.meta ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET(request) {
@@ -33,45 +57,53 @@ export async function GET(request) {
   const yahooSymbols = requested.map(toYahooSymbol);
 
   try {
-    const url = `${YAHOO_QUOTE_URL}?symbols=${encodeURIComponent(yahooSymbols.join(","))}`;
-    const res = await fetch(url, {
-      headers: {
-        // Yahoo's endpoint blocks requests with no browser-like UA.
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!res.ok) {
-      throw new Error(`Upstream responded ${res.status}`);
-    }
-
-    const data = await res.json();
-    const rawResults = data?.quoteResponse?.result ?? [];
+    const metas = await Promise.all(yahooSymbols.map(fetchChartMeta));
 
     const results = requested.map((originalSymbol, i) => {
+      const meta = metas[i];
       const ySym = yahooSymbols[i];
-      const match = rawResults.find((r) => r.symbol === ySym) || {};
+
+      if (!meta) {
+        return {
+          symbol: originalSymbol.toUpperCase(),
+          name: originalSymbol,
+          exchange: ySym.endsWith(".BO") ? "BSE" : "NSE",
+          price: null,
+          change: null,
+          changePercent: null,
+          previousClose: null,
+          dayHigh: null,
+          dayLow: null,
+          volume: null,
+          marketState: null,
+          currency: "INR",
+          updatedAt: new Date().toISOString(),
+          ok: false,
+        };
+      }
+
+      const price = meta.regularMarketPrice ?? null;
+      const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+      const change = price != null && prevClose != null ? price - prevClose : null;
+      const changePercent = change != null && prevClose ? (change / prevClose) * 100 : null;
 
       return {
         symbol: originalSymbol.toUpperCase(),
-        name: match.shortName || match.longName || originalSymbol,
-        exchange: match.fullExchangeName || (ySym.endsWith(".BO") ? "BSE" : "NSE"),
-        price: match.regularMarketPrice ?? null,
-        change: match.regularMarketChange ?? null,
-        changePercent: match.regularMarketChangePercent ?? null,
-        previousClose: match.regularMarketPreviousClose ?? null,
-        dayHigh: match.regularMarketDayHigh ?? null,
-        dayLow: match.regularMarketDayLow ?? null,
-        volume: match.regularMarketVolume ?? null,
-        marketState: match.marketState ?? null,
-        currency: match.currency ?? "INR",
-        updatedAt: match.regularMarketTime
-          ? new Date(match.regularMarketTime * 1000).toISOString()
+        name: meta.longName || meta.shortName || originalSymbol,
+        exchange: meta.fullExchangeName || (ySym.endsWith(".BO") ? "BSE" : "NSE"),
+        price,
+        change,
+        changePercent,
+        previousClose: prevClose,
+        dayHigh: meta.regularMarketDayHigh ?? null,
+        dayLow: meta.regularMarketDayLow ?? null,
+        volume: meta.regularMarketVolume ?? null,
+        marketState: meta.marketState ?? null,
+        currency: meta.currency ?? "INR",
+        updatedAt: meta.regularMarketTime
+          ? new Date(meta.regularMarketTime * 1000).toISOString()
           : new Date().toISOString(),
-        ok: Boolean(match.regularMarketPrice),
+        ok: price != null,
       };
     });
 
