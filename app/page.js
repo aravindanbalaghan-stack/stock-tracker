@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import TickerTape from "@/components/TickerTape";
 import AddStock from "@/components/AddStock";
 import WatchlistTable from "@/components/WatchlistTable";
+import AlertsPanel from "@/components/AlertsPanel";
 import TabBar from "@/components/TabBar";
 import IndicesTab from "@/components/IndicesTab";
 import MidcapVolumeTab from "@/components/MidcapVolumeTab";
 import DeliveryTab from "@/components/DeliveryTab";
+import WmaScreenTab from "@/components/WmaScreenTab";
 import { loadWatchlist, saveWatchlist, DEFAULT_WATCHLIST } from "@/lib/watchlist";
 
 const REFRESH_MS = 12000;
@@ -17,6 +19,7 @@ const TABS = [
   { id: "indices", label: "Top Indices" },
   { id: "midcap", label: "Midcap Movers" },
   { id: "delivery", label: "Delivery Leaders" },
+  { id: "wma", label: "30WMA Watch" },
 ];
 
 export default function Page() {
@@ -117,7 +120,10 @@ export default function Page() {
                 Loading live prices…
               </div>
             ) : (
-              <WatchlistTable quotes={quotes} onRemove={handleRemove} />
+              <>
+                <AlertsPanel availableSymbols={symbols} />
+                <WatchlistTable quotes={quotes} onRemove={handleRemove} />
+              </>
             )}
             <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>
               {lastUpdated ? `Last updated ${lastUpdated.toLocaleTimeString("en-IN")}` : ""} · Data via
@@ -129,6 +135,7 @@ export default function Page() {
         {activeTab === "indices" && <IndicesTab />}
         {activeTab === "midcap" && <MidcapVolumeTab />}
         {activeTab === "delivery" && <DeliveryTab />}
+        {activeTab === "wma" && <WmaScreenTab />}
       </main>
     </div>
   );

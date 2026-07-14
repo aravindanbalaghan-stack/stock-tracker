@@ -1,6 +1,8 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 
-export const revalidate = 1800;
+// See app/api/midcap-volume/route.js — freshness is controlled per-file
+// inside lib/nseBhavcopy.js, so this route always runs fresh.
+export const dynamic = "force-dynamic";
 
 const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the volume average
 const DELIVERY_HISTORY_DAYS = 10;

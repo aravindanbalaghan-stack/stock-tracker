@@ -24,7 +24,7 @@ function toYahooSymbol(sym) {
   return `${s}.NS`;
 }
 
-async function fetchChartMeta(yahooSymbol) {
+async function fetchChartQuote(yahooSymbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     yahooSymbol
   )}?interval=1d&range=5d`;
@@ -35,7 +35,32 @@ async function fetchChartMeta(yahooSymbol) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data?.chart?.result?.[0]?.meta ?? null;
+    const result = data?.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta = result.meta || {};
+    const timestamps = result.timestamp || [];
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    // Only keep (timestamp, close) pairs where a close actually exists —
+    // the most recent bar can be null intraday.
+    const validCloses = timestamps.map((_, i) => closes[i]).filter((c) => c != null);
+
+    const price = meta.regularMarketPrice ?? validCloses[validCloses.length - 1] ?? null;
+
+    // IMPORTANT: don't trust meta.chartPreviousClose here — it's the close
+    // from *before the requested range started*, not necessarily
+    // yesterday's close (with range=5d it can be ~6 trading days back,
+    // which silently inflates % change). Instead, take the second-to-last
+    // close in the actual daily series returned, which is always the
+    // prior trading day's close.
+    let prevClose = null;
+    if (validCloses.length >= 2) {
+      prevClose = validCloses[validCloses.length - 2];
+    } else {
+      prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+    }
+
+    return { meta, price, prevClose };
   } catch {
     return null;
   }
@@ -57,13 +82,13 @@ export async function GET(request) {
   const yahooSymbols = requested.map(toYahooSymbol);
 
   try {
-    const metas = await Promise.all(yahooSymbols.map(fetchChartMeta));
+    const chartResults = await Promise.all(yahooSymbols.map(fetchChartQuote));
 
     const results = requested.map((originalSymbol, i) => {
-      const meta = metas[i];
+      const chart = chartResults[i];
       const ySym = yahooSymbols[i];
 
-      if (!meta) {
+      if (!chart || chart.price == null) {
         return {
           symbol: originalSymbol.toUpperCase(),
           name: originalSymbol,
@@ -82,8 +107,7 @@ export async function GET(request) {
         };
       }
 
-      const price = meta.regularMarketPrice ?? null;
-      const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+      const { meta, price, prevClose } = chart;
       const change = price != null && prevClose != null ? price - prevClose : null;
       const changePercent = change != null && prevClose ? (change / prevClose) * 100 : null;
 
@@ -103,7 +127,7 @@ export async function GET(request) {
         updatedAt: meta.regularMarketTime
           ? new Date(meta.regularMarketTime * 1000).toISOString()
           : new Date().toISOString(),
-        ok: price != null,
+        ok: true,
       };
     });
 

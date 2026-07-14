@@ -2,12 +2,13 @@ import { NSE_INDICES } from "@/lib/indices";
 
 export const dynamic = "force-dynamic";
 
-// See app/api/quote/route.js for why we use the chart endpoint instead of
-// v7/finance/quote — the latter now rejects unauthenticated cloud requests.
+// See app/api/quote/route.js for why we use the chart endpoint, and why we
+// compute prevClose from the daily series instead of trusting
+// meta.chartPreviousClose (it's range-relative, not "yesterday").
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-async function fetchChartMeta(symbol) {
+export async function fetchChartQuote(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol
   )}?interval=1d&range=5d`;
@@ -18,7 +19,23 @@ async function fetchChartMeta(symbol) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data?.chart?.result?.[0]?.meta ?? null;
+    const result = data?.chart?.result?.[0];
+    if (!result) return null;
+
+    const meta = result.meta || {};
+    const timestamps = result.timestamp || [];
+    const closes = result.indicators?.quote?.[0]?.close || [];
+    const validCloses = timestamps.map((_, i) => closes[i]).filter((c) => c != null);
+
+    const price = meta.regularMarketPrice ?? validCloses[validCloses.length - 1] ?? null;
+    let prevClose = null;
+    if (validCloses.length >= 2) {
+      prevClose = validCloses[validCloses.length - 2];
+    } else {
+      prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+    }
+
+    return { meta, price, prevClose };
   } catch {
     return null;
   }
@@ -26,16 +43,15 @@ async function fetchChartMeta(symbol) {
 
 export async function GET() {
   try {
-    const metas = await Promise.all(NSE_INDICES.map((i) => fetchChartMeta(i.symbol)));
+    const charts = await Promise.all(NSE_INDICES.map((i) => fetchChartQuote(i.symbol)));
 
     const merged = NSE_INDICES.map(({ symbol, name }, i) => {
-      const meta = metas[i];
-      if (!meta) {
+      const chart = charts[i];
+      if (!chart || chart.price == null) {
         return { symbol, name, price: null, change: null, changePercent: null, dayHigh: null, dayLow: null, ok: false };
       }
-      const price = meta.regularMarketPrice ?? null;
-      const prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
-      const change = price != null && prevClose != null ? price - prevClose : null;
+      const { meta, price, prevClose } = chart;
+      const change = prevClose != null ? price - prevClose : null;
       const changePercent = change != null && prevClose ? (change / prevClose) * 100 : null;
       return {
         symbol,
@@ -45,7 +61,7 @@ export async function GET() {
         changePercent,
         dayHigh: meta.regularMarketDayHigh ?? null,
         dayLow: meta.regularMarketDayLow ?? null,
-        ok: price != null,
+        ok: true,
       };
     });
 

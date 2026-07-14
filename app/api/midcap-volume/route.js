@@ -1,9 +1,11 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { MIDCAP_UNIVERSE } from "@/lib/midcapUniverse";
 
-// Cache the computed result for 30 minutes — the underlying bhavcopy data
-// itself only changes once per trading day, so this is generous headroom.
-export const revalidate = 1800;
+// Always run fresh — freshness is controlled per-file inside
+// lib/nseBhavcopy.js instead (30 min for the last 2 days, 7 days for
+// older/historical files that can't change). Caching the whole route's
+// output on top of that was compounding into multi-day-stale data.
+export const dynamic = "force-dynamic";
 
 const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the average
 
