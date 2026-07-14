@@ -32,7 +32,7 @@ export default function MidcapVolumeTab() {
       }
     }
     load();
-    const id = setInterval(load, 5 * 60 * 1000); // this data only changes once/day — no need to poll fast
+    const id = setInterval(load, 45000); // live data now — refresh roughly as often as the watchlist
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -50,7 +50,7 @@ export default function MidcapVolumeTab() {
   if (!data) {
     return (
       <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-        Pulling NSE bhavcopy data — this can take a moment the first time…
+        Scanning the midcap universe for unusual volume…
       </div>
     );
   }
@@ -62,7 +62,7 @@ export default function MidcapVolumeTab() {
           Midcap stocks trading above 30-day average volume
         </h2>
         <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-          As of {data.asOf}
+          {data.fetchedAt ? `Updated ${new Date(data.fetchedAt).toLocaleTimeString("en-IN")}` : ""}
         </span>
       </div>
 
