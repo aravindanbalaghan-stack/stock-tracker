@@ -10,6 +10,7 @@ import IndicesTab from "@/components/IndicesTab";
 import MidcapVolumeTab from "@/components/MidcapVolumeTab";
 import DeliveryTab from "@/components/DeliveryTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
+import ResearchTab from "@/components/ResearchTab";
 import { loadWatchlist, saveWatchlist, DEFAULT_WATCHLIST } from "@/lib/watchlist";
 
 const REFRESH_MS = 12000;
@@ -20,6 +21,7 @@ const TABS = [
   { id: "midcap", label: "Midcap Movers" },
   { id: "delivery", label: "Delivery Leaders" },
   { id: "wma", label: "30WMA Watch" },
+  { id: "research", label: "Research" },
 ];
 
 export default function Page() {
@@ -136,6 +138,7 @@ export default function Page() {
         {activeTab === "midcap" && <MidcapVolumeTab />}
         {activeTab === "delivery" && <DeliveryTab />}
         {activeTab === "wma" && <WmaScreenTab />}
+        {activeTab === "research" && <ResearchTab />}
       </main>
     </div>
   );
