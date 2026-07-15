@@ -11,8 +11,12 @@ const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the volume average
 const ACCUMULATION_WINDOW = 20; // trading days
 const ACCUMULATION_DELIVERY_THRESHOLD = 50; // %
 const ACCUMULATION_MIN_DAYS = 10; // out of the 20-day window
-const MARKET_CAP_LOOKUP_CAP = 150; // don't fetch market cap for more candidates than this in the ranked lists
-const CONCURRENCY = 12;
+const MARKET_CAP_LOOKUP_CAP = 60; // don't fetch market cap for more candidates than this in the ranked lists
+const CONCURRENCY = 20;
+const MARKET_CAP_TIMEOUT_MS = 2500; // Yahoo's quoteSummary endpoint can occasionally stall rather than
+// fail fast — without a hard timeout, a handful of stalled requests can blow past Vercel's function
+// time limit and take the *entire* route down (which is what caused every bucket, and search, to
+// come up empty). Aborting slow ones keeps the route reliable even when Yahoo is flaky.
 
 // NSE's daily file has no instrument-type flag, so ETFs/REITs/InvITs are
 // told apart from ordinary stocks by naming convention. This catches the
@@ -41,9 +45,12 @@ function classify(symbol) {
 
 async function fetchMarketCapCr(symbol) {
   const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}.NS?modules=price`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MARKET_CAP_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: controller.signal,
       next: { revalidate: 86400 }, // market cap barely moves day to day — cache generously
     });
     if (!res.ok) return null;
@@ -52,7 +59,9 @@ async function fetchMarketCapCr(symbol) {
     if (typeof marketCap !== "number") return null;
     return marketCap / 1e7; // rupees -> crore
   } catch {
-    return null;
+    return null; // covers network errors AND the abort-on-timeout case
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -166,29 +175,27 @@ export async function GET(request) {
       marketCaps.push(...caps);
     }
 
-    const buckets = { below1500: [], mid1500to10000: [], above10000: [] };
-    let unclassifiedCount = 0;
+    const buckets = { below1500: [], mid1500to10000: [], above10000: [], unclassified: [] };
 
     stockCandidates.forEach((c, i) => {
       const capCr = marketCaps[i];
+      const { category, _volumeAboveAvg, ...rest } = c;
       if (capCr == null) {
-        unclassifiedCount++;
+        buckets.unclassified.push({ ...rest, marketCapCr: null });
         return;
       }
       const bucket = bucketFor(capCr);
-      const { category, _volumeAboveAvg, ...rest } = c;
       buckets[bucket].push({ ...rest, marketCapCr: Math.round(capCr) });
     });
 
     for (const key of Object.keys(buckets)) {
-      buckets[key] = buckets[key].slice(0, 20);
+      buckets[key] = buckets[key].slice(0, 30);
     }
 
     return Response.json({
       asOf: latest.date,
       stocks: buckets,
       other,
-      unclassifiedCount,
       tradingDaysUsed: days.length,
       criteria: {
         accumulationWindow: ACCUMULATION_WINDOW,

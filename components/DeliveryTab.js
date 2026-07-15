@@ -17,6 +17,7 @@ const BUCKETS = [
   { id: "below1500", label: "< ₹1,500 Cr" },
   { id: "mid1500to10000", label: "₹1,500 Cr – ₹10,000 Cr" },
   { id: "above10000", label: "> ₹10,000 Cr" },
+  { id: "unclassified", label: "Unclassified market cap" },
 ];
 
 function ResultTable({ rows, showCap }) {
@@ -301,7 +302,8 @@ export default function DeliveryTab() {
         days, price flat-to-up over that window, and volume above the 30-day average — not a confirmed institutional
         signal. ETF/REIT/InvIT classification is name-pattern based; market cap comes from Yahoo and may be
         unavailable for some thinly-covered names.
-        {data.unclassifiedCount > 0 && ` ${data.unclassifiedCount} stock(s) were left out of the market-cap buckets because a cap couldn't be found.`}
+        Stocks whose market cap couldn&apos;t be found are shown under &quot;Unclassified market cap&quot;
+        rather than dropped.
       </p>
     </div>
   );
