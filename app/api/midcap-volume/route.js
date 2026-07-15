@@ -80,7 +80,7 @@ export async function GET() {
 
     return Response.json({
       fetchedAt: new Date().toISOString(),
-      results: rows.slice(0, 20),
+      results: rows.slice(0, 50),
       universeSize: MIDCAP_UNIVERSE.length,
     });
   } catch (err) {
