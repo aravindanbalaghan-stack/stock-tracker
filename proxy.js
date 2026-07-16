@@ -12,7 +12,11 @@ const IDENTITY_COOKIE = "panel_identity";
 //   sets the cookie — gating these would make it impossible to ever log in.
 // - /api/check-alerts: called by an external cron (see that route's own
 //   ALERTS_CRON_SECRET check), not by a browser with a session cookie.
-const PUBLIC_PATHS = ["/login", "/api/login", "/api/check-alerts"];
+// - /admin and /api/admin: gated by their own separate ADMIN_KEY (see
+//   app/api/admin/logins/route.js) rather than the casual friend-identity
+//   cookie, since that cookie can be set to anything by anyone and can't
+//   be the thing deciding who gets to see everyone else's login history.
+const PUBLIC_PATHS = ["/login", "/api/login", "/api/check-alerts", "/admin", "/api/admin"];
 
 export function proxy(request) {
   const { pathname } = request.nextUrl;

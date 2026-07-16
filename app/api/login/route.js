@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { IDENTITY_COOKIE } from "@/lib/identity";
+import { recordLogin } from "@/lib/loginLog";
 
 const MAX_LENGTH = 100;
 
@@ -19,6 +20,8 @@ export async function POST(request) {
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 365, // 1 year
   });
+
+  await recordLogin(identity);
 
   return Response.json({ ok: true, identity });
 }

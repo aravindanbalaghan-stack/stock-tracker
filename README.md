@@ -88,6 +88,22 @@ Note: this app uses **Proxy** (`proxy.js` in the project root), not the
 older `middleware.js` convention — this Next.js version renamed it (see
 `AGENTS.md` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`).
 
+### Checking who's logged in
+
+Every submission to `/login` is recorded (identity + timestamp) in Vercel
+KV — the same database used for SMS alerts, so you need that set up too
+(see below). To view the log:
+
+1. In your Vercel project → **Settings** → **Environment Variables**, add
+   `ADMIN_KEY` set to any secret string of your choosing. Redeploy.
+2. Visit `/admin/logins` on your deployed app and enter that key (or
+   bookmark `/admin/logins?key=YOUR_KEY` to skip re-typing it).
+
+This key is separate from the friend-identity cookie on purpose — since
+that cookie can be set to literally anything by anyone, it can't be what
+decides who gets to see everyone else's login history. Without `ADMIN_KEY` set, `/admin/logins` just shows an error and nothing
+recorded is ever exposed.
+
 ## SMS price alerts — setup
 
 This needs three things: a small database to remember your alerts, an SMS
