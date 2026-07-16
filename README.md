@@ -67,12 +67,37 @@ practical paths are:
 Swapping either in only requires changing `app/api/quote/route.js` — the
 rest of the app (UI, polling, watchlist) stays the same.
 
+## Access
+
+Every page and API route requires a `panel_identity` cookie, set by
+entering your email or name at `/login`. **This is not real
+authentication** — nothing is verified, there's no password, and anyone
+with your deployed URL can type any email or name and get in. It exists
+so that if you share this with friends, everyone identifies themselves
+(mainly so SMS price alerts belong to the person who created them,
+rather than one shared pool everyone can see and delete — see "SMS price
+alerts" below for how that's scoped).
+
+If you actually want to restrict who can get in — not just ask visitors
+to identify themselves — you'd need to add an allowlist check in
+`proxy.js` (e.g. against a fixed list of emails in an env var) and
+probably real email verification (a magic link via an email-sending
+service like Resend). Neither is implemented here.
+
+Note: this app uses **Proxy** (`proxy.js` in the project root), not the
+older `middleware.js` convention — this Next.js version renamed it (see
+`AGENTS.md` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`).
+
 ## SMS price alerts — setup
 
 This needs three things: a small database to remember your alerts, an SMS
 account to actually send texts, and something to check prices on a
 schedule (since nothing runs while your browser is closed). Here's each
 step.
+
+Alerts are scoped per person by the identity cookie above — everyone only
+sees and can delete their own alerts, even though they all live in the
+same underlying KV store.
 
 ### 1. Add a database (Vercel KV)
 

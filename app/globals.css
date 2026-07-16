@@ -15,6 +15,15 @@
   --loss: #e5484d;
   --loss-dim: #3a1518;
 
+  /* Delivery % tiers (Delivery Leaders tab) — deliberately distinct from
+     gain/loss so they don't read as a price-direction signal. */
+  --tier-high: #2fbf6e; /* > 80% */
+  --tier-high-dim: #143823;
+  --tier-mid: #d4a94b; /* 70-80% */
+  --tier-mid-dim: #3a2f10;
+  --tier-low: #4b9fd4; /* 60-70% */
+  --tier-low-dim: #12293a;
+
   --font-display: "Space Grotesk", "Segoe UI", sans-serif;
   --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;

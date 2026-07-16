@@ -13,12 +13,35 @@ function fmtCap(cr) {
   return `₹${fmt(cr, 0)} Cr`;
 }
 
-const BUCKETS = [
-  { id: "below1500", label: "< ₹1,500 Cr" },
-  { id: "mid1500to10000", label: "₹1,500 Cr – ₹10,000 Cr" },
-  { id: "above10000", label: "> ₹10,000 Cr" },
-  { id: "unclassified", label: "Unclassified market cap" },
-];
+function fmtVolume(n) {
+  if (n === null || n === undefined) return "—";
+  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
+  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
+  return n.toLocaleString("en-IN");
+}
+
+function deliveryTier(pct) {
+  if (pct == null) return null;
+  if (pct > 80) return { color: "var(--tier-high)", bg: "var(--tier-high-dim)" };
+  if (pct >= 70) return { color: "var(--tier-mid)", bg: "var(--tier-mid-dim)" };
+  if (pct >= 60) return { color: "var(--tier-low)", bg: "var(--tier-low-dim)" };
+  return null;
+}
+
+function DeliveryPctBadge({ pct }) {
+  const tier = deliveryTier(pct);
+  if (!tier) {
+    return <span className="font-mono text-sm" style={{ color: "var(--gain)" }}>{fmt(pct)}%</span>;
+  }
+  return (
+    <span
+      className="font-mono text-sm px-1.5 py-0.5 rounded"
+      style={{ color: tier.color, background: tier.bg }}
+    >
+      {fmt(pct)}%
+    </span>
+  );
+}
 
 function ResultTable({ rows, showCap }) {
   if (!rows || rows.length === 0) {
@@ -30,7 +53,7 @@ function ResultTable({ rows, showCap }) {
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -38,6 +61,10 @@ function ResultTable({ rows, showCap }) {
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Close</th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Chg %</th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Deliv. %</th>
+            {showCap && (
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Market Cap</th>
+            )}
+            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Volume</th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>vs Avg Vol</th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Days accum. (20d)</th>
             <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>In accumulation?</th>
@@ -51,17 +78,24 @@ function ResultTable({ rows, showCap }) {
                 <td className="py-2.5 pl-4 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                    <div className="flex flex-col">
-                      <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
-                      {showCap && <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>{fmtCap(r.marketCapCr)}</span>}
-                    </div>
+                    <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
                   </div>
                 </td>
                 <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>
                 <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
                   {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
                 </td>
-                <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--gain)" }}>{fmt(r.deliveryPct)}%</td>
+                <td className="py-2.5 px-2 text-right">
+                  <DeliveryPctBadge pct={r.deliveryPct} />
+                </td>
+                {showCap && (
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {fmtCap(r.marketCapCr)}
+                  </td>
+                )}
+                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                  {fmtVolume(r.volume)}
+                </td>
                 <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                   {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
                 </td>
@@ -114,7 +148,11 @@ function SearchResult({ result, onClear }) {
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Delivery %</span>
-          <span className="font-mono text-sm" style={{ color: "var(--gain)" }}>{fmt(result.deliveryPct)}%</span>
+          <span><DeliveryPctBadge pct={result.deliveryPct} /></span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Volume</span>
+          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{fmtVolume(result.volume)}</span>
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>vs Avg Volume</span>
@@ -155,7 +193,6 @@ export default function DeliveryTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [category, setCategory] = useState("stocks"); // "stocks" | "other"
-  const [bucket, setBucket] = useState("below1500");
 
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
@@ -272,38 +309,37 @@ export default function DeliveryTab() {
         ))}
       </div>
 
-      {category === "stocks" && (
-        <div className="flex gap-2 mb-3">
-          {BUCKETS.map((b) => (
-            <button
-              key={b.id}
-              onClick={() => setBucket(b.id)}
-              className="text-xs px-2.5 py-1 rounded border"
-              style={{
-                borderColor: bucket === b.id ? "var(--accent)" : "var(--border)",
-                color: bucket === b.id ? "var(--accent)" : "var(--text-muted)",
-              }}
-            >
-              {b.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center gap-4 mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-high)" }} />
+          &gt; 80% delivery
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-mid)" }} />
+          70–80% delivery
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-low)" }} />
+          60–70% delivery
+        </span>
+      </div>
 
       {category === "stocks" ? (
-        <ResultTable rows={data.stocks[bucket]} showCap />
+        <ResultTable rows={data.stocks} showCap />
       ) : (
         <ResultTable rows={data.other} showCap={false} />
       )}
 
       <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
-        &quot;In accumulation&quot; is a heuristic: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}%
-        on at least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20} trading
-        days, price flat-to-up over that window, and volume above the 30-day average — not a confirmed institutional
-        signal. ETF/REIT/InvIT classification is name-pattern based; market cap comes from Yahoo and may be
-        unavailable for some thinly-covered names.
-        Stocks whose market cap couldn&apos;t be found are shown under &quot;Unclassified market cap&quot;
-        rather than dropped.
+        Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
+        {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending.
+        &quot;In accumulation&quot; is a separate heuristic: delivery % above{" "}
+        {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at least{" "}
+        {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20} trading
+        days, price flat-to-up over that window, and volume above the 30-day average — not a confirmed
+        institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap is only looked up
+        for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery % (NSE&apos;s lookup is rate-limited);
+        beyond that, or if NSE&apos;s lookup fails for a specific stock, it shows as &quot;—&quot; rather than being dropped.
       </p>
     </div>
   );

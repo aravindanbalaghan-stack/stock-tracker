@@ -13,6 +13,7 @@ import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
 import ResearchTab from "@/components/ResearchTab";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
+import { readIdentityCookie } from "@/lib/identity";
 
 const REFRESH_MS = 12000;
 
@@ -40,6 +41,7 @@ export default function Page() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [identity, setIdentity] = useState(() => readIdentityCookie());
   const pollRef = useRef(null);
 
   const fetchQuotes = useCallback(async (syms) => {
@@ -120,6 +122,15 @@ export default function Page() {
     }));
   }
 
+  async function handleLogout() {
+    try {
+      await fetch("/api/logout", { method: "POST" });
+    } finally {
+      setIdentity(null);
+      window.location.href = "/login";
+    }
+  }
+
   const marketOpenGuess = (() => {
     const now = new Date();
     const istHour = (now.getUTCHours() + 5) % 24;
@@ -144,7 +155,15 @@ export default function Page() {
             Panel
           </h1>
         </div>
-        {activeTab === "watchlist" && <AddStock onAdd={handleAdd} existingSymbols={symbols} />}
+        <div className="flex items-center gap-4">
+          {identity && (
+            <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              <span>Signed in as <span style={{ color: "var(--text)" }}>{identity}</span></span>
+              <button onClick={handleLogout} style={{ color: "var(--text-faint)" }}>Sign out</button>
+            </div>
+          )}
+          {activeTab === "watchlist" && <AddStock onAdd={handleAdd} existingSymbols={symbols} />}
+        </div>
       </header>
 
       <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />

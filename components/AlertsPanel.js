@@ -59,10 +59,15 @@ export default function AlertsPanel({ availableSymbols }) {
 
   async function handleDelete(id) {
     try {
-      await fetch(`/api/alerts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/alerts?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(json?.error || "Failed to delete alert");
+        return;
+      }
       await load();
     } catch {
-      // best-effort — load() below on next mount will reconcile anyway
+      setError("Failed to delete alert");
     }
   }
 
