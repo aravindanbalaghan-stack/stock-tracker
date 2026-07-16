@@ -30,7 +30,48 @@ function DayRangeBar({ low, high, price }) {
   );
 }
 
-function Row({ quote, onRemove }) {
+function AddedCell({ addedPrice, currentPrice }) {
+  if (addedPrice == null) {
+    return <span className="text-xs" style={{ color: "var(--text-faint)" }}>—</span>;
+  }
+  const sinceAdded =
+    currentPrice != null ? ((currentPrice - addedPrice) / addedPrice) * 100 : null;
+  const up = (sinceAdded ?? 0) >= 0;
+  return (
+    <div className="flex flex-col items-end">
+      <span className="font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(addedPrice)}</span>
+      {sinceAdded != null && (
+        <span className="text-[10px] font-mono" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
+          {up ? "+" : ""}{fmt(sinceAdded)}% since
+        </span>
+      )}
+    </div>
+  );
+}
+
+function NotesCell({ symbol, notes, onNotesChange }) {
+  const [value, setValue] = useState(notes ?? "");
+
+  function commit() {
+    if (value !== (notes ?? "")) onNotesChange(symbol, value);
+  }
+
+  return (
+    <input
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      placeholder="Add a note…"
+      className="w-full rounded px-2 py-1 text-xs outline-none border bg-transparent"
+      style={{ borderColor: "var(--border)", color: "var(--text)" }}
+    />
+  );
+}
+
+function Row({ quote, meta, onRemove, onNotesChange }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
 
@@ -68,6 +109,9 @@ function Row({ quote, onRemove }) {
       <td className="py-3 px-2 text-right font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
         {stale ? "—" : `${up ? "+" : ""}${fmt(quote.changePercent)}%`}
       </td>
+      <td className="py-3 px-2 hidden sm:table-cell">
+        <AddedCell addedPrice={meta?.addedPrice} currentPrice={stale ? null : quote.price} />
+      </td>
       <td className="py-3 px-2 hidden md:table-cell">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-mono" style={{ color: "var(--text-faint)" }}>
@@ -81,6 +125,9 @@ function Row({ quote, onRemove }) {
       </td>
       <td className="py-3 px-2 text-right font-mono text-xs hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>
         {fmtVolume(quote.volume)}
+      </td>
+      <td className="py-3 px-2 hidden lg:table-cell" style={{ minWidth: "140px" }}>
+        <NotesCell symbol={quote.symbol} notes={meta?.notes} onNotesChange={onNotesChange} />
       </td>
       <td className="py-3 pl-2 pr-4 text-right">
         <button
@@ -96,7 +143,7 @@ function Row({ quote, onRemove }) {
   );
 }
 
-export default function WatchlistTable({ quotes, onRemove }) {
+export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }) {
   if (quotes.length === 0) {
     return (
       <div
@@ -114,7 +161,7 @@ export default function WatchlistTable({ quotes, onRemove }) {
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -130,18 +177,30 @@ export default function WatchlistTable({ quotes, onRemove }) {
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
               Chg %
             </th>
+            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden sm:table-cell" style={{ color: "var(--text-faint)" }}>
+              Added
+            </th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-faint)" }}>
               Day range
             </th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
               Volume
             </th>
+            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
+              Notes
+            </th>
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
         <tbody>
           {quotes.map((q) => (
-            <Row quote={q} key={q.symbol} onRemove={onRemove} />
+            <Row
+              quote={q}
+              meta={meta?.[q.symbol]}
+              key={q.symbol}
+              onRemove={onRemove}
+              onNotesChange={onNotesChange}
+            />
           ))}
         </tbody>
       </table>

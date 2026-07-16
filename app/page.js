@@ -9,9 +9,10 @@ import TabBar from "@/components/TabBar";
 import IndicesTab from "@/components/IndicesTab";
 import MidcapVolumeTab from "@/components/MidcapVolumeTab";
 import DeliveryTab from "@/components/DeliveryTab";
+import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
 import ResearchTab from "@/components/ResearchTab";
-import { loadWatchlist, saveWatchlist, DEFAULT_WATCHLIST } from "@/lib/watchlist";
+import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 
 const REFRESH_MS = 12000;
 
@@ -20,22 +21,26 @@ const TABS = [
   { id: "indices", label: "Top Indices" },
   { id: "midcap", label: "Midcap Movers" },
   { id: "delivery", label: "Delivery Leaders" },
+  { id: "breakouts", label: "Breakouts" },
   { id: "wma", label: "30WMA Watch" },
   { id: "research", label: "Research" },
 ];
 
 export default function Page() {
   const [activeTab, setActiveTab] = useState("watchlist");
-  const [symbols, setSymbols] = useState(DEFAULT_WATCHLIST);
+  // Lazy initializer instead of DEFAULT_WATCHLIST + a mount effect — reads
+  // localStorage during the initial render (loadWatchlist() already guards
+  // for the server/no-window case), so there's no longer an extra render
+  // right after mount just to swap in the saved list.
+  const [symbols, setSymbols] = useState(() => loadWatchlist());
+  // Per-symbol metadata: price when added + personal notes. Same lazy-init
+  // approach, same reasoning.
+  const [meta, setMeta] = useState(() => loadWatchlistMeta());
   const [quotes, setQuotes] = useState([]);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef(null);
-
-  useEffect(() => {
-    setSymbols(loadWatchlist());
-  }, []);
 
   const fetchQuotes = useCallback(async (syms) => {
     if (!syms || syms.length === 0) {
@@ -47,9 +52,29 @@ export default function Page() {
       const res = await fetch(`/api/quote?symbols=${encodeURIComponent(syms.join(","))}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to fetch quotes");
-      setQuotes(data.results || []);
+      const results = data.results || [];
+      setQuotes(results);
       setLastUpdated(new Date());
       setError(null);
+
+      // Backfill "added price" for any symbol that doesn't have one yet
+      // (freshly added, or added before this feature existed). Doing this
+      // off the regular quote poll — rather than a one-off fetch at
+      // add-time — means a single flaky request can't permanently leave a
+      // symbol without an added price; it just fills in on the next
+      // successful poll, usually within a few seconds.
+      setMeta((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const q of results) {
+          const entry = next[q.symbol];
+          if (entry && entry.addedPrice == null && q.price != null) {
+            next[q.symbol] = { ...entry, addedPrice: q.price };
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     } catch (err) {
       setError(err.message || "Could not reach the market data service");
     } finally {
@@ -67,14 +92,32 @@ export default function Page() {
     return () => clearInterval(pollRef.current);
   }, [symbols, fetchQuotes]);
 
+  useEffect(() => {
+    saveWatchlistMeta(meta);
+  }, [meta]);
+
   function handleAdd(symbol) {
     const clean = symbol.trim().toUpperCase();
     if (!clean || symbols.includes(clean)) return;
     setSymbols((prev) => [...prev, clean]);
+    setMeta((prev) => ({ ...prev, [clean]: { addedPrice: null, notes: "" } }));
   }
 
   function handleRemove(symbol) {
     setSymbols((prev) => prev.filter((s) => s !== symbol));
+    setMeta((prev) => {
+      if (!(symbol in prev)) return prev;
+      const next = { ...prev };
+      delete next[symbol];
+      return next;
+    });
+  }
+
+  function handleNotesChange(symbol, notes) {
+    setMeta((prev) => ({
+      ...prev,
+      [symbol]: { addedPrice: prev[symbol]?.addedPrice ?? null, notes },
+    }));
   }
 
   const marketOpenGuess = (() => {
@@ -124,7 +167,7 @@ export default function Page() {
             ) : (
               <>
                 <AlertsPanel availableSymbols={symbols} />
-                <WatchlistTable quotes={quotes} onRemove={handleRemove} />
+                <WatchlistTable quotes={quotes} meta={meta} onRemove={handleRemove} onNotesChange={handleNotesChange} />
               </>
             )}
             <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>
@@ -137,6 +180,7 @@ export default function Page() {
         {activeTab === "indices" && <IndicesTab />}
         {activeTab === "midcap" && <MidcapVolumeTab />}
         {activeTab === "delivery" && <DeliveryTab />}
+        {activeTab === "breakouts" && <BreakoutsTab />}
         {activeTab === "wma" && <WmaScreenTab />}
         {activeTab === "research" && <ResearchTab />}
       </main>

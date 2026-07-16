@@ -1,116 +1,58 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
+import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
+import {
+  computeMetrics,
+  ACCUMULATION_WINDOW,
+  ACCUMULATION_DELIVERY_THRESHOLD,
+  ACCUMULATION_MIN_DAYS,
+} from "@/lib/deliveryMetrics";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
 export const dynamic = "force-dynamic";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-
 const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the volume average
-const ACCUMULATION_WINDOW = 20; // trading days
-const ACCUMULATION_DELIVERY_THRESHOLD = 50; // %
-const ACCUMULATION_MIN_DAYS = 10; // out of the 20-day window
 const MARKET_CAP_LOOKUP_CAP = 60; // don't fetch market cap for more candidates than this in the ranked lists
-const CONCURRENCY = 20;
-const MARKET_CAP_TIMEOUT_MS = 2500; // Yahoo's quoteSummary endpoint can occasionally stall rather than
-// fail fast — without a hard timeout, a handful of stalled requests can blow past Vercel's function
-// time limit and take the *entire* route down (which is what caused every bucket, and search, to
-// come up empty). Aborting slow ones keeps the route reliable even when Yahoo is flaky.
+const CONCURRENCY = 10; // NSE's bot protection blocks cloud IPs more aggressively than Yahoo did —
+// kept lower than the old Yahoo concurrency (20) to go easier on the session.
+const MARKET_CAP_TIMEOUT_MS = 4000; // NSE can occasionally stall rather than fail fast — without a hard
+// timeout, a handful of stalled requests can blow past Vercel's function time limit and take the
+// *entire* route down. Aborting slow ones keeps the route reliable even when NSE is flaky.
 
-// NSE's daily file has no instrument-type flag, so ETFs/REITs/InvITs are
-// told apart from ordinary stocks by naming convention. This catches the
-// large majority (most ETFs end in "BEES" or contain "ETF") but isn't
-// guaranteed exhaustive — add to KNOWN_NON_STOCK_SYMBOLS if something
-// specific slips through.
-const ETF_PATTERNS = [/BEES$/i, /ETF/i];
-const KNOWN_NON_STOCK_SYMBOLS = new Set([
-  // REITs
-  "EMBASSY", "MINDSPACE", "BIRET", "NXST",
-  // InvITs
-  "IRBINVIT", "INDIGRID", "PGINVIT", "ANZEN", "CUBEINVIT", "POWERGRIDINVIT",
-  // Common ETFs that don't match the naming patterns above
-  "GOLDSHARE", "MON100", "MOM100", "MOM50", "MOGSEC", "MASPTOP50", "MAFANG",
-  "LICNETFN50", "SETFNIF50", "SETFNN50", "UTINIFTETF", "HDFCNIFTY",
-  "HDFCSML250", "HDFCNEXT50", "HDFCGROWTH", "HDFCSENSEX", "GOLDIETF",
-  "SILVERIETF", "AXISGOLD", "ABSLGOLD",
-]);
+// Market cap now comes from NSE's own quote-equity endpoint (via the
+// cookie-session helper already used by the Research tab) rather than
+// Yahoo's quoteSummary endpoint. Yahoo's quoteSummary is the same family
+// of endpoint that app/api/quote/route.js documents as rejecting
+// unauthenticated cloud-host requests with a 401 — quoteSummary was never
+// migrated off it, which is why every market-cap lookup was silently
+// failing and every stock landed in "Unclassified" instead of its real
+// bucket. NSE returns totalMarketCap already in crores, so no unit
+// conversion is needed (previously we divided Yahoo's rupee figure by 1e7).
+async function fetchMarketCapCr(symbol, cookies) {
+  const data = await nseApiFetchWithCookies(
+    `/api/quote-equity?symbol=${encodeURIComponent(symbol)}&section=trade_info`,
+    cookies,
+    MARKET_CAP_TIMEOUT_MS
+  );
+  if (!data) return null;
 
-function classify(symbol) {
-  const s = symbol.toUpperCase();
-  if (KNOWN_NON_STOCK_SYMBOLS.has(s)) return "other";
-  if (ETF_PATTERNS.some((p) => p.test(s))) return "other";
-  return "stock";
-}
+  const direct = data?.marketDeptOrderBook?.tradeInfo?.totalMarketCap;
+  if (typeof direct === "number") return direct;
 
-async function fetchMarketCapCr(symbol) {
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}.NS?modules=price`;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MARKET_CAP_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
-      signal: controller.signal,
-      next: { revalidate: 86400 }, // market cap barely moves day to day — cache generously
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const marketCap = data?.quoteSummary?.result?.[0]?.price?.marketCap?.raw;
-    if (typeof marketCap !== "number") return null;
-    return marketCap / 1e7; // rupees -> crore
-  } catch {
-    return null; // covers network errors AND the abort-on-timeout case
-  } finally {
-    clearTimeout(timeoutId);
+  // Fallback: derive from shares issued x last price if NSE's direct
+  // field isn't present for this symbol.
+  const issuedSize = data?.securityInfo?.issuedSize;
+  const lastPrice = data?.priceInfo?.lastPrice;
+  if (typeof issuedSize === "number" && typeof lastPrice === "number") {
+    return (issuedSize * lastPrice) / 1e7; // rupees -> crore
   }
+  return null;
 }
 
 function bucketFor(marketCapCr) {
   if (marketCapCr < 1500) return "below1500";
   if (marketCapCr <= 10000) return "mid1500to10000";
   return "above10000";
-}
-
-// Core per-symbol computation, shared by both the ranked screens and the
-// single-symbol search lookup below.
-function computeMetrics(symbol, days) {
-  const latest = days[days.length - 1];
-  const history = days.slice(0, -1);
-  const accumulationWindow = days.slice(-ACCUMULATION_WINDOW);
-
-  const today = latest.bySymbol.get(symbol);
-  if (!today || today.series !== "EQ" || !today.volume || today.deliveryPct == null) return null;
-
-  const pastVolumes = history
-    .map((d) => d.bySymbol.get(symbol)?.volume)
-    .filter((v) => typeof v === "number" && v > 0);
-  const avgVolume = pastVolumes.length > 0 ? pastVolumes.reduce((a, b) => a + b, 0) / pastVolumes.length : null;
-
-  const changePercent =
-    today.prevClose && today.close ? ((today.close - today.prevClose) / today.prevClose) * 100 : null;
-
-  const windowRows = accumulationWindow.map((d) => d.bySymbol.get(symbol)?.deliveryPct ?? null);
-  const daysAboveThreshold = windowRows.filter((v) => v != null && v > ACCUMULATION_DELIVERY_THRESHOLD).length;
-
-  const oldestInWindow = accumulationWindow[0]?.bySymbol.get(symbol)?.close ?? null;
-  const priceHeldOrRose = oldestInWindow != null ? today.close >= oldestInWindow : null;
-  const volumeAboveAvg = avgVolume != null && avgVolume > 0 ? today.volume > avgVolume : false;
-
-  const inAccumulation =
-    daysAboveThreshold >= ACCUMULATION_MIN_DAYS && priceHeldOrRose === true && volumeAboveAvg;
-
-  return {
-    symbol,
-    category: classify(symbol),
-    close: today.close,
-    changePercent,
-    deliveryPct: today.deliveryPct,
-    volumeRatio: avgVolume && avgVolume > 0 ? today.volume / avgVolume : null,
-    daysOfAccumulation: daysAboveThreshold,
-    accumulationWindowDays: windowRows.filter((v) => v != null).length,
-    inAccumulation,
-    _volumeAboveAvg: volumeAboveAvg,
-  };
 }
 
 export async function GET(request) {
@@ -136,7 +78,8 @@ export async function GET(request) {
       if (!metrics) {
         return Response.json({ error: `No delivery data found for ${symbol}` }, { status: 404 });
       }
-      const marketCapCr = await fetchMarketCapCr(symbol);
+      const marketCapCr =
+        metrics.category === "stock" ? await fetchMarketCapCr(symbol, await getSessionCookies()) : null;
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
@@ -168,10 +111,16 @@ export async function GET(request) {
       .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0))
       .slice(0, MARKET_CAP_LOOKUP_CAP);
 
+    // Fetch the NSE session cookie ONCE and reuse it across every
+    // market-cap lookup in this batch, rather than redoing the homepage
+    // handshake per symbol (which would be slow and more likely to get
+    // the session flagged).
+    const cookies = stockCandidates.length > 0 ? await getSessionCookies() : "";
+
     const marketCaps = [];
     for (let i = 0; i < stockCandidates.length; i += CONCURRENCY) {
       const batch = stockCandidates.slice(i, i + CONCURRENCY);
-      const caps = await Promise.all(batch.map((c) => fetchMarketCapCr(c.symbol)));
+      const caps = await Promise.all(batch.map((c) => fetchMarketCapCr(c.symbol, cookies)));
       marketCaps.push(...caps);
     }
 
