@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
+import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -46,36 +47,9 @@ function DeliveryPctBadge({ pct }) {
   );
 }
 
-// Shown when a row (or the search result) is expanded — the last 10
-// trading days of delivery % and volume for that symbol.
-function HistoryPanel({ history }) {
-  if (!history || history.length === 0) {
-    return (
-      <div className="px-4 py-3 text-xs" style={{ color: "var(--text-faint)" }}>
-        No recent history available.
-      </div>
-    );
-  }
-  return (
-    <div className="px-4 py-3 overflow-x-auto">
-      <div className="flex gap-4 min-w-max">
-        {history.map((d) => (
-          <div key={d.date} className="flex flex-col items-center min-w-[64px]">
-            <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
-              {d.date.slice(5)}
-            </span>
-            <span className="font-mono text-xs mt-1" style={{ color: "var(--text)" }}>
-              {d.deliveryPct == null ? "—" : `${fmt(d.deliveryPct)}%`}
-            </span>
-            <span className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
-              {fmtVolume(d.volume)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// deliveryTier/DeliveryPctBadge above; 10-day history rendering now lives
+// in the shared components/DeliveryHistoryPanel.js (also used by the
+// Sector Deliverability tab).
 
 function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
@@ -172,7 +146,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
                     <td colSpan={showCap ? 11 : 9} className="p-0">
-                      <HistoryPanel history={r.deliveryHistory} />
+                      <DeliveryHistoryPanel history={r.deliveryHistory} />
                     </td>
                   </tr>
                 )}
@@ -274,7 +248,7 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols }) {
       </div>
       {expanded && (
         <div className="border-t" style={{ borderColor: "var(--border)" }}>
-          <HistoryPanel history={result.deliveryHistory} />
+          <DeliveryHistoryPanel history={result.deliveryHistory} />
         </div>
       )}
     </div>

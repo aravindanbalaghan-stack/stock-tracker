@@ -9,6 +9,7 @@ import TabBar from "@/components/TabBar";
 import IndicesTab from "@/components/IndicesTab";
 import MidcapVolumeTab from "@/components/MidcapVolumeTab";
 import DeliveryTab from "@/components/DeliveryTab";
+import SectorDeliveryTab from "@/components/SectorDeliveryTab";
 import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
 import ResearchTab from "@/components/ResearchTab";
@@ -22,6 +23,7 @@ const TABS = [
   { id: "indices", label: "Top Indices" },
   { id: "midcap", label: "Midcap Movers" },
   { id: "delivery", label: "Delivery Leaders" },
+  { id: "sectors", label: "Sector Deliverability" },
   { id: "breakouts", label: "Breakouts" },
   { id: "wma", label: "30WMA Watch" },
   { id: "research", label: "Research" },
@@ -200,6 +202,9 @@ export default function Page() {
         {activeTab === "midcap" && <MidcapVolumeTab />}
         {activeTab === "delivery" && (
           <DeliveryTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+        )}
+        {activeTab === "sectors" && (
+          <SectorDeliveryTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
         {activeTab === "breakouts" && (
           <BreakoutsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
