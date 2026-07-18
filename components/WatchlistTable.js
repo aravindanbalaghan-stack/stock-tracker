@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSortableRows } from "@/lib/useSortableRows";
+import SortableTh from "@/components/SortableTh";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -144,6 +146,8 @@ function Row({ quote, meta, onRemove, onNotesChange }) {
 }
 
 export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }) {
+  const { sorted, sort, onSort } = useSortableRows(quotes, null, "desc");
+
   if (quotes.length === 0) {
     return (
       <div
@@ -165,27 +169,17 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-            <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
-              Symbol
-            </th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
-              LTP
-            </th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
-              Chg
-            </th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
-              Chg %
-            </th>
+            <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            <SortableTh label="LTP" sortKey="price" sort={sort} onSort={onSort} />
+            <SortableTh label="Chg" sortKey="change" sort={sort} onSort={onSort} />
+            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden sm:table-cell" style={{ color: "var(--text-faint)" }}>
               Added
             </th>
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-faint)" }}>
               Day range
             </th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
-              Volume
-            </th>
+            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
             <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
               Notes
             </th>
@@ -193,7 +187,7 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }
           </tr>
         </thead>
         <tbody>
-          {quotes.map((q) => (
+          {sorted.map((q) => (
             <Row
               quote={q}
               meta={meta?.[q.symbol]}

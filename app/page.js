@@ -198,8 +198,12 @@ export default function Page() {
 
         {activeTab === "indices" && <IndicesTab />}
         {activeTab === "midcap" && <MidcapVolumeTab />}
-        {activeTab === "delivery" && <DeliveryTab />}
-        {activeTab === "breakouts" && <BreakoutsTab />}
+        {activeTab === "delivery" && (
+          <DeliveryTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+        )}
+        {activeTab === "breakouts" && (
+          <BreakoutsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+        )}
         {activeTab === "wma" && <WmaScreenTab />}
         {activeTab === "research" && <ResearchTab />}
       </main>

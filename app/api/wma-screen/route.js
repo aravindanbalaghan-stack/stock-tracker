@@ -1,13 +1,10 @@
 import { MIDCAP_UNIVERSE } from "@/lib/midcapUniverse";
 import { NIFTY50_UNIVERSE } from "@/lib/nifty50";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
+import { fetchDailySeries, toWeeklyCloses, average, WMA_WEEKS } from "@/lib/wma";
 
 export const dynamic = "force-dynamic";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-
-const WMA_WEEKS = 30;
 const CROSS_LOOKBACK_DAYS = 7; // trading days
 const NEAR_BAND_PCT = 1; // +/- 1%
 const MIN_DELIVERY_PCT = 60;
@@ -16,52 +13,6 @@ const CONCURRENCY = 8;
 // Universe: large + mid cap — deduped, since this kind of "pull back to
 // the 30WMA" setup is normally screened on liquid, established names.
 const UNIVERSE = [...new Set([...NIFTY50_UNIVERSE, ...MIDCAP_UNIVERSE])];
-
-async function fetchDailySeries(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.NS?interval=1d&range=1y`;
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": UA, Accept: "application/json" },
-      next: { revalidate: 1800 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const result = data?.chart?.result?.[0];
-    if (!result) return null;
-
-    const timestamps = result.timestamp || [];
-    const closes = result.indicators?.quote?.[0]?.close || [];
-    const bars = timestamps
-      .map((t, i) => ({ t, c: closes[i] }))
-      .filter((b) => b.c != null);
-
-    return bars;
-  } catch {
-    return null;
-  }
-}
-
-// Resample a daily bar series into one closing price per ISO week
-// (Mon-Sun), oldest first. This avoids a second Yahoo request just to get
-// weekly candles — we already have enough daily history in one call.
-function toWeeklyCloses(bars) {
-  const weeks = new Map(); // "YYYY-Wnn" -> last close seen that week
-  for (const bar of bars) {
-    const d = new Date(bar.t * 1000);
-    // ISO week key: good enough here since we only need a stable,
-    // monotonically-ordered grouping, not the literal ISO week number.
-    const monday = new Date(d);
-    const day = (monday.getUTCDay() + 6) % 7; // 0 = Monday
-    monday.setUTCDate(monday.getUTCDate() - day);
-    const key = monday.toISOString().slice(0, 10);
-    weeks.set(key, bar.c); // later bars in the same week overwrite — keeps the last
-  }
-  return [...weeks.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([, c]) => c);
-}
-
-function average(arr) {
-  return arr.reduce((a, b) => a + b, 0) / arr.length;
-}
 
 async function evaluateSymbol(symbol) {
   const bars = await fetchDailySeries(symbol);

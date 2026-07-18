@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { useSortableRows, compareForSort } from "@/lib/useSortableRows";
+import SortableTh from "@/components/SortableTh";
+import WatchlistAddButton from "@/components/WatchlistAddButton";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -42,7 +45,7 @@ function sectionLabel(dateStr) {
   return d.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short", year: "numeric" });
 }
 
-function SectionTable({ rows }) {
+function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, totalSections }) {
   if (rows.length === 0) {
     return (
       <div className="rounded-lg border py-8 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
@@ -55,23 +58,42 @@ function SectionTable({ rows }) {
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-            <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>Symbol</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Close</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Chg %</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Deliv. %</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Volume</th>
-            <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>vs Avg Vol</th>
+            <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
+            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
+            <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} />
+            <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
+            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => {
             const up = (r.changePercent ?? 0) >= 0;
+            const repeated = (r.occurrences ?? 1) > 1;
             return (
-              <tr key={r.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+              <tr
+                key={r.symbol}
+                className="border-b last:border-b-0"
+                style={{
+                  borderColor: "var(--border)",
+                  background: repeated ? "var(--tier-mid-dim)" : "transparent",
+                }}
+              >
                 <td className="py-2.5 pl-4 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
                     <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                    {repeated && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded border font-mono"
+                        style={{ borderColor: "var(--tier-mid)", color: "var(--tier-mid)" }}
+                        title={`Cleared the breakout filters on ${r.occurrences} of the last ${totalSections} trading days shown`}
+                      >
+                        ×{r.occurrences}
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>
@@ -79,9 +101,19 @@ function SectionTable({ rows }) {
                   {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
                 </td>
                 <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--gain)" }}>{fmt(r.deliveryPct)}%</td>
+                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                  {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
+                </td>
                 <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>{fmtVolume(r.volume)}</td>
-                <td className="py-2.5 pl-2 pr-4 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
+                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                   {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
+                </td>
+                <td className="py-2.5 pl-2 pr-4 text-right">
+                  <WatchlistAddButton
+                    symbol={r.symbol}
+                    inWatchlist={watchlistSymbols?.includes(r.symbol)}
+                    onAdd={onAddToWatchlist}
+                  />
                 </td>
               </tr>
             );
@@ -92,7 +124,7 @@ function SectionTable({ rows }) {
   );
 }
 
-export default function BreakoutsTab() {
+export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -116,6 +148,12 @@ export default function BreakoutsTab() {
     };
   }, []);
 
+  // One shared sort state applied to every day's section — all sections
+  // share the same columns, so a single "Deliv. % ▼" header click sorting
+  // every table the same way is the least surprising behavior.
+  const allRows = useMemo(() => (data?.sections ?? []).flatMap((s) => s.results), [data]);
+  const { sort, onSort } = useSortableRows(allRows, "volumeRatio", "desc");
+
   if (error) {
     return (
       <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
@@ -134,11 +172,25 @@ export default function BreakoutsTab() {
 
   const sections = data.sections || [];
 
+  function sortRows(rows) {
+    if (!sort.key) return rows;
+    return [...rows].sort((a, b) => compareForSort(a[sort.key], b[sort.key], sort.dir));
+  }
+
   return (
     <div>
-      <h2 className="font-display text-lg mb-4" style={{ color: "var(--text)" }}>
-        Breakouts
-      </h2>
+      <div className="flex items-baseline justify-between mb-1">
+        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
+          Breakouts
+        </h2>
+      </div>
+      <p className="text-xs mb-4 flex items-center gap-3" style={{ color: "var(--text-faint)" }}>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-mid-dim)", border: "1px solid var(--tier-mid)" }} />
+          Highlighted rows cleared the breakout filters on more than one of the last {sections.length} trading days shown
+        </span>
+        <span>· Click a column header to sort every day&apos;s table</span>
+      </p>
 
       <div className="space-y-8">
         {sections.map((section) => (
@@ -150,7 +202,14 @@ export default function BreakoutsTab() {
               <span className="text-xs" style={{ color: "var(--text-faint)" }}>{section.date}</span>
               <span className="text-xs" style={{ color: "var(--text-faint)" }}>· {section.results.length} match{section.results.length === 1 ? "" : "es"}</span>
             </div>
-            <SectionTable rows={section.results} />
+            <SectionTable
+              rows={sortRows(section.results)}
+              sort={sort}
+              onSort={onSort}
+              onAddToWatchlist={onAddToWatchlist}
+              watchlistSymbols={watchlistSymbols}
+              totalSections={sections.length}
+            />
           </div>
         ))}
       </div>
@@ -159,7 +218,8 @@ export default function BreakoutsTab() {
         Each day is evaluated independently: delivery % above {data.criteria?.deliveryPctMin ?? 70}%, price up
         more than {data.criteria?.changePctMin ?? 1}% vs that day&apos;s previous close, and volume at least{" "}
         {data.criteria?.volumeRatioMin ?? 2}× that day&apos;s own trailing 30-day average — a same-day surge
-        screen, not a confirmed signal.
+        screen, not a confirmed signal. 30WMA is looked up per symbol and cached across sections, so a
+        repeat symbol only costs one lookup.
       </p>
     </div>
   );

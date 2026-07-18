@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
+import { useSortableRows } from "@/lib/useSortableRows";
+import SortableTh from "@/components/SortableTh";
+import WatchlistAddButton from "@/components/WatchlistAddButton";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -43,7 +46,41 @@ function DeliveryPctBadge({ pct }) {
   );
 }
 
-function ResultTable({ rows, showCap }) {
+// Shown when a row (or the search result) is expanded — the last 10
+// trading days of delivery % and volume for that symbol.
+function HistoryPanel({ history }) {
+  if (!history || history.length === 0) {
+    return (
+      <div className="px-4 py-3 text-xs" style={{ color: "var(--text-faint)" }}>
+        No recent history available.
+      </div>
+    );
+  }
+  return (
+    <div className="px-4 py-3 overflow-x-auto">
+      <div className="flex gap-4 min-w-max">
+        {history.map((d) => (
+          <div key={d.date} className="flex flex-col items-center min-w-[64px]">
+            <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+              {d.date.slice(5)}
+            </span>
+            <span className="font-mono text-xs mt-1" style={{ color: "var(--text)" }}>
+              {d.deliveryPct == null ? "—" : `${fmt(d.deliveryPct)}%`}
+            </span>
+            <span className="font-mono text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+              {fmtVolume(d.volume)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
+  const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
+  const [expanded, setExpanded] = useState(null);
+
   if (!rows || rows.length === 0) {
     return (
       <div className="rounded-lg border py-12 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
@@ -57,63 +94,89 @@ function ResultTable({ rows, showCap }) {
       <table className="w-full border-collapse">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-            <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>Symbol</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Close</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Chg %</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Deliv. %</th>
-            {showCap && (
-              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Market Cap</th>
-            )}
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Volume</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>vs Avg Vol</th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Days accum. (20d)</th>
+            <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
+            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
+            <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} />
+            {showCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
+            {showCap && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
+            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>In accumulation?</th>
+            <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r, i) => {
+          {sorted.map((r, i) => {
             const up = (r.changePercent ?? 0) >= 0;
+            const isExpanded = expanded === r.symbol;
             return (
-              <tr key={r.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
-                <td className="py-2.5 pl-4 pr-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                    <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
-                  </div>
-                </td>
-                <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>
-                <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
-                  {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
-                </td>
-                <td className="py-2.5 px-2 text-right">
-                  <DeliveryPctBadge pct={r.deliveryPct} />
-                </td>
-                {showCap && (
-                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                    {fmtCap(r.marketCapCr)}
+              <Fragment key={r.symbol}>
+                <tr
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-white/5"
+                  style={{ borderColor: "var(--border)" }}
+                  onClick={() => setExpanded(isExpanded ? null : r.symbol)}
+                >
+                  <td className="py-2.5 pl-4 pr-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
+                      <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                    </div>
                   </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>
+                  <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
+                    {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
+                  </td>
+                  <td className="py-2.5 px-2 text-right">
+                    <DeliveryPctBadge pct={r.deliveryPct} />
+                  </td>
+                  {showCap && (
+                    <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                      {fmtCap(r.marketCapCr)}
+                    </td>
+                  )}
+                  {showCap && (
+                    <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                      {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
+                    </td>
+                  )}
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {fmtVolume(r.volume)}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
+                    {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {r.daysOfAccumulation}/{r.accumulationWindowDays}
+                  </td>
+                  <td className="py-2.5 pl-2 pr-4">
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded border"
+                      style={{
+                        borderColor: r.inAccumulation ? "var(--gain)" : "var(--border)",
+                        color: r.inAccumulation ? "var(--gain)" : "var(--text-faint)",
+                      }}
+                    >
+                      {r.inAccumulation ? "Yes" : "No"}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pl-2 pr-4 text-right">
+                    <WatchlistAddButton
+                      symbol={r.symbol}
+                      inWatchlist={watchlistSymbols?.includes(r.symbol)}
+                      onAdd={onAddToWatchlist}
+                    />
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr style={{ background: "var(--surface-2)" }}>
+                    <td colSpan={showCap ? 11 : 9} className="p-0">
+                      <HistoryPanel history={r.deliveryHistory} />
+                    </td>
+                  </tr>
                 )}
-                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                  {fmtVolume(r.volume)}
-                </td>
-                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
-                  {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
-                </td>
-                <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                  {r.daysOfAccumulation}/{r.accumulationWindowDays}
-                </td>
-                <td className="py-2.5 pl-2 pr-4">
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded border"
-                    style={{
-                      borderColor: r.inAccumulation ? "var(--gain)" : "var(--border)",
-                      color: r.inAccumulation ? "var(--gain)" : "var(--text-faint)",
-                    }}
-                  >
-                    {r.inAccumulation ? "Yes" : "No"}
-                  </span>
-                </td>
-              </tr>
+              </Fragment>
             );
           })}
         </tbody>
@@ -122,16 +185,27 @@ function ResultTable({ rows, showCap }) {
   );
 }
 
-function SearchResult({ result, onClear }) {
+function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols }) {
+  const [expanded, setExpanded] = useState(false);
   if (!result) return null;
   const up = (result.changePercent ?? 0) >= 0;
   return (
     <div className="mb-6 rounded-lg border overflow-hidden" style={{ borderColor: "var(--accent)", background: "var(--surface)" }}>
       <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: "var(--border)" }}>
         <span className="text-xs uppercase tracking-wider" style={{ color: "var(--accent)" }}>Search result</span>
-        <button onClick={onClear} className="text-xs" style={{ color: "var(--text-faint)" }}>Clear</button>
+        <div className="flex items-center gap-3">
+          <WatchlistAddButton
+            symbol={result.symbol}
+            inWatchlist={watchlistSymbols?.includes(result.symbol)}
+            onAdd={onAddToWatchlist}
+          />
+          <button onClick={onClear} className="text-xs" style={{ color: "var(--text-faint)" }}>Clear</button>
+        </div>
       </div>
-      <div className="p-4 flex flex-wrap gap-x-8 gap-y-3">
+      <div
+        className="p-4 flex flex-wrap gap-x-8 gap-y-3 cursor-pointer"
+        onClick={() => setExpanded((e) => !e)}
+      >
         <div className="flex flex-col">
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Symbol</span>
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{result.symbol}</span>
@@ -184,12 +258,138 @@ function SearchResult({ result, onClear }) {
             <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{fmtCap(result.marketCapCr)}</span>
           </div>
         )}
+        {result.category === "stock" && (
+          <div className="flex flex-col">
+            <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>30WMA</span>
+            <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+              {result.wma30 == null ? "—" : `₹${fmt(result.wma30)}`}
+            </span>
+          </div>
+        )}
+        <div className="flex items-end">
+          <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+            {expanded ? "▲ hide 10-day history" : "▼ show 10-day history"}
+          </span>
+        </div>
       </div>
+      {expanded && (
+        <div className="border-t" style={{ borderColor: "var(--border)" }}>
+          <HistoryPanel history={result.deliveryHistory} />
+        </div>
+      )}
     </div>
   );
 }
 
-export default function DeliveryTab() {
+// Search box with live suggestions — mirrors AddStock's autocomplete
+// pattern (debounced /api/search lookup) instead of requiring an exact
+// symbol before anything happens.
+function DeliverySearchBox({ onPick, query, setQuery }) {
+  const [results, setResults] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const boxRef = useRef(null);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const data = await res.json();
+        setResults(data.results || []);
+      } catch {
+        setResults([]);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function pick(symbol) {
+    onPick(symbol);
+    setResults([]);
+    setOpen(false);
+  }
+
+  function handleManualSearch(e) {
+    e.preventDefault();
+    const sym = query.trim().toUpperCase();
+    if (sym) pick(sym);
+  }
+
+  return (
+    <div className="relative w-56" ref={boxRef}>
+      <form onSubmit={handleManualSearch}>
+        <input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value.toUpperCase());
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          placeholder="Search any stock — e.g. WIPRO"
+          className="rounded px-3 py-1.5 text-sm font-mono w-full outline-none border"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+        />
+      </form>
+
+      {open && query.trim() && (
+        <div
+          className="absolute z-10 mt-1 w-full rounded-md border shadow-lg overflow-hidden"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)" }}
+        >
+          {loading && (
+            <div className="px-3 py-2 text-xs" style={{ color: "var(--text-muted)" }}>Searching…</div>
+          )}
+          {!loading && results.length === 0 && (
+            <button
+              type="button"
+              onClick={handleManualSearch}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5"
+              style={{ color: "var(--text)" }}
+            >
+              Search “{query.trim().toUpperCase()}” anyway
+            </button>
+          )}
+          {results.map((r) => (
+            <button
+              type="button"
+              key={`${r.symbol}-${r.exchange}`}
+              onClick={() => pick(r.symbol)}
+              className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-white/5"
+            >
+              <span className="flex flex-col text-left">
+                <span className="font-mono" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{r.name}</span>
+              </span>
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded border"
+                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                {r.exchange}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [category, setCategory] = useState("stocks"); // "stocks" | "other"
@@ -219,17 +419,17 @@ export default function DeliveryTab() {
     };
   }, []);
 
-  async function handleSearch(e) {
-    e.preventDefault();
-    const symbol = query.trim().toUpperCase();
-    if (!symbol) return;
+  async function runSearch(symbol) {
+    const clean = symbol.trim().toUpperCase();
+    if (!clean) return;
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await fetch(`/api/delivery?symbol=${encodeURIComponent(symbol)}`);
+      const res = await fetch(`/api/delivery?symbol=${encodeURIComponent(clean)}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Search failed");
       setSearchResult(json.result);
+      setQuery(clean);
     } catch (err) {
       setSearchError(err.message);
       setSearchResult(null);
@@ -265,30 +465,22 @@ export default function DeliveryTab() {
         </span>
       </div>
 
-      <form onSubmit={handleSearch} className="mb-4 flex gap-2">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value.toUpperCase())}
-          placeholder="Search any stock — e.g. WIPRO"
-          className="rounded px-3 py-1.5 text-sm font-mono w-56 outline-none border"
-          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
-        />
-        <button
-          type="submit"
-          disabled={searching}
-          className="text-xs px-3 py-1.5 rounded"
-          style={{ background: "var(--accent)", color: "var(--bg)" }}
-        >
-          {searching ? "Searching…" : "Search"}
-        </button>
-      </form>
+      <div className="mb-4 flex items-center gap-2">
+        <DeliverySearchBox onPick={runSearch} query={query} setQuery={setQuery} />
+        {searching && <span className="text-xs" style={{ color: "var(--text-faint)" }}>Searching…</span>}
+      </div>
 
       {searchError && (
         <div className="mb-4 rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
           {searchError}
         </div>
       )}
-      <SearchResult result={searchResult} onClear={() => { setSearchResult(null); setSearchError(null); setQuery(""); }} />
+      <SearchResult
+        result={searchResult}
+        onClear={() => { setSearchResult(null); setSearchError(null); setQuery(""); }}
+        onAddToWatchlist={onAddToWatchlist}
+        watchlistSymbols={watchlistSymbols}
+      />
 
       <div className="flex gap-1 mb-3 border-b" style={{ borderColor: "var(--border)" }}>
         {[
@@ -322,24 +514,29 @@ export default function DeliveryTab() {
           <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-low)" }} />
           60–70% delivery
         </span>
+        <span className="ml-auto" style={{ color: "var(--text-faint)" }}>
+          Click a column header to sort · click a row for its 10-day history
+        </span>
       </div>
 
       {category === "stocks" ? (
-        <ResultTable rows={data.stocks} showCap />
+        <ResultTable rows={data.stocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       ) : (
-        <ResultTable rows={data.other} showCap={false} />
+        <ResultTable rows={data.other} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       )}
 
       <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
         Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
-        {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending.
+        {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
+        column header to re-sort.
         &quot;In accumulation&quot; is a separate heuristic: delivery % above{" "}
         {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at least{" "}
         {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20} trading
         days, price flat-to-up over that window, and volume above the 30-day average — not a confirmed
-        institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap is only looked up
-        for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery % (NSE&apos;s lookup is rate-limited);
-        beyond that, or if NSE&apos;s lookup fails for a specific stock, it shows as &quot;—&quot; rather than being dropped.
+        institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap and 30WMA are only looked
+        up for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery % (NSE&apos;s and Yahoo&apos;s lookups
+        are rate-limited); beyond that, or if a lookup fails for a specific stock, it shows as &quot;—&quot; rather than
+        being dropped.
       </p>
     </div>
   );

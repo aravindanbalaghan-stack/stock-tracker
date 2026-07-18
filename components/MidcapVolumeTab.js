@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSortableRows } from "@/lib/useSortableRows";
+import SortableTh from "@/components/SortableTh";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -39,6 +41,8 @@ export default function MidcapVolumeTab() {
     };
   }, []);
 
+  const { sorted, sort, onSort } = useSortableRows(data?.results, "volumeRatio", "desc");
+
   if (error) {
     return (
       <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
@@ -75,16 +79,16 @@ export default function MidcapVolumeTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-                <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>Symbol</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Close</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Chg %</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Volume</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>30d Avg</th>
-                <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>vs Avg</th>
+                <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+                <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
+                <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
+                <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
+                <SortableTh label="30d Avg" sortKey="avgVolume30d" sort={sort} onSort={onSort} />
+                <SortableTh label="vs Avg" sortKey="volumeRatio" sort={sort} onSort={onSort} className="pr-4" />
               </tr>
             </thead>
             <tbody>
-              {data.results.map((r, i) => {
+              {sorted.map((r, i) => {
                 const up = (r.changePercent ?? 0) >= 0;
                 return (
                   <tr key={r.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>

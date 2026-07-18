@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSortableRows } from "@/lib/useSortableRows";
+import SortableTh from "@/components/SortableTh";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -30,6 +32,8 @@ export default function WmaScreenTab() {
       clearInterval(id);
     };
   }, []);
+
+  const { sorted, sort, onSort } = useSortableRows(data?.results, "distancePct", "asc");
 
   if (error) {
     return (
@@ -71,15 +75,15 @@ export default function WmaScreenTab() {
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-                <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>Symbol</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Price</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>30WMA</th>
-                <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Distance</th>
-                <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>Deliv. %</th>
+                <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+                <SortableTh label="Price" sortKey="price" sort={sort} onSort={onSort} />
+                <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
+                <SortableTh label="Distance" sortKey="distancePct" sort={sort} onSort={onSort} />
+                <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} className="pr-4" />
               </tr>
             </thead>
             <tbody>
-              {data.results.map((r) => {
+              {sorted.map((r) => {
                 const above = r.distancePct >= 0;
                 return (
                   <tr key={r.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>

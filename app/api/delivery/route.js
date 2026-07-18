@@ -2,17 +2,23 @@ import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import {
   computeMetrics,
+  buildRecentHistory,
   ACCUMULATION_WINDOW,
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
+import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
 export const dynamic = "force-dynamic";
 
 const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the volume average
+const DELIVERY_HISTORY_DAYS = 10; // trading days shown when a row/search result is expanded
 const DELIVERY_PCT_MIN = 60; // % — sole criterion for the ranked list (market-cap bucketing removed)
+const WMA_LOOKUP_CAP = 60; // Yahoo's chart endpoint tolerates more volume than NSE's session-based
+// lookup, but there's no reason to fetch it for rows nobody will scroll to — same cap as market cap,
+// and reusing the same capLookupTargets list means both batches cover the same top rows.
 const MARKET_CAP_LOOKUP_CAP = 60; // NSE's session-based lookup is comparatively expensive/rate-limited,
 // so market cap is only fetched for the top N by delivery % even though the list itself is unbounded.
 // Rows beyond the cap still show — just with marketCapCr: null ("—" in the UI) — same graceful-degrade
@@ -73,8 +79,12 @@ export async function GET(request) {
       if (!metrics) {
         return Response.json({ error: `No delivery data found for ${symbol}` }, { status: 404 });
       }
-      const marketCapCr =
-        metrics.category === "stock" ? await fetchMarketCapCr(symbol, await getSessionCookies()) : null;
+      const isStock = metrics.category === "stock";
+      const [marketCapCr, wma30] = await Promise.all([
+        isStock ? fetchMarketCapCr(symbol, await getSessionCookies()) : Promise.resolve(null),
+        isStock ? fetchWma30(symbol).catch(() => null) : Promise.resolve(null),
+      ]);
+      const deliveryHistory = buildRecentHistory(symbol, days, DELIVERY_HISTORY_DAYS);
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
@@ -82,6 +92,8 @@ export async function GET(request) {
           ...rest,
           category,
           marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
+          wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+          deliveryHistory,
         },
       });
     }
@@ -100,13 +112,17 @@ export async function GET(request) {
     const other = candidates
       .filter((c) => c.category === "other")
       .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0))
-      .map(({ category, _volumeAboveAvg, ...rest }) => rest);
+      .map(({ category, _volumeAboveAvg, ...rest }) => ({
+        ...rest,
+        deliveryHistory: buildRecentHistory(rest.symbol, days, DELIVERY_HISTORY_DAYS),
+      }));
 
     const stockCandidates = candidates
       .filter((c) => c.category === "stock")
       .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0));
 
     const capLookupTargets = stockCandidates.slice(0, MARKET_CAP_LOOKUP_CAP);
+    const wmaLookupTargets = stockCandidates.slice(0, WMA_LOOKUP_CAP);
 
     // Fetch the NSE session cookie ONCE and reuse it across every
     // market-cap lookup in this batch, rather than redoing the homepage
@@ -114,17 +130,36 @@ export async function GET(request) {
     // the session flagged).
     const cookies = capLookupTargets.length > 0 ? await getSessionCookies() : "";
 
-    const marketCaps = [];
-    for (let i = 0; i < capLookupTargets.length; i += CONCURRENCY) {
-      const batch = capLookupTargets.slice(i, i + CONCURRENCY);
-      const caps = await Promise.all(batch.map((c) => fetchMarketCapCr(c.symbol, cookies)));
-      marketCaps.push(...caps);
-    }
+    const marketCapsPromise = (async () => {
+      const marketCaps = [];
+      for (let i = 0; i < capLookupTargets.length; i += CONCURRENCY) {
+        const batch = capLookupTargets.slice(i, i + CONCURRENCY);
+        const caps = await Promise.all(batch.map((c) => fetchMarketCapCr(c.symbol, cookies)));
+        marketCaps.push(...caps);
+      }
+      return marketCaps;
+    })();
+
+    // Runs alongside the market-cap batch above rather than after it —
+    // two independent rate-limited upstreams (NSE session vs Yahoo chart
+    // API), no reason to serialize them.
+    const wmaPromise = fetchWma30Batch(
+      wmaLookupTargets.map((c) => c.symbol),
+      { concurrency: CONCURRENCY }
+    );
+
+    const [marketCaps, wmaMap] = await Promise.all([marketCapsPromise, wmaPromise]);
 
     const stocks = stockCandidates.map((c, i) => {
       const capCr = i < marketCaps.length ? marketCaps[i] : null;
+      const wma30 = wmaMap.get(c.symbol) ?? null;
       const { category, _volumeAboveAvg, ...rest } = c;
-      return { ...rest, marketCapCr: capCr != null ? Math.round(capCr) : null };
+      return {
+        ...rest,
+        marketCapCr: capCr != null ? Math.round(capCr) : null,
+        wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+        deliveryHistory: buildRecentHistory(c.symbol, days, DELIVERY_HISTORY_DAYS),
+      };
     });
 
     return Response.json({
@@ -135,6 +170,8 @@ export async function GET(request) {
       criteria: {
         deliveryPctMin: DELIVERY_PCT_MIN,
         marketCapLookupCap: MARKET_CAP_LOOKUP_CAP,
+        wmaLookupCap: WMA_LOOKUP_CAP,
+        deliveryHistoryDays: DELIVERY_HISTORY_DAYS,
         accumulationWindow: ACCUMULATION_WINDOW,
         accumulationDeliveryThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,
