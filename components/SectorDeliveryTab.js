@@ -5,6 +5,9 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
+import PeriodToggle from "@/components/PeriodToggle";
+
+const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -58,9 +61,9 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols }) {
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
             <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
-            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
-            <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} />
-            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label="Chg % (Day)" sortKey="changePercent" sort={sort} onSort={onSort} />
+            <SortableTh label="Deliv. % (Day)" sortKey="deliveryPct" sort={sort} onSort={onSort} />
+            <SortableTh label="Volume (Day)" sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
@@ -110,7 +113,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols }) {
   );
 }
 
-function SectorTable({ rows, onAddToWatchlist, watchlistSymbols }) {
+function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -120,10 +123,10 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols }) {
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Sector" sortKey="name" sort={sort} onSort={onSort} align="left" className="pl-4" />
-            <SortableTh label="Avg Chg %" sortKey="avgChangePercent" sort={sort} onSort={onSort} />
-            <SortableTh label="Sector Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} title="Volume-weighted: total delivered ÷ total traded across the sector's stocks" />
-            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
-            <SortableTh label="Stocks" sortKey="matchedCount" sort={sort} onSort={onSort} title="Constituents with data today, out of the sector's full list" />
+            <SortableTh label={`Avg Chg % (${periodLabel})`} sortKey="avgChangePercent" sort={sort} onSort={onSort} />
+            <SortableTh label={`Sector Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} title="Volume-weighted: total delivered ÷ total traded across the sector's stocks over this period" />
+            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
+            <SortableTh label="Stocks" sortKey="matchedCount" sort={sort} onSort={onSort} title="Constituents with data in this period, out of the sector's full list" />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
@@ -167,7 +170,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols }) {
                     <td colSpan={6} className="p-0">
                       <div className="border-b" style={{ borderColor: "var(--border)" }}>
                         <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
-                          10-day sector delivery %
+                          10-day daily sector delivery % trend
                         </div>
                         <DeliveryHistoryPanel history={s.deliveryHistory} />
                       </div>
@@ -194,12 +197,14 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols }) {
 export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
 
   useEffect(() => {
     let cancelled = false;
+    setData(null); // show the loading state immediately on period change rather than stale data
     async function load() {
       try {
-        const res = await fetch("/api/sector-delivery");
+        const res = await fetch(`/api/sector-delivery?period=${period}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load sector delivery screen");
         if (!cancelled) setData(json);
@@ -213,7 +218,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [period]);
 
   if (error) {
     return (
@@ -226,35 +231,48 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
   if (!data) {
     return (
       <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-        Pulling NSE data — this can take a moment the first time…
+        {period === "daily"
+          ? "Pulling NSE data — this can take a moment the first time…"
+          : "Pulling NSE data — Weekly/Monthly views fetch more trading days, so this can take a bit longer…"}
       </div>
     );
   }
 
+  const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
+
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
+      <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
         <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
           Sector Deliverability
         </h2>
-        <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-          As of {data.asOf}
-        </span>
+        <div className="flex items-center gap-3">
+          <PeriodToggle period={period} onChange={setPeriod} />
+          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+            As of {data.asOf}
+          </span>
+        </div>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        Click a column header to sort · click a sector row for its 10-day trend and constituent stocks
+        Click a column header to sort · click a sector row for its 10-day daily trend and constituent stocks
       </p>
 
-      <SectorTable rows={data.sectors} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+      <SectorTable rows={data.sectors} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
 
       <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
-        Each sector&apos;s delivery % is volume-weighted — total shares delivered across the sector&apos;s
+        {periodLabel === "Day"
+          ? "Daily view: each sector's most recent trading day."
+          : `${periodLabel}ly view: each sector's delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days, and Avg Chg % is the average per-stock return over that same period.`}{" "}
+        Delivery % is volume-weighted — total shares delivered across the sector&apos;s
         stocks, divided by total shares traded — not a plain average of individual stock delivery %s, so one
-        illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are
-        the standard NSE sectoral indices (Bank, IT, Auto, Pharma, FMCG, Metal, Realty, Energy, PSU Bank,
-        Financial Services); note some stocks belong to more than one — e.g. banks count toward both
-        &quot;Bank&quot; and &quot;Financial Services&quot; — since that&apos;s how NSE defines those indices.
-        Constituent lists are the same hand-maintained snapshots used on the Top Indices tab.
+        illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are a
+        hand-maintained mapping covering {data.sectors?.length ?? "36"} sectors (Banking, NBFC, Insurance,
+        IT, Pharma, Chemicals, Footwear, Sugar, Defence, and more) — broader than the handful of official
+        NSE sectoral indices, but not NSE&apos;s full official classification, so treat it as a good working
+        set rather than an authoritative one. A stock genuinely belonging to more than one sector (e.g. a
+        bank counted in both &quot;Banking&quot; and &quot;PSU Banks&quot;) is intentionally included in both
+        and contributes to both sectors&apos; numbers. The constituent stock breakdown inside each sector
+        always shows that stock&apos;s own daily numbers, regardless of the period selected above.
       </p>
     </div>
   );

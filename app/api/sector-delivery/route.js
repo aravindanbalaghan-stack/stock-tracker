@@ -1,32 +1,42 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
-import { computeMetrics, buildRecentHistory } from "@/lib/deliveryMetrics";
+import {
+  computeMetrics,
+  computePeriodMetrics,
+  buildRecentHistory,
+  PERIOD_TRADING_DAYS,
+  BASELINE_TRADING_DAYS,
+  lookbackDaysFor,
+} from "@/lib/deliveryMetrics";
 import { SECTOR_LIST } from "@/lib/sectors";
 
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
 // lookups beyond NSE's own daily file, so this stays fast and reliable.
 export const dynamic = "force-dynamic";
 
-const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days, same window Delivery Leaders uses
-const SECTOR_HISTORY_DAYS = 10; // trading days shown when a sector row is expanded
+const SECTOR_HISTORY_DAYS = 10; // trading days shown when a sector row is expanded — always daily
 
 // A sector's delivery % is NOT the average of its stocks' individual
 // delivery %s — that would let a single low-volume stock swing the sector
 // number just as much as the sector's most-traded name. Instead it's the
 // volume-weighted aggregate: total shares delivered across every
 // constituent that traded, divided by total shares traded — the same way
-// NSE itself would roll delivery data up across a basket.
-function sumSectorDay(symbols, dayInfo) {
+// NSE itself would roll delivery data up across a basket. sumSectorDays
+// takes an array of one or more days so the same helper covers Daily,
+// Weekly, and Monthly — for Daily it's just called with a one-day array.
+function sumSectorDays(symbols, dayInfos) {
   let volume = 0;
   let deliveryQty = 0;
-  let matched = 0;
-  for (const symbol of symbols) {
-    const row = dayInfo.bySymbol.get(symbol);
-    if (!row || row.series !== "EQ" || !row.volume) continue;
-    volume += row.volume;
-    deliveryQty += row.deliveryQty || 0;
-    matched++;
+  const matchedSymbols = new Set();
+  for (const dayInfo of dayInfos) {
+    for (const symbol of symbols) {
+      const row = dayInfo.bySymbol.get(symbol);
+      if (!row || row.series !== "EQ" || !row.volume) continue;
+      volume += row.volume;
+      deliveryQty += row.deliveryQty || 0;
+      matchedSymbols.add(symbol);
+    }
   }
-  return { volume, deliveryQty, matched };
+  return { volume, deliveryQty, matched: matchedSymbols.size };
 }
 
 function weightedPct(volume, deliveryQty) {
@@ -34,39 +44,67 @@ function weightedPct(volume, deliveryQty) {
   return Math.round((deliveryQty / volume) * 10000) / 100;
 }
 
-export async function GET() {
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const periodParam = searchParams.get("period");
+  const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
+  const periodTradingDays = PERIOD_TRADING_DAYS[period];
+
   try {
-    const days = await getRecentBhavcopies(LOOKBACK_DAYS);
-    if (days.length < 2) {
+    const lookback = lookbackDaysFor(period);
+    const days = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    if (days.length < periodTradingDays + 1) {
       return Response.json(
-        { error: "Not enough trading-day data available from NSE yet" },
+        { error: "Not enough trading-day data available from NSE yet for this period" },
         { status: 503 }
       );
     }
     const latest = days[days.length - 1];
-    const trailingDays = days.slice(0, -1); // everything except today, for the volume average
+    const periodWindow = days.slice(-periodTradingDays);
+    // Baseline for the "vs avg volume" comparison: a fixed-length window
+    // immediately BEFORE the period, so a weekly ratio and a monthly ratio
+    // are both "vs a typical 30-trading-day baseline" rather than windows
+    // of different lengths.
+    const baselineWindow = days.slice(0, days.length - periodTradingDays).slice(-BASELINE_TRADING_DAYS);
 
     const sectors = SECTOR_LIST.map(({ key, name, symbols }) => {
-      const today = sumSectorDay(symbols, latest);
-      const deliveryPct = weightedPct(today.volume, today.deliveryQty);
+      const periodTotals = sumSectorDays(symbols, periodWindow);
+      const deliveryPct = weightedPct(periodTotals.volume, periodTotals.deliveryQty);
 
-      const pastVolumes = trailingDays
-        .map((d) => sumSectorDay(symbols, d).volume)
+      const baselineDailyVolumes = baselineWindow
+        .map((d) => sumSectorDays(symbols, [d]).volume)
         .filter((v) => v > 0);
-      const avgVolume =
-        pastVolumes.length > 0 ? pastVolumes.reduce((a, b) => a + b, 0) / pastVolumes.length : null;
-      const volumeRatio = avgVolume && avgVolume > 0 ? today.volume / avgVolume : null;
+      const avgDailyVolume =
+        baselineDailyVolumes.length > 0
+          ? baselineDailyVolumes.reduce((a, b) => a + b, 0) / baselineDailyVolumes.length
+          : null;
+      const expectedPeriodVolume = avgDailyVolume != null ? avgDailyVolume * periodTradingDays : null;
+      const volumeRatio =
+        expectedPeriodVolume && expectedPeriodVolume > 0 ? periodTotals.volume / expectedPeriodVolume : null;
+
+      // Sector-level average change % reflects whichever period is
+      // selected (period return per stock, averaged) — separate from the
+      // constituent breakdown table below, which always shows today's
+      // numbers regardless of period, same reasoning as Delivery Leaders.
+      const periodChangeValues = symbols
+        .map((s) => computePeriodMetrics(s, days, periodTradingDays)?.changePercent)
+        .filter((v) => v != null);
+      const avgChangePercent =
+        periodChangeValues.length > 0
+          ? Math.round((periodChangeValues.reduce((a, b) => a + b, 0) / periodChangeValues.length) * 100) / 100
+          : null;
 
       const deliveryHistory = days.slice(-SECTOR_HISTORY_DAYS).map((d) => {
-        const s = sumSectorDay(symbols, d);
+        const s = sumSectorDays(symbols, [d]);
         return { date: d.date, deliveryPct: weightedPct(s.volume, s.deliveryQty), volume: s.volume || null };
       });
 
       // Per-stock breakdown for the expand panel — reuses the exact same
       // per-symbol computation Delivery Leaders and Breakouts use, so the
       // numbers line up with what you'd see if you searched the same
-      // symbol there. Sorted by delivery % so the sector's own "leaders"
-      // surface first.
+      // symbol there. Always today's daily numbers, regardless of the
+      // sector-level period selected. Sorted by delivery % so the
+      // sector's own "leaders" surface first.
       const constituents = symbols
         .map((s) => computeMetrics(s, days))
         .filter(Boolean)
@@ -76,20 +114,14 @@ export async function GET() {
         }))
         .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0));
 
-      const changeValues = constituents.map((c) => c.changePercent).filter((v) => v != null);
-      const avgChangePercent =
-        changeValues.length > 0
-          ? Math.round((changeValues.reduce((a, b) => a + b, 0) / changeValues.length) * 100) / 100
-          : null;
-
       return {
         key,
         name,
         constituentCount: symbols.length,
-        matchedCount: today.matched,
+        matchedCount: periodTotals.matched,
         deliveryPct,
         avgChangePercent,
-        volume: today.volume || null,
+        volume: periodTotals.volume || null,
         volumeRatio,
         deliveryHistory,
         constituents,
@@ -100,8 +132,10 @@ export async function GET() {
 
     return Response.json({
       asOf: latest.date,
+      period,
       sectors,
       tradingDaysUsed: days.length,
+      criteria: { periodTradingDays },
     });
   } catch (err) {
     return Response.json(

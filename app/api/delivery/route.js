@@ -1,8 +1,10 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import {
-  computeMetrics,
+  computePeriodMetrics,
   buildRecentHistory,
+  PERIOD_TRADING_DAYS,
+  lookbackDaysFor,
   ACCUMULATION_WINDOW,
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
@@ -13,8 +15,7 @@ import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
 export const dynamic = "force-dynamic";
 
-const LOOKBACK_DAYS = 31; // 1 "today" + 30 trailing days for the volume average
-const DELIVERY_HISTORY_DAYS = 10; // trading days shown when a row/search result is expanded
+const DELIVERY_HISTORY_DAYS = 10; // trading days shown when a row/search result is expanded — always daily
 const DELIVERY_PCT_MIN = 60; // % — sole criterion for the ranked list (market-cap bucketing removed)
 const WMA_LOOKUP_CAP = 60; // Yahoo's chart endpoint tolerates more volume than NSE's session-based
 // lookup, but there's no reason to fetch it for rows nobody will scroll to — same cap as market cap,
@@ -59,12 +60,20 @@ async function fetchMarketCapCr(symbol, cookies) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const searchSymbol = searchParams.get("symbol");
+  const periodParam = searchParams.get("period");
+  const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
+  const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
   try {
-    const days = await getRecentBhavcopies(LOOKBACK_DAYS);
-    if (days.length < 2) {
+    const lookback = lookbackDaysFor(period);
+    // getRecentBhavcopies walks backward one weekday at a time and skips
+    // holidays automatically, so it needs a generous calendar-day budget
+    // to find `lookback` actual trading days — a plain 1:1 would come up
+    // short once lookback gets into Monthly territory.
+    const days = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    if (days.length < periodTradingDays + 1) {
       return Response.json(
-        { error: "Not enough trading-day data available from NSE yet" },
+        { error: "Not enough trading-day data available from NSE yet for this period" },
         { status: 503 }
       );
     }
@@ -75,7 +84,7 @@ export async function GET(request) {
     // whatever you ask for.
     if (searchSymbol) {
       const symbol = searchSymbol.trim().toUpperCase();
-      const metrics = computeMetrics(symbol, days);
+      const metrics = computePeriodMetrics(symbol, days, periodTradingDays);
       if (!metrics) {
         return Response.json({ error: `No delivery data found for ${symbol}` }, { status: 404 });
       }
@@ -88,6 +97,7 @@ export async function GET(request) {
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
+        period,
         result: {
           ...rest,
           category,
@@ -103,7 +113,7 @@ export async function GET(request) {
     // market cap is now just a displayed column (see loop below).
     const candidates = [];
     for (const symbol of latest.bySymbol.keys()) {
-      const metrics = computeMetrics(symbol, days);
+      const metrics = computePeriodMetrics(symbol, days, periodTradingDays);
       if (metrics && metrics.deliveryPct != null && metrics.deliveryPct > DELIVERY_PCT_MIN) {
         candidates.push(metrics);
       }
@@ -164,6 +174,7 @@ export async function GET(request) {
 
     return Response.json({
       asOf: latest.date,
+      period,
       stocks,
       other,
       tradingDaysUsed: days.length,
@@ -172,6 +183,7 @@ export async function GET(request) {
         marketCapLookupCap: MARKET_CAP_LOOKUP_CAP,
         wmaLookupCap: WMA_LOOKUP_CAP,
         deliveryHistoryDays: DELIVERY_HISTORY_DAYS,
+        periodTradingDays,
         accumulationWindow: ACCUMULATION_WINDOW,
         accumulationDeliveryThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,

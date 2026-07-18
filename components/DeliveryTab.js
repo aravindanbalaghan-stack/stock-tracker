@@ -5,6 +5,9 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
+import PeriodToggle from "@/components/PeriodToggle";
+
+const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -51,7 +54,7 @@ function DeliveryPctBadge({ pct }) {
 // in the shared components/DeliveryHistoryPanel.js (also used by the
 // Sector Deliverability tab).
 
-function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
+function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -70,12 +73,12 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
             <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
-            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
-            <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} />
+            <SortableTh label={`Chg % (${periodLabel})`} sortKey="changePercent" sort={sort} onSort={onSort} />
+            <SortableTh label={`Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} />
             {showCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
             {showCap && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
-            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
-            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>In accumulation?</th>
             <th className="py-2 pl-2 pr-4"></th>
@@ -159,7 +162,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols }) {
   );
 }
 
-function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols }) {
+function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const [expanded, setExpanded] = useState(false);
   if (!result) return null;
   const up = (result.changePercent ?? 0) >= 0;
@@ -189,17 +192,17 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols }) {
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(result.close)}</span>
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Chg %</span>
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Chg % ({periodLabel})</span>
           <span className="font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
             {result.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(result.changePercent)}%`}
           </span>
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Delivery %</span>
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Delivery % ({periodLabel})</span>
           <span><DeliveryPctBadge pct={result.deliveryPct} /></span>
         </div>
         <div className="flex flex-col">
-          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Volume</span>
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Volume ({periodLabel})</span>
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{fmtVolume(result.volume)}</span>
         </div>
         <div className="flex flex-col">
@@ -367,6 +370,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [category, setCategory] = useState("stocks"); // "stocks" | "other"
+  const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
 
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
@@ -375,9 +379,10 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
 
   useEffect(() => {
     let cancelled = false;
+    setData(null); // show the loading state immediately on period change rather than stale data
     async function load() {
       try {
-        const res = await fetch("/api/delivery");
+        const res = await fetch(`/api/delivery?period=${period}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load delivery screen");
         if (!cancelled) setData(json);
@@ -391,7 +396,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [period]);
 
   async function runSearch(symbol) {
     const clean = symbol.trim().toUpperCase();
@@ -399,7 +404,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await fetch(`/api/delivery?symbol=${encodeURIComponent(clean)}`);
+      const res = await fetch(`/api/delivery?symbol=${encodeURIComponent(clean)}&period=${period}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Search failed");
       setSearchResult(json.result);
@@ -423,20 +428,27 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   if (!data) {
     return (
       <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-        Pulling NSE data — this can take a moment the first time…
+        {period === "daily"
+          ? "Pulling NSE data — this can take a moment the first time…"
+          : "Pulling NSE data — Weekly/Monthly views fetch more trading days, so this can take a bit longer…"}
       </div>
     );
   }
 
+  const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
+
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
           Delivery leaders
         </h2>
-        <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-          As of {data.asOf}
-        </span>
+        <div className="flex items-center gap-3">
+          <PeriodToggle period={period} onChange={setPeriod} />
+          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+            As of {data.asOf}
+          </span>
+        </div>
       </div>
 
       <div className="mb-4 flex items-center gap-2">
@@ -454,6 +466,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
         onClear={() => { setSearchResult(null); setSearchError(null); setQuery(""); }}
         onAddToWatchlist={onAddToWatchlist}
         watchlistSymbols={watchlistSymbols}
+        periodLabel={periodLabel}
       />
 
       <div className="flex gap-1 mb-3 border-b" style={{ borderColor: "var(--border)" }}>
@@ -489,28 +502,31 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
           60–70% delivery
         </span>
         <span className="ml-auto" style={{ color: "var(--text-faint)" }}>
-          Click a column header to sort · click a row for its 10-day history
+          Click a column header to sort · click a row for its 10-day daily history
         </span>
       </div>
 
       {category === "stocks" ? (
-        <ResultTable rows={data.stocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+        <ResultTable rows={data.stocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
       ) : (
-        <ResultTable rows={data.other} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+        <ResultTable rows={data.other} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
       )}
 
       <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
+        {periodLabel === "Day"
+          ? "Daily view: each stock's own trading day."
+          : `${periodLabel}ly view: delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days (total delivered ÷ total traded), not a plain average of daily %s — and Chg % is the period's return (latest close vs. the close right before the period started).`}{" "}
         Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
         {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
         column header to re-sort.
-        &quot;In accumulation&quot; is a separate heuristic: delivery % above{" "}
-        {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at least{" "}
-        {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20} trading
-        days, price flat-to-up over that window, and volume above the 30-day average — not a confirmed
-        institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap and 30WMA are only looked
-        up for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery % (NSE&apos;s and Yahoo&apos;s lookups
-        are rate-limited); beyond that, or if a lookup fails for a specific stock, it shows as &quot;—&quot; rather than
-        being dropped.
+        &quot;In accumulation&quot; is always evaluated on the standard daily 20-day window regardless of the
+        period selected above: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at
+        least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20}{" "}
+        trading days, price flat-to-up over that window, and volume above the 30-day average — not a
+        confirmed institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap and
+        30WMA are only looked up for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery %
+        (NSE&apos;s and Yahoo&apos;s lookups are rate-limited); beyond that, or if a lookup fails for a
+        specific stock, it shows as &quot;—&quot; rather than being dropped.
       </p>
     </div>
   );
