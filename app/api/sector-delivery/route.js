@@ -1,9 +1,9 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import {
-  computeMetrics,
   computePeriodMetrics,
-  buildRecentHistory,
+  buildRecentPeriodHistory,
   PERIOD_TRADING_DAYS,
+  HISTORY_PERIODS,
   BASELINE_TRADING_DAYS,
   lookbackDaysFor,
 } from "@/lib/deliveryMetrics";
@@ -12,8 +12,10 @@ import { SECTOR_LIST } from "@/lib/sectors";
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
 // lookups beyond NSE's own daily file, so this stays fast and reliable.
 export const dynamic = "force-dynamic";
-
-const SECTOR_HISTORY_DAYS = 10; // trading days shown when a sector row is expanded — always daily
+// See app/api/delivery/route.js for why this is bumped — Monthly view's
+// 10-period-deep history needs ~215 trading days of bhavcopy on a cold
+// cache.
+export const maxDuration = 60;
 
 // A sector's delivery % is NOT the average of its stocks' individual
 // delivery %s — that would let a single low-volume stock swing the sector
@@ -42,6 +44,25 @@ function sumSectorDays(symbols, dayInfos) {
 function weightedPct(volume, deliveryQty) {
   if (!volume) return null;
   return Math.round((deliveryQty / volume) * 10000) / 100;
+}
+
+// Sector-level equivalent of buildRecentPeriodHistory — same bucketing
+// (periods × periodTradingDays trading days, most recent bucket last),
+// but each bucket is the whole sector's volume-weighted delivery %
+// instead of one symbol's.
+function buildSectorPeriodHistory(symbols, days, periodTradingDays, periods) {
+  const needed = periodTradingDays * periods;
+  const window = days.slice(-needed);
+  const chunks = [];
+  for (let i = 0; i < window.length; i += periodTradingDays) {
+    chunks.push(window.slice(i, i + periodTradingDays));
+  }
+  return chunks.map((chunkDays) => {
+    const { volume, deliveryQty } = sumSectorDays(symbols, chunkDays);
+    const startDate = chunkDays[0]?.date ?? null;
+    const endDate = chunkDays[chunkDays.length - 1]?.date ?? null;
+    return { date: endDate, startDate, endDate, deliveryPct: weightedPct(volume, deliveryQty), volume: volume || null };
+  });
 }
 
 export async function GET(request) {
@@ -83,9 +104,7 @@ export async function GET(request) {
         expectedPeriodVolume && expectedPeriodVolume > 0 ? periodTotals.volume / expectedPeriodVolume : null;
 
       // Sector-level average change % reflects whichever period is
-      // selected (period return per stock, averaged) — separate from the
-      // constituent breakdown table below, which always shows today's
-      // numbers regardless of period, same reasoning as Delivery Leaders.
+      // selected (period return per stock, averaged).
       const periodChangeValues = symbols
         .map((s) => computePeriodMetrics(s, days, periodTradingDays)?.changePercent)
         .filter((v) => v != null);
@@ -94,23 +113,24 @@ export async function GET(request) {
           ? Math.round((periodChangeValues.reduce((a, b) => a + b, 0) / periodChangeValues.length) * 100) / 100
           : null;
 
-      const deliveryHistory = days.slice(-SECTOR_HISTORY_DAYS).map((d) => {
-        const s = sumSectorDays(symbols, [d]);
-        return { date: d.date, deliveryPct: weightedPct(s.volume, s.deliveryQty), volume: s.volume || null };
-      });
+      // Sector's own delivery % trend, bucketed the same way as the
+      // headline metric — with Weekly selected this is the last 10 weeks,
+      // not the last 10 days.
+      const deliveryHistory = buildSectorPeriodHistory(symbols, days, periodTradingDays, HISTORY_PERIODS);
 
-      // Per-stock breakdown for the expand panel — reuses the exact same
-      // per-symbol computation Delivery Leaders and Breakouts use, so the
-      // numbers line up with what you'd see if you searched the same
-      // symbol there. Always today's daily numbers, regardless of the
-      // sector-level period selected. Sorted by delivery % so the
-      // sector's own "leaders" surface first.
+      // Per-stock breakdown for the expand panel — now follows the same
+      // period as the sector total (e.g. each constituent's own Weekly
+      // delivery %, not always today's daily number), so the numbers you
+      // see when you drill into a sector line up with what that stock
+      // would show if you searched it on Delivery Leaders with the same
+      // period selected. Sorted by delivery % so the sector's own
+      // "leaders" surface first.
       const constituents = symbols
-        .map((s) => computeMetrics(s, days))
+        .map((s) => computePeriodMetrics(s, days, periodTradingDays))
         .filter(Boolean)
         .map(({ category, _volumeAboveAvg, ...rest }) => ({
           ...rest,
-          deliveryHistory: buildRecentHistory(rest.symbol, days, SECTOR_HISTORY_DAYS),
+          deliveryHistory: buildRecentPeriodHistory(rest.symbol, days, periodTradingDays, HISTORY_PERIODS),
         }))
         .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0));
 
@@ -135,7 +155,7 @@ export async function GET(request) {
       period,
       sectors,
       tradingDaysUsed: days.length,
-      criteria: { periodTradingDays },
+      criteria: { periodTradingDays, historyPeriods: HISTORY_PERIODS },
     });
   } catch (err) {
     return Response.json(

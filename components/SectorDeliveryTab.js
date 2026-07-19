@@ -8,6 +8,7 @@ import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
+const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -46,11 +47,12 @@ function DeliveryPctBadge({ pct }) {
   );
 }
 
-// Per-stock breakdown shown inside an expanded sector row. Has its own
-// sort state (harmless to keep independent — at most one sector is
-// expanded at a time) and reuses the same expand-for-10-day-history
-// pattern as Delivery Leaders, plus the watchlist add button.
-function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols }) {
+// Per-stock breakdown shown inside an expanded sector row. Follows the
+// same period as the sector total (see periodLabel), has its own sort
+// state (harmless to keep independent — at most one sector is expanded at
+// a time), and reuses the same expand-for-history pattern as Delivery
+// Leaders, plus the watchlist add button.
+function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expandedSymbol, setExpandedSymbol] = useState(null);
 
@@ -61,9 +63,9 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols }) {
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
             <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
-            <SortableTh label="Chg % (Day)" sortKey="changePercent" sort={sort} onSort={onSort} />
-            <SortableTh label="Deliv. % (Day)" sortKey="deliveryPct" sort={sort} onSort={onSort} />
-            <SortableTh label="Volume (Day)" sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label={`Chg % (${periodLabel})`} sortKey="changePercent" sort={sort} onSort={onSort} />
+            <SortableTh label={`Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} />
+            <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
@@ -113,7 +115,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols }) {
   );
 }
 
-function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) {
+function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -170,7 +172,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) 
                     <td colSpan={6} className="p-0">
                       <div className="border-b" style={{ borderColor: "var(--border)" }}>
                         <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
-                          10-day daily sector delivery % trend
+                          {historyLabel} sector delivery % trend
                         </div>
                         <DeliveryHistoryPanel history={s.deliveryHistory} />
                       </div>
@@ -181,6 +183,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) 
                         rows={s.constituents}
                         onAddToWatchlist={onAddToWatchlist}
                         watchlistSymbols={watchlistSymbols}
+                        periodLabel={periodLabel}
                       />
                     </td>
                   </tr>
@@ -233,12 +236,15 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
         {period === "daily"
           ? "Pulling NSE data — this can take a moment the first time…"
-          : "Pulling NSE data — Weekly/Monthly views fetch more trading days, so this can take a bit longer…"}
+          : period === "weekly"
+          ? "Pulling NSE data — Weekly view fetches more trading days, so this can take a bit longer…"
+          : "Pulling NSE data — Monthly view's 10-month history needs a lot of trading days on a cold cache, so the first load can take a while…"}
       </div>
     );
   }
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
+  const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
 
   return (
     <div>
@@ -254,15 +260,24 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         </div>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        Click a column header to sort · click a sector row for its 10-day daily trend and constituent stocks
+        Click a column header to sort · click a sector row for its {historyLabel} trend and constituent stocks
       </p>
 
-      <SectorTable rows={data.sectors} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
+      <SectorTable
+        rows={data.sectors}
+        onAddToWatchlist={onAddToWatchlist}
+        watchlistSymbols={watchlistSymbols}
+        periodLabel={periodLabel}
+        historyLabel={historyLabel}
+      />
 
       <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
         {periodLabel === "Day"
           ? "Daily view: each sector's most recent trading day."
           : `${periodLabel}ly view: each sector's delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days, and Avg Chg % is the average per-stock return over that same period.`}{" "}
+        Expanding a sector shows its {historyLabel} trend at this same granularity, plus a constituent stock
+        breakdown that also follows the selected period — each stock&apos;s own {periodLabel.toLowerCase()}ly
+        numbers, not always its daily ones.{" "}
         Delivery % is volume-weighted — total shares delivered across the sector&apos;s
         stocks, divided by total shares traded — not a plain average of individual stock delivery %s, so one
         illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are a
@@ -271,8 +286,8 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         NSE sectoral indices, but not NSE&apos;s full official classification, so treat it as a good working
         set rather than an authoritative one. A stock genuinely belonging to more than one sector (e.g. a
         bank counted in both &quot;Banking&quot; and &quot;PSU Banks&quot;) is intentionally included in both
-        and contributes to both sectors&apos; numbers. The constituent stock breakdown inside each sector
-        always shows that stock&apos;s own daily numbers, regardless of the period selected above.
+        and contributes to both sectors&apos; numbers. Monthly&apos;s deeper history means the first load
+        after switching to it can take noticeably longer.
       </p>
     </div>
   );

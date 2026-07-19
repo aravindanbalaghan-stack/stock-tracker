@@ -12,6 +12,7 @@ import DeliveryTab from "@/components/DeliveryTab";
 import SectorDeliveryTab from "@/components/SectorDeliveryTab";
 import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
+import NiftyBankTab from "@/components/NiftyBankTab";
 import ResearchTab from "@/components/ResearchTab";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
@@ -26,6 +27,7 @@ const TABS = [
   { id: "sectors", label: "Sector Deliverability" },
   { id: "breakouts", label: "Breakouts" },
   { id: "wma", label: "30WMA Watch" },
+  { id: "niftybank", label: "NIFTY BANK Trading" },
   { id: "research", label: "Research" },
 ];
 
@@ -210,6 +212,7 @@ export default function Page() {
           <BreakoutsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
         {activeTab === "wma" && <WmaScreenTab />}
+        {activeTab === "niftybank" && <NiftyBankTab />}
         {activeTab === "research" && <ResearchTab />}
       </main>
     </div>

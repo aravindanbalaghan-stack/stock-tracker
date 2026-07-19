@@ -2,8 +2,9 @@ import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import {
   computePeriodMetrics,
-  buildRecentHistory,
+  buildRecentPeriodHistory,
   PERIOD_TRADING_DAYS,
+  HISTORY_PERIODS,
   lookbackDaysFor,
   ACCUMULATION_WINDOW,
   ACCUMULATION_DELIVERY_THRESHOLD,
@@ -14,8 +15,15 @@ import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
 export const dynamic = "force-dynamic";
+// Monthly view's history drill-down needs ~215 trading days of bhavcopy on
+// a cold cache (see lookbackDaysFor) — that's a lot of individual NSE
+// fetches the first time anyone loads Monthly. Bump the function timeout
+// so that doesn't get killed mid-fetch; subsequent loads are fast since
+// each day's file is cached (see lib/nseBhavcopy.js). If your Vercel plan
+// caps below 60s, lower this and consider trimming HISTORY_PERIODS in
+// lib/deliveryMetrics.js instead.
+export const maxDuration = 60;
 
-const DELIVERY_HISTORY_DAYS = 10; // trading days shown when a row/search result is expanded — always daily
 const DELIVERY_PCT_MIN = 60; // % — sole criterion for the ranked list (market-cap bucketing removed)
 const WMA_LOOKUP_CAP = 60; // Yahoo's chart endpoint tolerates more volume than NSE's session-based
 // lookup, but there's no reason to fetch it for rows nobody will scroll to — same cap as market cap,
@@ -93,7 +101,7 @@ export async function GET(request) {
         isStock ? fetchMarketCapCr(symbol, await getSessionCookies()) : Promise.resolve(null),
         isStock ? fetchWma30(symbol).catch(() => null) : Promise.resolve(null),
       ]);
-      const deliveryHistory = buildRecentHistory(symbol, days, DELIVERY_HISTORY_DAYS);
+      const deliveryHistory = buildRecentPeriodHistory(symbol, days, periodTradingDays, HISTORY_PERIODS);
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
@@ -124,7 +132,7 @@ export async function GET(request) {
       .sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0))
       .map(({ category, _volumeAboveAvg, ...rest }) => ({
         ...rest,
-        deliveryHistory: buildRecentHistory(rest.symbol, days, DELIVERY_HISTORY_DAYS),
+        deliveryHistory: buildRecentPeriodHistory(rest.symbol, days, periodTradingDays, HISTORY_PERIODS),
       }));
 
     const stockCandidates = candidates
@@ -168,7 +176,7 @@ export async function GET(request) {
         ...rest,
         marketCapCr: capCr != null ? Math.round(capCr) : null,
         wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
-        deliveryHistory: buildRecentHistory(c.symbol, days, DELIVERY_HISTORY_DAYS),
+        deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
       };
     });
 
@@ -182,7 +190,7 @@ export async function GET(request) {
         deliveryPctMin: DELIVERY_PCT_MIN,
         marketCapLookupCap: MARKET_CAP_LOOKUP_CAP,
         wmaLookupCap: WMA_LOOKUP_CAP,
-        deliveryHistoryDays: DELIVERY_HISTORY_DAYS,
+        historyPeriods: HISTORY_PERIODS,
         periodTradingDays,
         accumulationWindow: ACCUMULATION_WINDOW,
         accumulationDeliveryThreshold: ACCUMULATION_DELIVERY_THRESHOLD,

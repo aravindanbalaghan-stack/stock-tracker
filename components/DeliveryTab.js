@@ -8,6 +8,7 @@ import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
+const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -50,7 +51,7 @@ function DeliveryPctBadge({ pct }) {
   );
 }
 
-// deliveryTier/DeliveryPctBadge above; 10-day history rendering now lives
+// deliveryTier/DeliveryPctBadge above; period-history rendering now lives
 // in the shared components/DeliveryHistoryPanel.js (also used by the
 // Sector Deliverability tab).
 
@@ -162,7 +163,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
   );
 }
 
-function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, periodLabel }) {
+function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel }) {
   const [expanded, setExpanded] = useState(false);
   if (!result) return null;
   const up = (result.changePercent ?? 0) >= 0;
@@ -245,7 +246,7 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
         )}
         <div className="flex items-end">
           <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
-            {expanded ? "▲ hide 10-day history" : "▼ show 10-day history"}
+            {expanded ? `▲ hide ${historyLabel} history` : `▼ show ${historyLabel} history`}
           </span>
         </div>
       </div>
@@ -430,12 +431,15 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
         {period === "daily"
           ? "Pulling NSE data — this can take a moment the first time…"
-          : "Pulling NSE data — Weekly/Monthly views fetch more trading days, so this can take a bit longer…"}
+          : period === "weekly"
+          ? "Pulling NSE data — Weekly view fetches more trading days, so this can take a bit longer…"
+          : "Pulling NSE data — Monthly view's 10-month history needs a lot of trading days on a cold cache, so the first load can take a while…"}
       </div>
     );
   }
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
+  const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
 
   return (
     <div>
@@ -467,6 +471,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
         onAddToWatchlist={onAddToWatchlist}
         watchlistSymbols={watchlistSymbols}
         periodLabel={periodLabel}
+        historyLabel={historyLabel}
       />
 
       <div className="flex gap-1 mb-3 border-b" style={{ borderColor: "var(--border)" }}>
@@ -502,7 +507,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
           60–70% delivery
         </span>
         <span className="ml-auto" style={{ color: "var(--text-faint)" }}>
-          Click a column header to sort · click a row for its 10-day daily history
+          Click a column header to sort · click a row for its {historyLabel} history
         </span>
       </div>
 
@@ -516,6 +521,10 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
         {periodLabel === "Day"
           ? "Daily view: each stock's own trading day."
           : `${periodLabel}ly view: delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days (total delivered ÷ total traded), not a plain average of daily %s — and Chg % is the period's return (latest close vs. the close right before the period started).`}{" "}
+        Expanding a row shows its {historyLabel} trend at this same granularity — with{" "}
+        {periodLabel === "Day" ? "Daily" : periodLabel + "ly"} selected, that&apos;s the last{" "}
+        {data.criteria?.historyPeriods ?? 10} {periodLabel === "Day" ? "days" : periodLabel.toLowerCase() + "s"};
+        Monthly&apos;s deeper history means the first load after switching to it can take noticeably longer.{" "}
         Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
         {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
         column header to re-sort.
