@@ -7,7 +7,7 @@ import {
   attachDailyVolume,
   groupByTradingDay,
   detectOpeningRangeBreakout,
-  buildTimeOfDayVolumeBaseline,
+  buildRollingVolumeSeries,
   hasRealVolumeData,
   computeEMA,
   toWeeklyVolumes,
@@ -16,9 +16,10 @@ import {
 
 export const dynamic = "force-dynamic";
 // Fetching + summing 12 constituent stocks' intraday data (for real
-// volume, since the index itself reports none), across up to 60 days (for
-// a meaningful time-of-day volume baseline — see buildTimeOfDayVolumeBaseline
-// in lib/niftyBank.js), takes longer than a single-symbol, single-day fetch.
+// volume, since the index itself reports none), across up to 60 days (so
+// the rolling 30-candle volume average has a full window to draw from
+// even for the first candles of the day), takes longer than a
+// single-symbol, single-day fetch.
 export const maxDuration = 60;
 
 const EMA_PERIOD = 21;
@@ -32,13 +33,12 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const volumeMultiplierParam = Number(searchParams.get("volumeMultiplier"));
   const volumeMultiplier = Number.isFinite(volumeMultiplierParam) && volumeMultiplierParam > 0 ? volumeMultiplierParam : undefined;
+  const requireVolume = searchParams.get("requireVolume") !== "false";
 
   try {
-    // 60d rather than just today/a few days: the "good volume" check
-    // compares each candle to the historical average volume at that same
-    // time-of-day (see buildTimeOfDayVolumeBaseline) rather than a
-    // same-day running average, which needs several weeks of prior
-    // sessions to be a meaningful baseline, not just 1-4 data points.
+    // 60d rather than just today: the rolling volume average needs up to
+    // 30 candles of history — for early candles in the trading day, that
+    // means reaching back into previous sessions.
     const [rawIntradayBars, rawDailyBars, intradayVolume, dailyVolume] = await Promise.all([
       fetchIntradayBars("5m", "60d"),
       fetchDailyBars("2y"),
@@ -60,9 +60,16 @@ export async function GET(request) {
     const hasVolumeData = hasRealVolumeData(intradayBars);
 
     const days = groupByTradingDay(intradayBars);
-    const timeOfDayBaseline = hasVolumeData ? buildTimeOfDayVolumeBaseline(days) : null;
+    const rolling5 = buildRollingVolumeSeries(days, 5);
+    const rolling10 = buildRollingVolumeSeries(days, 10);
     const [asOf, todayBars] = days[days.length - 1];
-    const signal = detectOpeningRangeBreakout(todayBars, { volumeMultiplier, hasVolumeData, timeOfDayBaseline });
+    const signal = detectOpeningRangeBreakout(todayBars, {
+      volumeMultiplier,
+      hasVolumeData,
+      requireVolume,
+      rollingAvg5ByTime: rolling5.rollingAvgByTime,
+      rollingAvg10ByTime: rolling10.rollingAvgByTime,
+    });
 
     const today = istToday();
     // Daily bars strictly before today — today's own daily candle (if
@@ -97,6 +104,7 @@ export async function GET(request) {
       first10High: signal?.first10High ?? null,
       dayVolume: hasVolumeData ? (signal?.dayVolume ?? null) : null,
       hasVolumeData,
+      requireVolume,
       volumeSource: "constituents",
       volumeConstituentsReporting: intradayVolume.contributingSymbols.length,
       volumeConstituentsTotal: NIFTY_BANK_CONSTITUENTS.length,
@@ -105,7 +113,7 @@ export async function GET(request) {
       triggered: signal?.triggered ?? false,
       ema21,
       avgVolume30w,
-      criteria: { emaPeriod: EMA_PERIOD, avgVolumeWeeks: AVG_VOLUME_WEEKS, volumeMultiplier: volumeMultiplier ?? null },
+      criteria: { emaPeriod: EMA_PERIOD, avgVolumeWeeks: AVG_VOLUME_WEEKS, volumeMultiplier: volumeMultiplier ?? 1, rollingVolumeWindow: 30 },
     });
   } catch (err) {
     return Response.json(

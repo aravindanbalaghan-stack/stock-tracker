@@ -56,12 +56,14 @@ function StatusPill({ done, label }) {
 function LiveCard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [requireVolume, setRequireVolume] = useState(true);
+  const [volumeMultiplier, setVolumeMultiplier] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/niftybank/live");
+        const res = await fetch(`/api/niftybank/live?requireVolume=${requireVolume}&volumeMultiplier=${volumeMultiplier}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load live status");
         if (!cancelled) {
@@ -87,7 +89,7 @@ function LiveCard() {
       cancelled = true;
       clearInterval(id);
     };
-  }, []);
+  }, [requireVolume, volumeMultiplier]);
 
   if (error) {
     return (
@@ -116,9 +118,32 @@ function LiveCard() {
             {fmt(data.latestPrice)} <span className="text-xs align-top" style={{ color: "var(--text-faint)" }}>as of {fmtTimeIST(data.latestTime)}</span>
           </div>
         </div>
-        <div className="flex gap-2">
-          <StatusPill done={!!data.breakout5} label="5-min high broken" />
-          <StatusPill done={!!data.breakout10} label="10-min high broken" />
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex gap-2">
+            <StatusPill done={!!data.breakout5} label="5-min high broken" />
+            <StatusPill done={!!data.breakout10} label="10-min high broken" />
+          </div>
+          <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-faint)" }}>
+            <label className="flex items-center gap-1">
+              <input type="checkbox" checked={requireVolume} onChange={(e) => setRequireVolume(e.target.checked)} />
+              Require volume
+            </label>
+            {requireVolume && (
+              <label className="flex items-center gap-1">
+                ×
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.1"
+                  value={volumeMultiplier}
+                  onChange={(e) => setVolumeMultiplier(e.target.value)}
+                  className="w-14 rounded px-1 py-0.5 border"
+                  style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+                />
+                avg
+              </label>
+            )}
+          </div>
         </div>
       </div>
 
@@ -131,7 +156,7 @@ function LiveCard() {
       ) : (
         <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
           Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY BANK
-          constituent stocks (the index itself has no real trade volume).
+          constituent stocks{data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.
         </p>
       )}
 
@@ -266,7 +291,8 @@ function BacktestSection() {
   const today = todayIST();
   const [start, setStart] = useState(earliest);
   const [end, setEnd] = useState(today);
-  const [volumeMultiplier, setVolumeMultiplier] = useState(1.5);
+  const [volumeMultiplier, setVolumeMultiplier] = useState(1);
+  const [requireVolume, setRequireVolume] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -276,7 +302,7 @@ function BacktestSection() {
     setError(null);
     try {
       const res = await fetch(
-        `/api/niftybank/backtest?start=${start}&end=${end}&volumeMultiplier=${volumeMultiplier}`
+        `/api/niftybank/backtest?start=${start}&end=${end}&volumeMultiplier=${volumeMultiplier}&requireVolume=${requireVolume}`
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Backtest failed");
@@ -331,18 +357,26 @@ function BacktestSection() {
           />
         </label>
         <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
-          Volume multiplier
-          <input
-            type="number"
-            step="0.1"
-            min="1"
-            value={volumeMultiplier}
-            onChange={(e) => setVolumeMultiplier(e.target.value)}
-            title="How far above the historical average volume for that time-of-day slot counts as 'good volume' — only applies when real volume data is available (see note below)"
-            className="mt-1 rounded px-2 py-1.5 text-sm border w-24"
-            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
-          />
+          Require volume
+          <span className="mt-1.5">
+            <input type="checkbox" checked={requireVolume} onChange={(e) => setRequireVolume(e.target.checked)} />
+          </span>
         </label>
+        {requireVolume && (
+          <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+            Volume multiplier
+            <input
+              type="number"
+              step="0.1"
+              min="0.1"
+              value={volumeMultiplier}
+              onChange={(e) => setVolumeMultiplier(e.target.value)}
+              title="How far above the rolling 30-candle average volume (of that timeframe) counts as 'good volume' — 1 means simply above average"
+              className="mt-1 rounded px-2 py-1.5 text-sm border w-24"
+              style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+            />
+          </label>
+        )}
         <button
           type="button"
           onClick={runBacktest}
@@ -389,10 +423,205 @@ function BacktestSection() {
           ) : (
             <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
               Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY
-              BANK constituent stocks.
+              BANK constituent stocks{data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.
             </p>
           )}
           <BacktestTable rows={data.rows} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- Swing highs ----------
+
+function SwingHighBreakCell({ brk }) {
+  if (!brk) {
+    return <span style={{ color: "var(--text-faint)" }}>Not yet</span>;
+  }
+  return (
+    <span style={{ color: "var(--gain)" }}>
+      {fmt(brk.price)} <span style={{ color: "var(--text-faint)" }}>· {fmtTimeIST(brk.time)} · {fmtVolume(brk.volume)}</span>
+    </span>
+  );
+}
+
+function SwingHighsTable({ rows }) {
+  const { sorted, sort, onSort } = useSortableRows(rows, "time", "desc");
+
+  if (!rows || rows.length === 0) {
+    return (
+      <div className="rounded-lg border py-10 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
+        No confirmed swing highs in this range yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <table className="w-full border-collapse">
+        <thead>
+          <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+            <SortableTh label="Formed" sortKey="time" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            <SortableTh label="Swing High" sortKey="price" sort={sort} onSort={onSort} title="10-min candle pivot high (2 candles either side)" />
+            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>5-min Break</th>
+            <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>10-min Break</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((s) => (
+            <tr key={s.time} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+              <td className="py-2 pl-4 pr-2 font-mono text-xs" style={{ color: "var(--text)" }}>
+                {s.date} <span style={{ color: "var(--text-faint)" }}>{fmtTimeIST(s.time)}</span>
+              </td>
+              <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>{fmt(s.price)}</td>
+              <td className="py-2 px-2 text-right font-mono text-xs"><SwingHighBreakCell brk={s.break5} /></td>
+              <td className="py-2 pl-2 pr-4 text-right font-mono text-xs"><SwingHighBreakCell brk={s.break10} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SwingHighsSection() {
+  const earliest = daysAgoIST(58);
+  const today = todayIST();
+  const [start, setStart] = useState(earliest);
+  const [end, setEnd] = useState(today);
+  const [volumeMultiplier, setVolumeMultiplier] = useState(1);
+  const [requireVolume, setRequireVolume] = useState(true);
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  async function run() {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/niftybank/swing-highs?start=${start}&end=${end}&volumeMultiplier=${volumeMultiplier}&requireVolume=${requireVolume}`
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to load swing highs");
+      setData(json);
+    } catch (err) {
+      setError(err.message);
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="mt-8">
+      <h3 className="font-display text-base mb-1" style={{ color: "var(--text)" }}>
+        Swing High Breaks
+      </h3>
+      <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+        Swing highs are identified on the 10-min candle chart — a candle whose high is greater than the 2
+        candles before and 2 candles after it (confirmed once those following candles have printed). Each
+        swing high is then checked separately on the 5-min and 10-min charts for a CLOSE above that level —
+        same rolling-30-candle volume methodology as the opening-range breakout above, and same toggle to
+        ignore volume entirely and just show every close-price break.
+      </p>
+
+      <div className="flex flex-wrap items-end gap-3 mb-4">
+        <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+          Start date
+          <input
+            type="date"
+            value={start}
+            min={earliest}
+            max={end}
+            onChange={(e) => setStart(e.target.value)}
+            className="mt-1 rounded px-2 py-1.5 text-sm border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          />
+        </label>
+        <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+          End date
+          <input
+            type="date"
+            value={end}
+            min={start}
+            max={today}
+            onChange={(e) => setEnd(e.target.value)}
+            className="mt-1 rounded px-2 py-1.5 text-sm border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          />
+        </label>
+        <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+          Require volume
+          <span className="mt-1.5">
+            <input type="checkbox" checked={requireVolume} onChange={(e) => setRequireVolume(e.target.checked)} />
+          </span>
+        </label>
+        {requireVolume && (
+          <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+            Volume multiplier
+            <input
+              type="number"
+              step="0.1"
+              min="0.1"
+              value={volumeMultiplier}
+              onChange={(e) => setVolumeMultiplier(e.target.value)}
+              className="mt-1 rounded px-2 py-1.5 text-sm border w-24"
+              style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+            />
+          </label>
+        )}
+        <button
+          type="button"
+          onClick={run}
+          disabled={loading}
+          className="rounded px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+          style={{ background: "var(--accent)", color: "var(--surface)" }}
+        >
+          {loading ? "Running…" : "Find swing highs"}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
+          {error}
+        </div>
+      )}
+
+      {loading && !data && (
+        <div className="py-10 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+          Fetching NIFTY BANK intraday history and identifying swing highs…
+        </div>
+      )}
+
+      {data && (
+        <>
+          <p className="text-xs mb-1" style={{ color: "var(--text-faint)" }}>
+            {data.swingHighCount} swing high{data.swingHighCount === 1 ? "" : "s"} formed from {data.usableStart} to{" "}
+            {data.usableEnd}, {data.brokenBothCount} broken on both timeframes so far.
+            {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
+              <> Requested range was narrowed to what Yahoo&apos;s intraday feed actually has available.</>
+            )}
+          </p>
+          {data.hasVolumeData === false ? (
+            <p className="text-xs mb-3 px-2 py-1.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
+              Volume is normally aggregated from NIFTY BANK&apos;s 12 constituent stocks, but none of them
+              returned usable data for this range — the volume condition was skipped rather than silently
+              blocking every break.
+            </p>
+          ) : (
+            <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+              Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY
+              BANK constituent stocks{data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.
+            </p>
+          )}
+          <SwingHighsTable rows={data.swingHighs} />
         </>
       )}
     </div>
@@ -410,19 +639,18 @@ export default function NiftyBankTab() {
         </h2>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        {/* 50% here = (GOOD_VOLUME_MULTIPLIER - 1) * 100 from lib/niftyBank.js — update both together. */}
-        Opening-range breakout: the 5-min opening candle&apos;s high broken on good volume, followed by
-        the 10-min opening range&apos;s high also broken on good volume. Volume is aggregated from NIFTY
-        BANK&apos;s 12 constituent stocks, since the index itself has no real trade volume of its own.
-        &quot;Good volume&quot; means a candle&apos;s (aggregated) volume is more than 50% above the
-        historical average volume for that same time of day (e.g. every 9:20-9:25 candle from the last
-        60 days, not just today&apos;s candles so far) — comparing to today alone would unfairly measure
-        every candle against the unusually high opening print. A heuristic, not a guarantee. This is
-        pattern detection over historical and live price data, not trading advice.
+        Opening-range breakout: the 5-min opening candle&apos;s high broken (on a close, not just a wick)
+        followed by the 10-min opening range&apos;s high also broken on a close. Volume is aggregated from
+        NIFTY BANK&apos;s 12 constituent stocks, since the index itself has no real trade volume of its
+        own. &quot;Good volume&quot; means the breaking candle&apos;s volume is above the rolling average of
+        the last 30 candles of that same timeframe — last 30 five-minute candles for the 5-min check, last
+        30 ten-minute candles for the 10-min check — adjustable below, and optional. A heuristic, not a
+        guarantee. This is pattern detection over historical and live price data, not trading advice.
       </p>
 
       <LiveCard />
       <BacktestSection />
+      <SwingHighsSection />
     </div>
   );
 }

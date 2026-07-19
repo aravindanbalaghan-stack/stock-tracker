@@ -7,7 +7,7 @@ import {
   attachDailyVolume,
   groupByTradingDay,
   detectOpeningRangeBreakout,
-  buildTimeOfDayVolumeBaseline,
+  buildRollingVolumeSeries,
   summarizeAfterBreakout,
   hasRealVolumeData,
   computeEMA,
@@ -47,6 +47,7 @@ export async function GET(request) {
   const volumeMultiplierParam = Number(searchParams.get("volumeMultiplier"));
   const volumeMultiplier =
     Number.isFinite(volumeMultiplierParam) && volumeMultiplierParam > 0 ? volumeMultiplierParam : GOOD_VOLUME_MULTIPLIER;
+  const requireVolume = searchParams.get("requireVolume") !== "false";
 
   // Clamp to what Yahoo can actually provide rather than silently
   // returning nothing — the response reports both the requested and the
@@ -82,12 +83,12 @@ export async function GET(request) {
 
     const hasVolumeData = hasRealVolumeData(intradayBars);
     const allDays = groupByTradingDay(intradayBars);
-    // Built from the FULL fetched history (up to 60 days), not just the
-    // requested backtest range — a narrow 5-day request would otherwise
-    // only have 5 samples per time-of-day slot, too few for a meaningful
-    // baseline. See buildTimeOfDayVolumeBaseline's comment for why this
-    // exists instead of a same-day running average.
-    const timeOfDayBaseline = hasVolumeData ? buildTimeOfDayVolumeBaseline(allDays) : null;
+    // Rolling volume averages built from the FULL fetched history (up to
+    // 60 days), not just the requested backtest range — a narrow 5-day
+    // request would otherwise not have 30 candles of runway for the
+    // earliest days in range. See buildRollingVolumeSeries's comment.
+    const rolling5 = buildRollingVolumeSeries(allDays, 5);
+    const rolling10 = buildRollingVolumeSeries(allDays, 10);
     const days = allDays.filter(([date]) => date >= start && date <= end);
     const dailyHasVolumeData = hasRealVolumeData(dailyBars);
 
@@ -136,7 +137,13 @@ export async function GET(request) {
 
     const rows = [];
     for (const [date, dayBars] of days) {
-      const signal = detectOpeningRangeBreakout(dayBars, { volumeMultiplier, hasVolumeData, timeOfDayBaseline });
+      const signal = detectOpeningRangeBreakout(dayBars, {
+        volumeMultiplier,
+        hasVolumeData,
+        requireVolume,
+        rollingAvg5ByTime: rolling5.rollingAvgByTime,
+        rollingAvg10ByTime: rolling10.rollingAvgByTime,
+      });
       if (!signal) continue;
       if (!signal.triggered) {
         if (signal.breakout5) daysWithBreakout5Only++;
@@ -173,6 +180,7 @@ export async function GET(request) {
       daysWithBreakout5Only,
       daysWithNeither,
       hasVolumeData,
+      requireVolume,
       volumeSource: "constituents",
       volumeConstituentsReporting: intradayVolume.contributingSymbols.length,
       volumeConstituentsTotal: NIFTY_BANK_CONSTITUENTS.length,
@@ -182,6 +190,7 @@ export async function GET(request) {
         emaPeriod: EMA_PERIOD,
         avgVolumeWeeks: AVG_VOLUME_WEEKS,
         maxIntradayLookbackDays: MAX_INTRADAY_LOOKBACK_DAYS,
+        rollingVolumeWindow: 30,
       },
     });
   } catch (err) {
