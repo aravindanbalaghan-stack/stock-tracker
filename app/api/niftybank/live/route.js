@@ -7,6 +7,7 @@ import {
   attachDailyVolume,
   groupByTradingDay,
   detectOpeningRangeBreakout,
+  buildTimeOfDayVolumeBaseline,
   hasRealVolumeData,
   computeEMA,
   toWeeklyVolumes,
@@ -15,10 +16,10 @@ import {
 
 export const dynamic = "force-dynamic";
 // Fetching + summing 12 constituent stocks' intraday data (for real
-// volume, since the index itself reports none) alongside the index's own
-// price data takes longer than a single-symbol fetch — bumped from the
-// Next.js default in case Yahoo is slow to respond to all 12.
-export const maxDuration = 30;
+// volume, since the index itself reports none), across up to 60 days (for
+// a meaningful time-of-day volume baseline — see buildTimeOfDayVolumeBaseline
+// in lib/niftyBank.js), takes longer than a single-symbol, single-day fetch.
+export const maxDuration = 60;
 
 const EMA_PERIOD = 21;
 const AVG_VOLUME_WEEKS = 30;
@@ -33,14 +34,15 @@ export async function GET(request) {
   const volumeMultiplier = Number.isFinite(volumeMultiplierParam) && volumeMultiplierParam > 0 ? volumeMultiplierParam : undefined;
 
   try {
-    // range=5d rather than 1d: 1d can come back empty in the minutes right
-    // after market open, or on a day NSE was closed — 5d guarantees at
-    // least one complete prior session to fall back to, and grouping by
-    // day + taking the most recent group handles both cases the same way.
+    // 60d rather than just today/a few days: the "good volume" check
+    // compares each candle to the historical average volume at that same
+    // time-of-day (see buildTimeOfDayVolumeBaseline) rather than a
+    // same-day running average, which needs several weeks of prior
+    // sessions to be a meaningful baseline, not just 1-4 data points.
     const [rawIntradayBars, rawDailyBars, intradayVolume, dailyVolume] = await Promise.all([
-      fetchIntradayBars("5m", "5d"),
+      fetchIntradayBars("5m", "60d"),
       fetchDailyBars("2y"),
-      fetchConstituentIntradayVolumeByBucket("5m", "5d"),
+      fetchConstituentIntradayVolumeByBucket("5m", "60d"),
       fetchConstituentDailyVolumeByDate("2y"),
     ]);
 
@@ -58,8 +60,9 @@ export async function GET(request) {
     const hasVolumeData = hasRealVolumeData(intradayBars);
 
     const days = groupByTradingDay(intradayBars);
+    const timeOfDayBaseline = hasVolumeData ? buildTimeOfDayVolumeBaseline(days) : null;
     const [asOf, todayBars] = days[days.length - 1];
-    const signal = detectOpeningRangeBreakout(todayBars, { volumeMultiplier, hasVolumeData });
+    const signal = detectOpeningRangeBreakout(todayBars, { volumeMultiplier, hasVolumeData, timeOfDayBaseline });
 
     const today = istToday();
     // Daily bars strictly before today — today's own daily candle (if

@@ -338,7 +338,7 @@ function BacktestSection() {
             min="1"
             value={volumeMultiplier}
             onChange={(e) => setVolumeMultiplier(e.target.value)}
-            title="How far above the day's average candle volume so far counts as 'good volume' — only applies when real volume data is available (see note below)"
+            title="How far above the historical average volume for that time-of-day slot counts as 'good volume' — only applies when real volume data is available (see note below)"
             className="mt-1 rounded px-2 py-1.5 text-sm border w-24"
             style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
           />
@@ -414,9 +414,11 @@ export default function NiftyBankTab() {
         Opening-range breakout: the 5-min opening candle&apos;s high broken on good volume, followed by
         the 10-min opening range&apos;s high also broken on good volume. Volume is aggregated from NIFTY
         BANK&apos;s 12 constituent stocks, since the index itself has no real trade volume of its own.
-        &quot;Good volume&quot; means a candle&apos;s (aggregated) volume is more than 50% above the day&apos;s
-        average candle volume so far — a heuristic, not a guarantee. This is pattern detection over
-        historical and live price data, not trading advice.
+        &quot;Good volume&quot; means a candle&apos;s (aggregated) volume is more than 50% above the
+        historical average volume for that same time of day (e.g. every 9:20-9:25 candle from the last
+        60 days, not just today&apos;s candles so far) — comparing to today alone would unfairly measure
+        every candle against the unusually high opening print. A heuristic, not a guarantee. This is
+        pattern detection over historical and live price data, not trading advice.
       </p>
 
       <LiveCard />

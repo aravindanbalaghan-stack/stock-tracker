@@ -7,6 +7,7 @@ import {
   attachDailyVolume,
   groupByTradingDay,
   detectOpeningRangeBreakout,
+  buildTimeOfDayVolumeBaseline,
   summarizeAfterBreakout,
   hasRealVolumeData,
   computeEMA,
@@ -80,7 +81,14 @@ export async function GET(request) {
     const dailyBars = attachDailyVolume(rawDailyBars || [], dailyVolume.totals);
 
     const hasVolumeData = hasRealVolumeData(intradayBars);
-    const days = groupByTradingDay(intradayBars).filter(([date]) => date >= start && date <= end);
+    const allDays = groupByTradingDay(intradayBars);
+    // Built from the FULL fetched history (up to 60 days), not just the
+    // requested backtest range — a narrow 5-day request would otherwise
+    // only have 5 samples per time-of-day slot, too few for a meaningful
+    // baseline. See buildTimeOfDayVolumeBaseline's comment for why this
+    // exists instead of a same-day running average.
+    const timeOfDayBaseline = hasVolumeData ? buildTimeOfDayVolumeBaseline(allDays) : null;
+    const days = allDays.filter(([date]) => date >= start && date <= end);
     const dailyHasVolumeData = hasRealVolumeData(dailyBars);
 
     // EMA and weekly-volume context computed once across the whole daily
@@ -128,7 +136,7 @@ export async function GET(request) {
 
     const rows = [];
     for (const [date, dayBars] of days) {
-      const signal = detectOpeningRangeBreakout(dayBars, { volumeMultiplier, hasVolumeData });
+      const signal = detectOpeningRangeBreakout(dayBars, { volumeMultiplier, hasVolumeData, timeOfDayBaseline });
       if (!signal) continue;
       if (!signal.triggered) {
         if (signal.breakout5) daysWithBreakout5Only++;
