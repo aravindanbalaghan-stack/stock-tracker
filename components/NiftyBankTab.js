@@ -122,6 +122,19 @@ function LiveCard() {
         </div>
       </div>
 
+      {data.hasVolumeData === false ? (
+        <p className="text-xs mb-3 px-2 py-1.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
+          Volume is normally aggregated from NIFTY BANK&apos;s 12 constituent stocks (the index itself
+          reports none), but none of them returned usable data just now — the volume condition is being
+          skipped for today rather than silently blocking every breakout.
+        </p>
+      ) : (
+        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY BANK
+          constituent stocks (the index itself has no real trade volume).
+        </p>
+      )}
+
       {notEnoughCandles ? (
         <p className="text-sm" style={{ color: "var(--text-muted)" }}>
           Waiting on the opening candles — need at least the first two 5-minute candles to establish the
@@ -253,6 +266,7 @@ function BacktestSection() {
   const today = todayIST();
   const [start, setStart] = useState(earliest);
   const [end, setEnd] = useState(today);
+  const [volumeMultiplier, setVolumeMultiplier] = useState(1.5);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -261,7 +275,9 @@ function BacktestSection() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/niftybank/backtest?start=${start}&end=${end}`);
+      const res = await fetch(
+        `/api/niftybank/backtest?start=${start}&end=${end}&volumeMultiplier=${volumeMultiplier}`
+      );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Backtest failed");
       setData(json);
@@ -314,6 +330,19 @@ function BacktestSection() {
             style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
           />
         </label>
+        <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
+          Volume multiplier
+          <input
+            type="number"
+            step="0.1"
+            min="1"
+            value={volumeMultiplier}
+            onChange={(e) => setVolumeMultiplier(e.target.value)}
+            title="How far above the day's average candle volume so far counts as 'good volume' — only applies when real volume data is available (see note below)"
+            className="mt-1 rounded px-2 py-1.5 text-sm border w-24"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          />
+        </label>
         <button
           type="button"
           onClick={runBacktest}
@@ -339,13 +368,30 @@ function BacktestSection() {
 
       {data && (
         <>
-          <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          <p className="text-xs mb-1" style={{ color: "var(--text-faint)" }}>
             {data.triggeredCount} of {data.tradingDaysScanned} trading days from {data.usableStart} to{" "}
-            {data.usableEnd} triggered both breakouts.
+            {data.usableEnd} triggered both breakouts
+            {data.tradingDaysScanned > 0 && (
+              <> ({data.daysWithBreakout5Only} broke only the 5-min high, {data.daysWithNeither} broke neither).</>
+            )}
             {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
               <> Requested range was narrowed to what Yahoo&apos;s intraday feed actually has available.</>
             )}
           </p>
+          {data.hasVolumeData === false ? (
+            <p className="text-xs mb-3 px-2 py-1.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
+              Volume is normally aggregated from NIFTY BANK&apos;s 12 constituent stocks (the index itself
+              reports none), but none of them returned usable data for this range — the volume condition
+              was skipped for every day rather than silently blocking every breakout. The volume multiplier
+              above had no effect on these results; Day Volume and 30wk Avg Vol show as &quot;—&quot; for the
+              same reason.
+            </p>
+          ) : (
+            <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+              Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY
+              BANK constituent stocks.
+            </p>
+          )}
           <BacktestTable rows={data.rows} />
         </>
       )}
@@ -366,10 +412,11 @@ export default function NiftyBankTab() {
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
         {/* 50% here = (GOOD_VOLUME_MULTIPLIER - 1) * 100 from lib/niftyBank.js — update both together. */}
         Opening-range breakout: the 5-min opening candle&apos;s high broken on good volume, followed by
-        the 10-min opening range&apos;s high also broken on good volume. &quot;Good volume&quot; means a
-        candle&apos;s volume is more than 50% above the day&apos;s average candle volume so far — a
-        heuristic, not a guarantee. This is pattern detection over historical and live price data, not
-        trading advice.
+        the 10-min opening range&apos;s high also broken on good volume. Volume is aggregated from NIFTY
+        BANK&apos;s 12 constituent stocks, since the index itself has no real trade volume of its own.
+        &quot;Good volume&quot; means a candle&apos;s (aggregated) volume is more than 50% above the day&apos;s
+        average candle volume so far — a heuristic, not a guarantee. This is pattern detection over
+        historical and live price data, not trading advice.
       </p>
 
       <LiveCard />

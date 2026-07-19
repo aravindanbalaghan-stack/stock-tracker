@@ -1,16 +1,27 @@
 import {
   fetchIntradayBars,
   fetchDailyBars,
+  fetchConstituentIntradayVolumeByBucket,
+  fetchConstituentDailyVolumeByDate,
+  attachIntradayVolume,
+  attachDailyVolume,
   groupByTradingDay,
   detectOpeningRangeBreakout,
   summarizeAfterBreakout,
+  hasRealVolumeData,
   computeEMA,
   toWeeklyVolumes,
   MAX_INTRADAY_LOOKBACK_DAYS,
   GOOD_VOLUME_MULTIPLIER,
+  NIFTY_BANK_CONSTITUENTS,
 } from "@/lib/niftyBank";
 
 export const dynamic = "force-dynamic";
+// Same reasoning as app/api/delivery/route.js's Monthly view and
+// app/api/niftybank/live/route.js — fetching 60 days of intraday data for
+// 12 constituent stocks (plus the index itself) is a lot of upstream
+// Yahoo calls on a cold cache.
+export const maxDuration = 60;
 
 const EMA_PERIOD = 21;
 const AVG_VOLUME_WEEKS = 30;
@@ -32,6 +43,9 @@ export async function GET(request) {
 
   const requestedStart = searchParams.get("start") || earliestUsable;
   const requestedEnd = searchParams.get("end") || today;
+  const volumeMultiplierParam = Number(searchParams.get("volumeMultiplier"));
+  const volumeMultiplier =
+    Number.isFinite(volumeMultiplierParam) && volumeMultiplierParam > 0 ? volumeMultiplierParam : GOOD_VOLUME_MULTIPLIER;
 
   // Clamp to what Yahoo can actually provide rather than silently
   // returning nothing — the response reports both the requested and the
@@ -45,19 +59,29 @@ export async function GET(request) {
   }
 
   try {
-    const [intradayBars, dailyBars] = await Promise.all([
+    const [rawIntradayBars, rawDailyBars, intradayVolume, dailyVolume] = await Promise.all([
       fetchIntradayBars("5m", "60d"),
       fetchDailyBars("2y"),
+      fetchConstituentIntradayVolumeByBucket("5m", "60d"),
+      fetchConstituentDailyVolumeByDate("2y"),
     ]);
 
-    if (!intradayBars || intradayBars.length === 0) {
+    if (!rawIntradayBars || rawIntradayBars.length === 0) {
       return Response.json(
         { error: "Yahoo's intraday feed for NIFTY BANK returned no data — try again shortly" },
         { status: 503 }
       );
     }
 
+    // Real volume, summed from the 12 NIFTY BANK constituent stocks,
+    // overlaid onto the index's own price bars (the index itself always
+    // reports 0 — see hasRealVolumeData's comment in lib/niftyBank.js).
+    const intradayBars = attachIntradayVolume(rawIntradayBars, intradayVolume.totals, intradayVolume.bucketSeconds);
+    const dailyBars = attachDailyVolume(rawDailyBars || [], dailyVolume.totals);
+
+    const hasVolumeData = hasRealVolumeData(intradayBars);
     const days = groupByTradingDay(intradayBars).filter(([date]) => date >= start && date <= end);
+    const dailyHasVolumeData = hasRealVolumeData(dailyBars);
 
     // EMA and weekly-volume context computed once across the whole daily
     // series, then looked up per backtest day — see below for why the
@@ -90,17 +114,27 @@ export async function GET(request) {
       })();
       const priorWeeks = weeklyVolumePairs.filter(([wk]) => wk < weekMonday).map(([, v]) => v);
       const avgVolume30w =
-        priorWeeks.length >= AVG_VOLUME_WEEKS
+        dailyHasVolumeData && priorWeeks.length >= AVG_VOLUME_WEEKS
           ? Math.round(priorWeeks.slice(-AVG_VOLUME_WEEKS).reduce((a, b) => a + b, 0) / AVG_VOLUME_WEEKS)
           : null;
 
       return { ema21, avgVolume30w };
     }
 
+    // Diagnostics so a run that finds nothing is legible rather than a
+    // flat "0 rows" — how many days got partway there vs. not at all.
+    let daysWithBreakout5Only = 0;
+    let daysWithNeither = 0;
+
     const rows = [];
     for (const [date, dayBars] of days) {
-      const signal = detectOpeningRangeBreakout(dayBars);
-      if (!signal || !signal.triggered) continue;
+      const signal = detectOpeningRangeBreakout(dayBars, { volumeMultiplier, hasVolumeData });
+      if (!signal) continue;
+      if (!signal.triggered) {
+        if (signal.breakout5) daysWithBreakout5Only++;
+        else daysWithNeither++;
+        continue;
+      }
 
       const after = summarizeAfterBreakout(dayBars, signal.breakout10);
       const { ema21, avgVolume30w } = contextAsOf(date);
@@ -113,7 +147,7 @@ export async function GET(request) {
         breakout5Price: signal.breakout5.price,
         breakout10Time: signal.breakout10.time,
         breakout10Price: signal.breakout10.price,
-        dayVolume: signal.dayVolume,
+        dayVolume: hasVolumeData ? signal.dayVolume : null,
         ema21,
         avgVolume30w,
         ...after,
@@ -128,9 +162,15 @@ export async function GET(request) {
       earliestUsableStart: earliestUsable,
       tradingDaysScanned: days.length,
       triggeredCount: rows.length,
+      daysWithBreakout5Only,
+      daysWithNeither,
+      hasVolumeData,
+      volumeSource: "constituents",
+      volumeConstituentsReporting: intradayVolume.contributingSymbols.length,
+      volumeConstituentsTotal: NIFTY_BANK_CONSTITUENTS.length,
       rows,
       criteria: {
-        goodVolumeMultiplier: GOOD_VOLUME_MULTIPLIER,
+        goodVolumeMultiplier: volumeMultiplier,
         emaPeriod: EMA_PERIOD,
         avgVolumeWeeks: AVG_VOLUME_WEEKS,
         maxIntradayLookbackDays: MAX_INTRADAY_LOOKBACK_DAYS,
