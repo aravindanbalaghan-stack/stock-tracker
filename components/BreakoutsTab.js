@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { useSortableRows, compareForSort } from "@/lib/useSortableRows";
+import { useSortableRows, compareForSortMulti } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
+import InfoNote from "@/components/InfoNote";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -173,8 +174,8 @@ export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
   const sections = data.sections || [];
 
   function sortRows(rows) {
-    if (!sort.key) return rows;
-    return [...rows].sort((a, b) => compareForSort(a[sort.key], b[sort.key], sort.dir));
+    if (!sort.length) return rows;
+    return [...rows].sort((a, b) => compareForSortMulti(a, b, sort));
   }
 
   return (
@@ -189,7 +190,7 @@ export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
           <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-mid-dim)", border: "1px solid var(--tier-mid)" }} />
           Highlighted rows cleared the breakout filters on more than one of the last {sections.length} trading days shown
         </span>
-        <span>· Click a column header to sort every day&apos;s table</span>
+        <span>· Click a column header to sort · Shift+click to add a tiebreaker column</span>
       </p>
 
       <div className="space-y-8">
@@ -214,13 +215,15 @@ export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
         ))}
       </div>
 
-      <p className="mt-6 text-xs" style={{ color: "var(--text-faint)" }}>
-        Each day is evaluated independently: delivery % above {data.criteria?.deliveryPctMin ?? 70}%, price up
-        more than {data.criteria?.changePctMin ?? 1}% vs that day&apos;s previous close, and volume at least{" "}
-        {data.criteria?.volumeRatioMin ?? 2}× that day&apos;s own trailing 30-day average — a same-day surge
-        screen, not a confirmed signal. 30WMA is looked up per symbol and cached across sections, so a
-        repeat symbol only costs one lookup.
-      </p>
+      <div className="mt-6">
+        <InfoNote label="How this screen works">
+          Each day is evaluated independently: delivery % above {data.criteria?.deliveryPctMin ?? 70}%, price up
+          more than {data.criteria?.changePctMin ?? 1}% vs that day&apos;s previous close, and volume at least{" "}
+          {data.criteria?.volumeRatioMin ?? 2}× that day&apos;s own trailing 30-day average — a same-day surge
+          screen, not a confirmed signal. 30WMA is looked up per symbol and cached across sections, so a
+          repeat symbol only costs one lookup.
+        </InfoNote>
+      </div>
     </div>
   );
 }

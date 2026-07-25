@@ -6,6 +6,7 @@ import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
+import InfoNote from "@/components/InfoNote";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -507,7 +508,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
           60–70% delivery
         </span>
         <span className="ml-auto" style={{ color: "var(--text-faint)" }}>
-          Click a column header to sort · click a row for its {historyLabel} history
+          Click a column header to sort (Shift+click to add a tiebreaker) · click a row for its {historyLabel} history
         </span>
       </div>
 
@@ -517,26 +518,28 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
         <ResultTable rows={data.other} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
       )}
 
-      <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
-        {periodLabel === "Day"
-          ? "Daily view: each stock's own trading day."
-          : `${periodLabel}ly view: delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days (total delivered ÷ total traded), not a plain average of daily %s — and Chg % is the period's return (latest close vs. the close right before the period started).`}{" "}
-        Expanding a row shows its {historyLabel} trend at this same granularity — with{" "}
-        {periodLabel === "Day" ? "Daily" : periodLabel + "ly"} selected, that&apos;s the last{" "}
-        {data.criteria?.historyPeriods ?? 10} {periodLabel === "Day" ? "days" : periodLabel.toLowerCase() + "s"};
-        Monthly&apos;s deeper history means the first load after switching to it can take noticeably longer.{" "}
-        Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
-        {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
-        column header to re-sort.
-        &quot;In accumulation&quot; is always evaluated on the standard daily 20-day window regardless of the
-        period selected above: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at
-        least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20}{" "}
-        trading days, price flat-to-up over that window, and volume above the 30-day average — not a
-        confirmed institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap and
-        30WMA are only looked up for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery %
-        (NSE&apos;s and Yahoo&apos;s lookups are rate-limited); beyond that, or if a lookup fails for a
-        specific stock, it shows as &quot;—&quot; rather than being dropped.
-      </p>
+      <div className="mt-3">
+        <InfoNote label="How delivery %, history, and lookup caps work">
+          {periodLabel === "Day"
+            ? "Daily view: each stock's own trading day."
+            : `${periodLabel}ly view: delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days (total delivered ÷ total traded), not a plain average of daily %s — and Chg % is the period's return (latest close vs. the close right before the period started).`}{" "}
+          Expanding a row shows its {historyLabel} trend at this same granularity — with{" "}
+          {periodLabel === "Day" ? "Daily" : periodLabel + "ly"} selected, that&apos;s the last{" "}
+          {data.criteria?.historyPeriods ?? 10} {periodLabel === "Day" ? "days" : periodLabel.toLowerCase() + "s"};
+          Monthly&apos;s deeper history means the first load after switching to it can take noticeably longer.{" "}
+          Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
+          {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
+          column header to re-sort.
+          &quot;In accumulation&quot; is always evaluated on the standard daily 20-day window regardless of the
+          period selected above: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at
+          least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20}{" "}
+          trading days, price flat-to-up over that window, and volume above the 30-day average — not a
+          confirmed institutional signal. ETF/REIT/InvIT classification is name-pattern based. Market cap and
+          30WMA are only looked up for the top {data.criteria?.marketCapLookupCap ?? 60} rows by delivery %
+          (NSE&apos;s and Yahoo&apos;s lookups are rate-limited); beyond that, or if a lookup fails for a
+          specific stock, it shows as &quot;—&quot; rather than being dropped.
+        </InfoNote>
+      </div>
     </div>
   );
 }

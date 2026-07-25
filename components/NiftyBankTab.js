@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
+import CollapsibleSection from "@/components/CollapsibleSection";
+import InfoNote from "@/components/InfoNote";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -401,33 +403,32 @@ function BacktestSection() {
       )}
 
       {data && (
-        <>
-          <p className="text-xs mb-1" style={{ color: "var(--text-faint)" }}>
-            {data.triggeredCount} of {data.tradingDaysScanned} trading days from {data.usableStart} to{" "}
-            {data.usableEnd} triggered both breakouts
+        <CollapsibleSection
+          summary={
+            <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+              <strong style={{ color: data.triggeredCount > 0 ? "var(--gain)" : "var(--text)" }}>
+                {data.triggeredCount}
+              </strong>{" "}
+              of {data.tradingDaysScanned} trading days from {data.usableStart} to {data.usableEnd} triggered
+              both breakouts.
+              {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
+                <> Range narrowed to what Yahoo has available.</>
+              )}
+            </p>
+          }
+          expandLabel={`Show ${data.triggeredCount} result${data.triggeredCount === 1 ? "" : "s"}`}
+          collapseLabel="Hide results"
+        >
+          <p className="text-xs mb-2" style={{ color: "var(--text-faint)" }}>
             {data.tradingDaysScanned > 0 && (
-              <> ({data.daysWithBreakout5Only} broke only the 5-min high, {data.daysWithNeither} broke neither).</>
+              <>{data.daysWithBreakout5Only} broke only the 5-min high, {data.daysWithNeither} broke neither. </>
             )}
-            {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
-              <> Requested range was narrowed to what Yahoo&apos;s intraday feed actually has available.</>
-            )}
+            {data.hasVolumeData === false
+              ? "Volume is normally aggregated from NIFTY BANK's 12 constituent stocks, but none returned usable data for this range — the volume condition was skipped rather than blocking every breakout."
+              : `Volume aggregated from ${data.volumeConstituentsReporting}/${data.volumeConstituentsTotal} NIFTY BANK constituent stocks${data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.`}
           </p>
-          {data.hasVolumeData === false ? (
-            <p className="text-xs mb-3 px-2 py-1.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
-              Volume is normally aggregated from NIFTY BANK&apos;s 12 constituent stocks (the index itself
-              reports none), but none of them returned usable data for this range — the volume condition
-              was skipped for every day rather than silently blocking every breakout. The volume multiplier
-              above had no effect on these results; Day Volume and 30wk Avg Vol show as &quot;—&quot; for the
-              same reason.
-            </p>
-          ) : (
-            <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
-              Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY
-              BANK constituent stocks{data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.
-            </p>
-          )}
           <BacktestTable rows={data.rows} />
-        </>
+        </CollapsibleSection>
       )}
     </div>
   );
@@ -524,13 +525,15 @@ function SwingHighsSection() {
       <h3 className="font-display text-base mb-1" style={{ color: "var(--text)" }}>
         Swing High Breaks
       </h3>
-      <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
-        Swing highs are identified on the 10-min candle chart — a candle whose high is greater than the 2
-        candles before and 2 candles after it (confirmed once those following candles have printed). Each
-        swing high is then checked separately on the 5-min and 10-min charts for a CLOSE above that level —
-        same rolling-30-candle volume methodology as the opening-range breakout above, and same toggle to
-        ignore volume entirely and just show every close-price break.
-      </p>
+      <div className="mb-3">
+        <InfoNote label="How swing highs are identified">
+          Swing highs are identified on the 10-min candle chart — a candle whose high is greater than the 2
+          candles before and 2 candles after it (confirmed once those following candles have printed). Each
+          swing high is then checked separately on the 5-min and 10-min charts for a CLOSE above that level
+          — same rolling-30-candle volume methodology as the opening-range breakout above, and same toggle
+          to ignore volume entirely and just show every close-price break.
+        </InfoNote>
+      </div>
 
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
@@ -601,28 +604,29 @@ function SwingHighsSection() {
       )}
 
       {data && (
-        <>
-          <p className="text-xs mb-1" style={{ color: "var(--text-faint)" }}>
-            {data.swingHighCount} swing high{data.swingHighCount === 1 ? "" : "s"} formed from {data.usableStart} to{" "}
-            {data.usableEnd}, {data.brokenBothCount} broken on both timeframes so far.
-            {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
-              <> Requested range was narrowed to what Yahoo&apos;s intraday feed actually has available.</>
-            )}
+        <CollapsibleSection
+          summary={
+            <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+              <strong style={{ color: data.swingHighCount > 0 ? "var(--text)" : "var(--text)" }}>
+                {data.swingHighCount}
+              </strong>{" "}
+              swing high{data.swingHighCount === 1 ? "" : "s"} formed from {data.usableStart} to {data.usableEnd}{" "}
+              — <strong style={{ color: "var(--gain)" }}>{data.brokenBothCount}</strong> broken on both timeframes.
+              {(data.requestedStart !== data.usableStart || data.requestedEnd !== data.usableEnd) && (
+                <> Range narrowed to what Yahoo has available.</>
+              )}
+            </p>
+          }
+          expandLabel={`Show ${data.swingHighCount} swing high${data.swingHighCount === 1 ? "" : "s"}`}
+          collapseLabel="Hide results"
+        >
+          <p className="text-xs mb-2" style={{ color: "var(--text-faint)" }}>
+            {data.hasVolumeData === false
+              ? "Volume is normally aggregated from NIFTY BANK's 12 constituent stocks, but none returned usable data for this range — the volume condition was skipped rather than blocking every break."
+              : `Volume aggregated from ${data.volumeConstituentsReporting}/${data.volumeConstituentsTotal} NIFTY BANK constituent stocks${data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.`}
           </p>
-          {data.hasVolumeData === false ? (
-            <p className="text-xs mb-3 px-2 py-1.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-faint)" }}>
-              Volume is normally aggregated from NIFTY BANK&apos;s 12 constituent stocks, but none of them
-              returned usable data for this range — the volume condition was skipped rather than silently
-              blocking every break.
-            </p>
-          ) : (
-            <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
-              Volume aggregated from {data.volumeConstituentsReporting}/{data.volumeConstituentsTotal} NIFTY
-              BANK constituent stocks{data.requireVolume === false ? " (volume filter off — every close-price break counts)" : ""}.
-            </p>
-          )}
           <SwingHighsTable rows={data.swingHighs} />
-        </>
+        </CollapsibleSection>
       )}
     </div>
   );
@@ -638,15 +642,17 @@ export default function NiftyBankTab() {
           NIFTY BANK Trading
         </h2>
       </div>
-      <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        Opening-range breakout: the 5-min opening candle&apos;s high broken (on a close, not just a wick)
-        followed by the 10-min opening range&apos;s high also broken on a close. Volume is aggregated from
-        NIFTY BANK&apos;s 12 constituent stocks, since the index itself has no real trade volume of its
-        own. &quot;Good volume&quot; means the breaking candle&apos;s volume is above the rolling average of
-        the last 30 candles of that same timeframe — last 30 five-minute candles for the 5-min check, last
-        30 ten-minute candles for the 10-min check — adjustable below, and optional. A heuristic, not a
-        guarantee. This is pattern detection over historical and live price data, not trading advice.
-      </p>
+      <div className="mb-4">
+        <InfoNote label="How the opening-range breakout is defined">
+          The 5-min opening candle&apos;s high broken (on a close, not just a wick) followed by the 10-min
+          opening range&apos;s high also broken on a close. Volume is aggregated from NIFTY BANK&apos;s 12
+          constituent stocks, since the index itself has no real trade volume of its own. &quot;Good
+          volume&quot; means the breaking candle&apos;s volume is above the rolling average of the last 30
+          candles of that same timeframe — last 30 five-minute candles for the 5-min check, last 30
+          ten-minute candles for the 10-min check — adjustable per section, and optional. A heuristic, not
+          a guarantee. This is pattern detection over historical and live price data, not trading advice.
+        </InfoNote>
+      </div>
 
       <LiveCard />
       <BacktestSection />

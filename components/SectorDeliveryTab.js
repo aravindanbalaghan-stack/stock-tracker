@@ -6,6 +6,7 @@ import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
+import InfoNote from "@/components/InfoNote";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -260,7 +261,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         </div>
       </div>
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        Click a column header to sort · click a sector row for its {historyLabel} trend and constituent stocks
+        Click a column header to sort (Shift+click to add a tiebreaker) · click a sector row for its {historyLabel} trend and constituent stocks
       </p>
 
       <SectorTable
@@ -271,24 +272,26 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         historyLabel={historyLabel}
       />
 
-      <p className="mt-3 text-xs" style={{ color: "var(--text-faint)" }}>
-        {periodLabel === "Day"
-          ? "Daily view: each sector's most recent trading day."
-          : `${periodLabel}ly view: each sector's delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days, and Avg Chg % is the average per-stock return over that same period.`}{" "}
-        Expanding a sector shows its {historyLabel} trend at this same granularity, plus a constituent stock
-        breakdown that also follows the selected period — each stock&apos;s own {periodLabel.toLowerCase()}ly
-        numbers, not always its daily ones.{" "}
-        Delivery % is volume-weighted — total shares delivered across the sector&apos;s
-        stocks, divided by total shares traded — not a plain average of individual stock delivery %s, so one
-        illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are a
-        hand-maintained mapping covering {data.sectors?.length ?? "36"} sectors (Banking, NBFC, Insurance,
-        IT, Pharma, Chemicals, Footwear, Sugar, Defence, and more) — broader than the handful of official
-        NSE sectoral indices, but not NSE&apos;s full official classification, so treat it as a good working
-        set rather than an authoritative one. A stock genuinely belonging to more than one sector (e.g. a
-        bank counted in both &quot;Banking&quot; and &quot;PSU Banks&quot;) is intentionally included in both
-        and contributes to both sectors&apos; numbers. Monthly&apos;s deeper history means the first load
-        after switching to it can take noticeably longer.
-      </p>
+      <div className="mt-3">
+        <InfoNote label="How sector delivery % and the sector list work">
+          {periodLabel === "Day"
+            ? "Daily view: each sector's most recent trading day."
+            : `${periodLabel}ly view: each sector's delivery % is volume-weighted across the most recent ${data.criteria?.periodTradingDays ?? 1} trading days, and Avg Chg % is the average per-stock return over that same period.`}{" "}
+          Expanding a sector shows its {historyLabel} trend at this same granularity, plus a constituent stock
+          breakdown that also follows the selected period — each stock&apos;s own {periodLabel.toLowerCase()}ly
+          numbers, not always its daily ones.{" "}
+          Delivery % is volume-weighted — total shares delivered across the sector&apos;s
+          stocks, divided by total shares traded — not a plain average of individual stock delivery %s, so one
+          illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are a
+          hand-maintained mapping covering {data.sectors?.length ?? "36"} sectors (Banking, NBFC, Insurance,
+          IT, Pharma, Chemicals, Footwear, Sugar, Defence, and more) — broader than the handful of official
+          NSE sectoral indices, but not NSE&apos;s full official classification, so treat it as a good working
+          set rather than an authoritative one. A stock genuinely belonging to more than one sector (e.g. a
+          bank counted in both &quot;Banking&quot; and &quot;PSU Banks&quot;) is intentionally included in both
+          and contributes to both sectors&apos; numbers. Monthly&apos;s deeper history means the first load
+          after switching to it can take noticeably longer.
+        </InfoNote>
+      </div>
     </div>
   );
 }
