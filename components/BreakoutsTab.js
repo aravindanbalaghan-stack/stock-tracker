@@ -5,6 +5,7 @@ import { useSortableRows, compareForSortMulti } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -49,14 +50,15 @@ function sectionLabel(dateStr) {
 function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, totalSections }) {
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border py-8 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
+      <div className="rounded-[var(--radius)] border py-8 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
         No stocks cleared all three filters this day.
       </div>
     );
   }
   return (
-    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <table className="w-full border-collapse">
+    <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+     <div className="table-scroll">
+      <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -121,6 +123,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
           })}
         </tbody>
       </table>
+     </div>
     </div>
   );
 }
@@ -157,17 +160,15 @@ export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
 
   if (error) {
     return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
+      <ErrorState>{error}</ErrorState>
     );
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+      <LoadingState>
         Pulling NSE data — this can take a moment the first time…
-      </div>
+      </LoadingState>
     );
   }
 
@@ -180,11 +181,7 @@ export default function BreakoutsTab({ onAddToWatchlist, watchlistSymbols }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          Breakouts
-        </h2>
-      </div>
+      <ScreenHeader title="Breakouts" meta={`Last ${sections.length} trading days`} />
       <p className="text-xs mb-4 flex items-center gap-3" style={{ color: "var(--text-faint)" }}>
         <span className="flex items-center gap-1.5">
           <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "var(--tier-mid-dim)", border: "1px solid var(--tier-mid)" }} />

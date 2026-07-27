@@ -5,6 +5,7 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import InfoNote from "@/components/InfoNote";
+import { ScreenHeader, SectionTitle } from "@/components/ui/Chrome";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -637,11 +638,7 @@ function SwingHighsSection() {
 export default function NiftyBankTab() {
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          NIFTY BANK Trading
-        </h2>
-      </div>
+      <ScreenHeader title="Bank Nifty" meta="Opening-range breakouts and swing-high breaks" />
       <div className="mb-4">
         <InfoNote label="How the opening-range breakout is defined">
           The 5-min opening candle&apos;s high broken (on a close, not just a wick) followed by the 10-min

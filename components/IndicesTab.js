@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -141,23 +142,19 @@ export default function IndicesTab() {
 
   if (error) {
     return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
+      <ErrorState>{error}</ErrorState>
     );
   }
 
   if (!data) {
-    return <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>Loading indices…</div>;
+    return <LoadingState>Loading indices…</LoadingState>;
   }
 
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="font-display text-lg mb-2" style={{ color: "var(--text)" }}>
-          Top 5 performing indices today
-        </h2>
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <SectionTitle>Top 5 performing indices today</SectionTitle>
+        <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
           {data.top5.map((item, i) => (
             <IndexRow item={item} rank={i + 1} key={item.symbol} />
           ))}
@@ -165,10 +162,8 @@ export default function IndicesTab() {
       </div>
 
       <div>
-        <h3 className="text-xs uppercase tracking-wider mb-2" style={{ color: "var(--text-faint)" }}>
-          All tracked indices — tap one to see its top 5 stocks today
-        </h3>
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <SectionTitle meta="Tap one to see its top 5 stocks today">All tracked indices</SectionTitle>
+        <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
           {[...data.all]
             .sort((a, b) => (b.changePercent ?? -Infinity) - (a.changePercent ?? -Infinity))
             .map((item) => (

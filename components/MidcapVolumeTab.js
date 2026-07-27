@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -45,38 +46,33 @@ export default function MidcapVolumeTab() {
 
   if (error) {
     return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
+      <ErrorState>{error}</ErrorState>
     );
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+      <LoadingState>
         Scanning the midcap universe for unusual volume…
-      </div>
+      </LoadingState>
     );
   }
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          Midcap stocks trading above 30-day average volume
-        </h2>
-        <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-          {data.fetchedAt ? `Updated ${new Date(data.fetchedAt).toLocaleTimeString("en-IN")}` : ""}
-        </span>
-      </div>
+      <ScreenHeader
+        title="Midcap movers"
+        meta={`Trading above their 30-day average volume${data.fetchedAt ? ` · updated ${new Date(data.fetchedAt).toLocaleTimeString("en-IN")}` : ""}`}
+      />
 
       {data.results.length === 0 ? (
-        <div className="rounded-lg border py-12 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
+        <div className="rounded-[var(--radius)] border py-12 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
           No midcap stocks are currently trading above their 30-day average volume.
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <table className="w-full border-collapse">
+        <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+         <div className="table-scroll">
+          <table className="w-full border-collapse table-sticky">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
                 <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -112,6 +108,7 @@ export default function MidcapVolumeTab() {
               })}
             </tbody>
           </table>
+         </div>
         </div>
       )}
     </div>

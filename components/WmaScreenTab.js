@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -37,42 +38,37 @@ export default function WmaScreenTab() {
 
   if (error) {
     return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
+      <ErrorState>{error}</ErrorState>
     );
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+      <LoadingState>
         Scanning {" "}{"~180"} stocks against their 30-week average — this can take a moment…
-      </div>
+      </LoadingState>
     );
   }
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          Near the 30-week average, after a recent breakout
-        </h2>
-        <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-          As of {data.asOf ?? "—"}
-        </span>
-      </div>
+      <ScreenHeader
+        title="30WMA watch"
+        meta={`Near the 30-week average after a recent breakout · as of ${data.asOf ?? "—"}`}
+      />
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
         Crossed above the 30WMA within the last {data.criteria?.crossLookbackDays ?? 7} trading days,
         currently within ±{data.criteria?.nearBandPct ?? 1}% of it, delivery % ≥ {data.criteria?.minDeliveryPct ?? 60}%.
       </p>
 
       {data.results.length === 0 ? (
-        <div className="rounded-lg border py-12 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
+        <div className="rounded-[var(--radius)] border py-12 text-center text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
           No stocks currently match all three conditions.
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <table className="w-full border-collapse">
+        <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+         <div className="table-scroll">
+          <table className="w-full border-collapse table-sticky">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
                 <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -99,6 +95,7 @@ export default function WmaScreenTab() {
               })}
             </tbody>
           </table>
+         </div>
         </div>
       )}
 

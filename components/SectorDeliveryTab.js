@@ -7,6 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -121,8 +122,9 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
   const [expanded, setExpanded] = useState(null);
 
   return (
-    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <table className="w-full border-collapse">
+    <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+     <div className="table-scroll">
+      <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Sector" sortKey="name" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -194,6 +196,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
           })}
         </tbody>
       </table>
+     </div>
     </div>
   );
 }
@@ -226,21 +229,19 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   if (error) {
     return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
+      <ErrorState>{error}</ErrorState>
     );
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+      <LoadingState>
         {period === "daily"
           ? "Pulling NSE data — this can take a moment the first time…"
           : period === "weekly"
           ? "Pulling NSE data — Weekly view fetches more trading days, so this can take a bit longer…"
           : "Pulling NSE data — Monthly view's 10-month history needs a lot of trading days on a cold cache, so the first load can take a while…"}
-      </div>
+      </LoadingState>
     );
   }
 
@@ -249,17 +250,11 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-1 flex-wrap gap-2">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          Sector Deliverability
-        </h2>
-        <div className="flex items-center gap-3">
-          <PeriodToggle period={period} onChange={setPeriod} />
-          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-            As of {data.asOf}
-          </span>
-        </div>
-      </div>
+      <ScreenHeader
+        title="Sector deliverability"
+        meta={`As of ${data.asOf}`}
+        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+      />
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
         Click a column header to sort (Shift+click to add a tiebreaker) · click a sector row for its {historyLabel} trend and constituent stocks
       </p>

@@ -6,29 +6,30 @@ import AddStock from "@/components/AddStock";
 import WatchlistTable from "@/components/WatchlistTable";
 import AlertsPanel from "@/components/AlertsPanel";
 import TabBar from "@/components/TabBar";
-import IndicesTab from "@/components/IndicesTab";
-import MidcapVolumeTab from "@/components/MidcapVolumeTab";
-import DeliveryTab from "@/components/DeliveryTab";
-import SectorDeliveryTab from "@/components/SectorDeliveryTab";
-import BreakoutsTab from "@/components/BreakoutsTab";
-import WmaScreenTab from "@/components/WmaScreenTab";
+import GlobalSearch from "@/components/GlobalSearch";
+import StockDetailDrawer from "@/components/StockDetailDrawer";
+import MarketScreen from "@/components/screens/MarketScreen";
+import DeliveryScreen from "@/components/screens/DeliveryScreen";
+import ScreenersScreen from "@/components/screens/ScreenersScreen";
 import NiftyBankTab from "@/components/NiftyBankTab";
-import ResearchTab from "@/components/ResearchTab";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
 
 const REFRESH_MS = 12000;
 
+// Five tabs, down from nine. Closely-related screens now live together
+// behind sub-navigation (see components/screens/) rather than competing
+// for space in one long row: Market = indices + midcap movers, Delivery =
+// by-stock + by-sector, Screeners = breakouts + 30WMA. The old Research
+// tab is gone — its useful parts are now the stock detail drawer, opened
+// from the header search or any watchlist row.
 const TABS = [
   { id: "watchlist", label: "Watchlist" },
-  { id: "indices", label: "Top Indices" },
-  { id: "midcap", label: "Midcap Movers" },
-  { id: "delivery", label: "Delivery Leaders" },
-  { id: "sectors", label: "Sector Deliverability" },
-  { id: "breakouts", label: "Breakouts" },
-  { id: "wma", label: "30WMA Watch" },
-  { id: "niftybank", label: "NIFTY BANK Trading" },
-  { id: "research", label: "Research" },
+  { id: "market", label: "Market" },
+  { id: "delivery", label: "Delivery" },
+  { id: "screeners", label: "Screeners" },
+  { id: "niftybank", label: "Bank Nifty" },
 ];
 
 export default function Page() {
@@ -46,6 +47,7 @@ export default function Page() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [identity, setIdentity] = useState(() => readIdentityCookie());
+  const [detailSymbol, setDetailSymbol] = useState(null);
   const pollRef = useRef(null);
 
   const fetchQuotes = useCallback(async (syms) => {
@@ -147,26 +149,32 @@ export default function Page() {
     <div className="min-h-screen flex flex-col">
       <TickerTape quotes={quotes} />
 
-      <header className="px-4 md:px-8 pt-8 pb-4 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full" style={{ background: marketOpenGuess ? "var(--gain)" : "var(--text-faint)" }} />
-            <span className="text-xs uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
-              {marketOpenGuess ? "Market open" : "Market closed"} · NSE
-            </span>
-          </div>
-          <h1 className="font-display text-3xl md:text-4xl font-semibold" style={{ color: "var(--text)" }}>
+      <header className="px-4 md:px-8 pt-6 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
             Panel
           </h1>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: marketOpenGuess ? "var(--gain)" : "var(--text-faint)" }}
+            />
+            <span className="text-[11px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+              NSE {marketOpenGuess ? "open" : "closed"}
+            </span>
+          </span>
         </div>
-        <div className="flex items-center gap-4">
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <GlobalSearch onSelect={setDetailSymbol} />
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
-              <span>Signed in as <span style={{ color: "var(--text)" }}>{identity}</span></span>
-              <button onClick={handleLogout} style={{ color: "var(--text-faint)" }}>Sign out</button>
+              <span className="hidden md:inline">{identity}</span>
+              <button onClick={handleLogout} style={{ color: "var(--text-faint)" }}>
+                Sign out
+              </button>
             </div>
           )}
-          {activeTab === "watchlist" && <AddStock onAdd={handleAdd} existingSymbols={symbols} />}
         </div>
       </header>
 
@@ -175,46 +183,55 @@ export default function Page() {
       <main className="flex-1 px-4 md:px-8 py-6">
         {activeTab === "watchlist" && (
           <>
-            {error && (
-              <div
-                className="mb-4 rounded-md border px-4 py-3 text-sm"
-                style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}
-              >
-                {error} — retrying automatically.
-              </div>
-            )}
+            <ScreenHeader
+              title="Watchlist"
+              meta={
+                lastUpdated
+                  ? `${symbols.length} stock${symbols.length === 1 ? "" : "s"} · updated ${lastUpdated.toLocaleTimeString("en-IN")}`
+                  : `${symbols.length} stock${symbols.length === 1 ? "" : "s"}`
+              }
+              actions={<AddStock onAdd={handleAdd} existingSymbols={symbols} />}
+            />
+
+            {error && <div className="mb-4"><ErrorState>{error} — retrying automatically.</ErrorState></div>}
+
             {loading && quotes.length === 0 ? (
-              <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-                Loading live prices…
-              </div>
+              <LoadingState>Loading live prices…</LoadingState>
             ) : (
               <>
                 <AlertsPanel availableSymbols={symbols} />
-                <WatchlistTable quotes={quotes} meta={meta} onRemove={handleRemove} onNotesChange={handleNotesChange} />
+                <WatchlistTable
+                  quotes={quotes}
+                  meta={meta}
+                  onRemove={handleRemove}
+                  onNotesChange={handleNotesChange}
+                  onOpenDetail={setDetailSymbol}
+                />
               </>
             )}
+
             <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>
-              {lastUpdated ? `Last updated ${lastUpdated.toLocaleTimeString("en-IN")}` : ""} · Data via
-              Yahoo Finance, delayed by exchange feed terms — not for trading decisions.
+              Prices via Yahoo Finance, delayed per exchange feed terms — not for trading decisions.
             </p>
           </>
         )}
 
-        {activeTab === "indices" && <IndicesTab />}
-        {activeTab === "midcap" && <MidcapVolumeTab />}
+        {activeTab === "market" && <MarketScreen />}
         {activeTab === "delivery" && (
-          <DeliveryTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+          <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
-        {activeTab === "sectors" && (
-          <SectorDeliveryTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+        {activeTab === "screeners" && (
+          <ScreenersScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
-        {activeTab === "breakouts" && (
-          <BreakoutsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
-        )}
-        {activeTab === "wma" && <WmaScreenTab />}
         {activeTab === "niftybank" && <NiftyBankTab />}
-        {activeTab === "research" && <ResearchTab />}
       </main>
+
+      <StockDetailDrawer
+        symbol={detailSymbol}
+        onClose={() => setDetailSymbol(null)}
+        onAddToWatchlist={handleAdd}
+        inWatchlist={detailSymbol ? symbols.includes(detailSymbol) : false}
+      />
     </div>
   );
 }

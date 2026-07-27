@@ -73,7 +73,7 @@ function NotesCell({ symbol, notes, onNotesChange }) {
   );
 }
 
-function Row({ quote, meta, onRemove, onNotesChange }) {
+function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
 
@@ -93,14 +93,22 @@ function Row({ quote, meta, onRemove, onNotesChange }) {
   return (
     <tr className={`border-b ${flash ?? ""}`} style={{ borderColor: "var(--border)" }}>
       <td className="py-3 pl-4 pr-2">
-        <div className="flex flex-col">
-          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+        <button
+          type="button"
+          onClick={() => onOpenDetail?.(quote.symbol)}
+          className="flex flex-col text-left group"
+          title={`News and recent moves for ${quote.symbol}`}
+        >
+          <span
+            className="font-mono text-sm group-hover:underline"
+            style={{ color: "var(--text)" }}
+          >
             {quote.symbol}
           </span>
           <span className="text-xs truncate max-w-[160px]" style={{ color: "var(--text-muted)" }}>
             {quote.name}
           </span>
-        </div>
+        </button>
       </td>
       <td className="py-3 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
         {stale ? "—" : `₹${fmt(quote.price)}`}
@@ -145,7 +153,7 @@ function Row({ quote, meta, onRemove, onNotesChange }) {
   );
 }
 
-export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }) {
+export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, onOpenDetail }) {
   const { sorted, sort, onSort } = useSortableRows(quotes, null, "desc");
 
   if (quotes.length === 0) {
@@ -194,6 +202,7 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange }
               key={q.symbol}
               onRemove={onRemove}
               onNotesChange={onNotesChange}
+              onOpenDetail={onOpenDetail}
             />
           ))}
         </tbody>

@@ -7,6 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
+import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -69,8 +70,9 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
   }
 
   return (
-    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <table className="w-full border-collapse">
+    <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+     <div className="table-scroll">
+      <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -160,6 +162,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
           })}
         </tbody>
       </table>
+     </div>
     </div>
   );
 }
@@ -420,22 +423,18 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   }
 
   if (error) {
-    return (
-      <div className="rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
-        {error}
-      </div>
-    );
+    return <ErrorState>{error}</ErrorState>;
   }
 
   if (!data) {
     return (
-      <div className="py-16 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+      <LoadingState>
         {period === "daily"
           ? "Pulling NSE data — this can take a moment the first time…"
           : period === "weekly"
           ? "Pulling NSE data — Weekly view fetches more trading days, so this can take a bit longer…"
           : "Pulling NSE data — Monthly view's 10-month history needs a lot of trading days on a cold cache, so the first load can take a while…"}
-      </div>
+      </LoadingState>
     );
   }
 
@@ -444,22 +443,16 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <h2 className="font-display text-lg" style={{ color: "var(--text)" }}>
-          Delivery leaders
-        </h2>
-        <div className="flex items-center gap-3">
-          <PeriodToggle period={period} onChange={setPeriod} />
-          <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-            As of {data.asOf}
-          </span>
+      <ScreenHeader
+        title="Delivery leaders"
+        meta={`As of ${data.asOf}`}
+        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+      >
+        <div className="flex items-center gap-2">
+          <DeliverySearchBox onPick={runSearch} query={query} setQuery={setQuery} />
+          {searching && <span className="text-xs" style={{ color: "var(--text-faint)" }}>Searching…</span>}
         </div>
-      </div>
-
-      <div className="mb-4 flex items-center gap-2">
-        <DeliverySearchBox onPick={runSearch} query={query} setQuery={setQuery} />
-        {searching && <span className="text-xs" style={{ color: "var(--text-faint)" }}>Searching…</span>}
-      </div>
+      </ScreenHeader>
 
       {searchError && (
         <div className="mb-4 rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>

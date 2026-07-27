@@ -1,32 +1,44 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #0b0f1a;
-  --surface: #101728;
-  --surface-2: #151d33;
-  --border: #232c42;
-  --text: #e8ecf4;
-  --text-muted: #7c8aa5;
-  --text-faint: #4c5876;
-  --accent: #d4a94b;
-  --accent-dim: #8a7239;
-  --gain: #2fbf6e;
-  --gain-dim: #143823;
-  --loss: #e5484d;
-  --loss-dim: #3a1518;
+  /* Surfaces — a deliberate 4-step elevation ramp instead of the previous
+     3 near-identical navies, so cards, table headers, and hover states
+     can each sit at a distinct level without needing borders everywhere. */
+  --bg: #080b13;
+  --surface: #0e1421;
+  --surface-2: #141c2c;
+  --surface-3: #1b2438;
+  --border: #1f2942;
+  --border-strong: #2c3757;
 
-  /* Delivery % tiers (Delivery Leaders tab) — deliberately distinct from
-     gain/loss so they don't read as a price-direction signal. */
-  --tier-high: #2fbf6e; /* > 80% */
-  --tier-high-dim: #143823;
-  --tier-mid: #d4a94b; /* 70-80% */
-  --tier-mid-dim: #3a2f10;
+  --text: #e9edf6;
+  --text-muted: #8493ad;
+  --text-faint: #56637f;
+
+  --accent: #e0b455;
+  --accent-dim: #6b5626;
+  --accent-wash: rgba(224, 180, 85, 0.09);
+
+  --gain: #35c77b;
+  --gain-dim: #10301f;
+  --loss: #ef5350;
+  --loss-dim: #331214;
+
+  /* Delivery % tiers — deliberately distinct from gain/loss so they don't
+     read as a price-direction signal. */
+  --tier-high: #35c77b; /* > 80% */
+  --tier-high-dim: #10301f;
+  --tier-mid: #e0b455; /* 70-80% */
+  --tier-mid-dim: #382d12;
   --tier-low: #4b9fd4; /* 60-70% */
-  --tier-low-dim: #12293a;
+  --tier-low-dim: #10283a;
 
   --font-display: "Space Grotesk", "Segoe UI", sans-serif;
   --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+
+  --radius: 10px;
+  --radius-sm: 6px;
 }
 
 * {
@@ -38,22 +50,39 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   min-height: 100vh;
-  background-image:
-    radial-gradient(circle at 15% 0%, rgba(212, 169, 75, 0.06), transparent 40%),
-    radial-gradient(circle at 85% 20%, rgba(47, 191, 110, 0.04), transparent 35%);
 }
 
 .font-display {
   font-family: var(--font-display);
+  letter-spacing: -0.015em;
 }
 
 .font-mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* Long screens (Delivery Leaders can run to hundreds of rows) keep their
+   column headers visible while scrolling — the single biggest readability
+   win on the dense tables, and it costs nothing structurally. */
+.table-sticky thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  backdrop-filter: blur(6px);
+}
+
+/* Scroll container for tables so sticky headers have something to stick
+   against, with a sensible max height on the longest screens. */
+.table-scroll {
+  overflow: auto;
+  max-height: 70vh;
 }
 
 .ticker-track {
@@ -71,23 +100,40 @@ body {
   to { transform: translateX(-50%); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .ticker-track { animation: none; }
-}
-
 @keyframes flash-gain {
-  0% { background-color: rgba(47, 191, 110, 0.25); }
+  0% { background-color: rgba(53, 199, 123, 0.22); }
   100% { background-color: transparent; }
 }
 
 @keyframes flash-loss {
-  0% { background-color: rgba(229, 72, 77, 0.25); }
+  0% { background-color: rgba(239, 83, 80, 0.22); }
   100% { background-color: transparent; }
 }
 
 .flash-gain { animation: flash-gain 900ms ease-out; }
 .flash-loss { animation: flash-loss 900ms ease-out; }
 
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+@keyframes drawer-in {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.drawer-in { animation: drawer-in 180ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+  .flash-gain, .flash-loss, .drawer-in { animation: none; }
+}
+
+/* Keyboard focus stays visible everywhere — the app is dense enough that
+   losing your place while tabbing is genuinely disorienting. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 ::-webkit-scrollbar-track { background: transparent; }
