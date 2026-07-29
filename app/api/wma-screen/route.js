@@ -2,6 +2,7 @@ import { MIDCAP_UNIVERSE } from "@/lib/midcapUniverse";
 import { NIFTY50_UNIVERSE } from "@/lib/nifty50";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { fetchDailySeries, toWeeklyCloses, average, WMA_WEEKS } from "@/lib/wma";
+import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 export const dynamic = "force-dynamic";
 
@@ -75,9 +76,12 @@ export async function GET() {
 
     withDelivery.sort((a, b) => Math.abs(a.distancePct) - Math.abs(b.distancePct));
 
+    const debuts = await fetchDebutBatch(withDelivery.map((c) => c.symbol), { concurrency: CONCURRENCY });
+    const resultsWithDebut = withDelivery.map((c) => withDebut({ ...c, close: c.price }, debuts.get(c.symbol)));
+
     return Response.json({
       asOf: latestBhav?.date ?? null,
-      results: withDelivery,
+      results: resultsWithDebut,
       universeSize: UNIVERSE.length,
       criteria: {
         wmaWeeks: WMA_WEEKS,

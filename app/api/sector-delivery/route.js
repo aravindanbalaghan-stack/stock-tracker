@@ -8,6 +8,7 @@ import {
   lookbackDaysFor,
 } from "@/lib/deliveryMetrics";
 import { SECTOR_LIST } from "@/lib/sectors";
+import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
 // lookups beyond NSE's own daily file, so this stays fast and reliable.
@@ -147,6 +148,15 @@ export async function GET(request) {
         constituents,
       };
     });
+
+    // Listing debut for every constituent shown in the expand panels.
+    // One batch across all sectors, de-duped internally so a stock in two
+    // sectors is fetched once.
+    const allConstituentSymbols = sectors.flatMap((s) => s.constituents.map((c) => c.symbol));
+    const debutMap = await fetchDebutBatch(allConstituentSymbols, { concurrency: 8 });
+    for (const sector of sectors) {
+      sector.constituents = sector.constituents.map((c) => withDebut(c, debutMap.get(c.symbol)));
+    }
 
     sectors.sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0));
 

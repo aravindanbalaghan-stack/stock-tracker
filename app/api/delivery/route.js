@@ -11,6 +11,7 @@ import {
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
 import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
+import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
@@ -97,22 +98,26 @@ export async function GET(request) {
         return Response.json({ error: `No delivery data found for ${symbol}` }, { status: 404 });
       }
       const isStock = metrics.category === "stock";
-      const [marketCapCr, wma30] = await Promise.all([
+      const [marketCapCr, wma30, debut] = await Promise.all([
         isStock ? fetchMarketCapCr(symbol, await getSessionCookies()) : Promise.resolve(null),
         isStock ? fetchWma30(symbol).catch(() => null) : Promise.resolve(null),
+        fetchDebut(symbol).catch(() => null),
       ]);
       const deliveryHistory = buildRecentPeriodHistory(symbol, days, periodTradingDays, HISTORY_PERIODS);
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
         period,
-        result: {
-          ...rest,
-          category,
-          marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
-          wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
-          deliveryHistory,
-        },
+        result: withDebut(
+          {
+            ...rest,
+            category,
+            marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
+            wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+            deliveryHistory,
+          },
+          debut
+        ),
       });
     }
 
@@ -166,18 +171,29 @@ export async function GET(request) {
       { concurrency: CONCURRENCY }
     );
 
-    const [marketCaps, wmaMap] = await Promise.all([marketCapsPromise, wmaPromise]);
+    // Listing debut for the same capped set of top rows. Runs alongside
+    // the other two lookups — a debut price is cached for 30 days, so
+    // this is effectively free after the first load.
+    const debutPromise = fetchDebutBatch(
+      wmaLookupTargets.map((c) => c.symbol),
+      { concurrency: CONCURRENCY }
+    );
+
+    const [marketCaps, wmaMap, debutMap] = await Promise.all([marketCapsPromise, wmaPromise, debutPromise]);
 
     const stocks = stockCandidates.map((c, i) => {
       const capCr = i < marketCaps.length ? marketCaps[i] : null;
       const wma30 = wmaMap.get(c.symbol) ?? null;
       const { category, _volumeAboveAvg, ...rest } = c;
-      return {
-        ...rest,
-        marketCapCr: capCr != null ? Math.round(capCr) : null,
-        wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
-        deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
-      };
+      return withDebut(
+        {
+          ...rest,
+          marketCapCr: capCr != null ? Math.round(capCr) : null,
+          wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+          deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
+        },
+        debutMap.get(c.symbol)
+      );
     });
 
     return Response.json({

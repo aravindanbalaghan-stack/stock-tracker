@@ -6,6 +6,7 @@ import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -68,6 +69,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
             <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
             <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            <DebutHeaderCells sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
@@ -111,6 +113,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
                 <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                   {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
                 </td>
+                <DebutCells row={r} />
                 <td className="py-2.5 pl-2 pr-4 text-right">
                   <WatchlistAddButton
                     symbol={r.symbol}

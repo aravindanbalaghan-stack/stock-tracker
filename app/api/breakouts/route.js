@@ -1,6 +1,7 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { computeMetrics } from "@/lib/deliveryMetrics";
 import { fetchWma30Batch } from "@/lib/wma";
+import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 // Same bhavcopy data source as the Delivery tab — no market-cap lookup
 // involved here, so this route never touches the (flakier) NSE session
@@ -81,16 +82,24 @@ export async function GET() {
     // in any section (a repeat offender only gets fetched once thanks to
     // fetchWma30Batch's internal de-dupe).
     const allSymbols = sections.flatMap((s) => s.results.map((r) => r.symbol));
-    const wmaMap = await fetchWma30Batch(allSymbols, { concurrency: WMA_CONCURRENCY });
+    // Both lookups de-dupe internally, so a symbol appearing in several
+    // day-sections is only fetched once.
+    const [wmaMap, debutMap] = await Promise.all([
+      fetchWma30Batch(allSymbols, { concurrency: WMA_CONCURRENCY }),
+      fetchDebutBatch(allSymbols, { concurrency: WMA_CONCURRENCY }),
+    ]);
 
     for (const section of sections) {
       section.results = section.results.map((row) => {
         const wma30 = wmaMap.get(row.symbol) ?? null;
-        return {
-          ...row,
-          wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
-          occurrences: occurrenceCounts.get(row.symbol) ?? 1,
-        };
+        return withDebut(
+          {
+            ...row,
+            wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+            occurrences: occurrenceCounts.get(row.symbol) ?? 1,
+          },
+          debutMap.get(row.symbol)
+        );
       });
     }
 

@@ -8,6 +8,7 @@ import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -69,6 +70,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
             <SortableTh label={`Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} />
             <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            <DebutHeaderCells sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
         </thead>
@@ -93,6 +95,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                   <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                     {c.volumeRatio ? `${c.volumeRatio.toFixed(1)}×` : "—"}
                   </td>
+                  <DebutCells row={c} />
                   <td className="py-2 pl-2 pr-4 text-right">
                     <WatchlistAddButton
                       symbol={c.symbol}
@@ -103,7 +106,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={7} className="p-0">
+                    <td colSpan={9} className="p-0">
                       <DeliveryHistoryPanel history={c.deliveryHistory} />
                     </td>
                   </tr>

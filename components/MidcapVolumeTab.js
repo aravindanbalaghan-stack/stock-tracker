@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -80,7 +81,8 @@ export default function MidcapVolumeTab() {
                 <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
                 <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
                 <SortableTh label="30d Avg" sortKey="avgVolume30d" sort={sort} onSort={onSort} />
-                <SortableTh label="vs Avg" sortKey="volumeRatio" sort={sort} onSort={onSort} className="pr-4" />
+                <SortableTh label="vs Avg" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+                <DebutHeaderCells sort={sort} onSort={onSort} lastClassName="pr-4" />
               </tr>
             </thead>
             <tbody>
@@ -100,9 +102,10 @@ export default function MidcapVolumeTab() {
                     </td>
                     <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>{fmtVolume(r.volume)}</td>
                     <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-faint)" }}>{fmtVolume(r.avgVolume30d)}</td>
-                    <td className="py-2.5 pl-2 pr-4 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
+                    <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                       {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
                     </td>
+                    <DebutCells row={r} lastClassName="pr-4" />
                   </tr>
                 );
               })}

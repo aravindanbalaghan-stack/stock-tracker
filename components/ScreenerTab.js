@@ -7,6 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { SCREENS } from "@/lib/screens";
 import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
+import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -49,6 +50,25 @@ function DeliveryPctCell({ pct }) {
   return (
     <span className="font-mono text-sm px-1.5 py-0.5 rounded" style={{ color: tier.color, background: tier.bg }}>
       {fmt(pct)}%
+    </span>
+  );
+}
+
+// Whether the stock finished the session above or below where it opened —
+// direction stated in words (that's the question being asked) with the
+// size of the move alongside it.
+function VsOpenCell({ pct }) {
+  if (pct == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  const above = pct >= 0;
+  return (
+    <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+      <span className="text-xs font-medium" style={{ color: above ? "var(--gain)" : "var(--loss)" }}>
+        {above ? "▲ Above" : "▼ Below"}
+      </span>
+      <span className="font-mono text-[11px]" style={{ color: "var(--text-faint)" }}>
+        {above ? "+" : ""}
+        {fmt(pct)}%
+      </span>
     </span>
   );
 }
@@ -147,6 +167,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                     title="Today's volume against the trailing 30-day average"
                   />
                   <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
+                  <DebutHeaderCells sort={sort} onSort={onSort} />
                   {showListedOn && <SortableTh label="Listed" sortKey="listedOn" sort={sort} onSort={onSort} />}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
                   <th className="py-2 pl-2 pr-4"></th>
@@ -194,6 +215,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                         {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
                       </td>
+                      <DebutCells row={r} />
                       {showListedOn && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {r.listedOn ?? "—"}

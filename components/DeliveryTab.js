@@ -8,6 +8,7 @@ import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -83,6 +84,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
             {showCap && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
             <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
+            <DebutHeaderCells sort={sort} onSort={onSort} />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>In accumulation?</th>
             <th className="py-2 pl-2 pr-4"></th>
@@ -128,6 +130,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                     {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
                   </td>
+                  <DebutCells row={r} />
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {r.daysOfAccumulation}/{r.accumulationWindowDays}
                   </td>
@@ -152,7 +155,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={showCap ? 11 : 9} className="p-0">
+                    <td colSpan={showCap ? 13 : 11} className="p-0">
                       <DeliveryHistoryPanel history={r.deliveryHistory} />
                     </td>
                   </tr>
@@ -248,6 +251,26 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
             </span>
           </div>
         )}
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Debut ₹</span>
+          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+            {result.debutOpen == null ? "—" : `₹${fmt(result.debutOpen)}`}
+            {result.debutDate && (
+              <span className="text-[10px] ml-1" style={{ color: "var(--text-faint)" }}>{result.debutDate}</span>
+            )}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>vs Debut</span>
+          <span
+            className="font-mono text-sm"
+            style={{ color: result.vsDebutPct == null ? "var(--text-faint)" : result.vsDebutPct >= 0 ? "var(--gain)" : "var(--loss)" }}
+          >
+            {result.vsDebutPct == null
+              ? "—"
+              : `${result.vsDebutPct >= 0 ? "▲ +" : "▼ "}${fmt(result.vsDebutPct, 1)}%`}
+          </span>
+        </div>
         <div className="flex items-end">
           <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
             {expanded ? `▲ hide ${historyLabel} history` : `▼ show ${historyLabel} history`}

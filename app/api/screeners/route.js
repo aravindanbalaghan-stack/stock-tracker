@@ -10,6 +10,7 @@ import {
   symbolSeries,
 } from "@/lib/screenerIndicators";
 import { SCREENS } from "@/lib/screens";
+import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -59,9 +60,19 @@ function baseRow(symbol, series) {
   const changePercent =
     today.prevClose && today.close ? ((today.close - today.prevClose) / today.prevClose) * 100 : null;
 
+  // Where the stock stands against its own opening price for the session.
+  // Note this is the LAST PUBLISHED session's open vs. that session's
+  // close — bhavcopy is an end-of-day file, so during market hours this
+  // reflects the previous completed session rather than a live intraday
+  // position. The column header says "at close" for that reason.
+  const vsOpenPct =
+    today.open && today.close ? ((today.close - today.open) / today.open) * 100 : null;
+
   return {
     symbol,
+    open: today.open,
     close: today.close,
+    vsOpenPct: vsOpenPct != null ? Math.round(vsOpenPct * 100) / 100 : null,
     changePercent: changePercent != null ? Math.round(changePercent * 100) / 100 : null,
     deliveryPct: today.deliveryPct,
     volume: today.volume,
@@ -331,6 +342,14 @@ export async function GET(request) {
       }
 
       rows.push(row);
+    }
+
+    // ---------------- Listing debut ----------------
+    // Cheap after the first lookup of each symbol — a debut price can
+    // never change, so lib/debut.js caches it for 30 days.
+    if (rows.length > 0) {
+      const debuts = await fetchDebutBatch(rows.map((r) => r.symbol), { concurrency: YAHOO_CONCURRENCY });
+      rows = rows.map((r) => withDebut(r, debuts.get(r.symbol)));
     }
 
     // ---------------- Market cap (Pocket Pivot only) ----------------

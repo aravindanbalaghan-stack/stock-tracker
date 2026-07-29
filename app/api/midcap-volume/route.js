@@ -1,4 +1,5 @@
 import { MIDCAP_UNIVERSE } from "@/lib/midcapUniverse";
+import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 // Live route — no bhavcopy involved. Price and volume are both things
 // Yahoo reports intraday (same source the Watchlist tab uses), so unlike
@@ -78,9 +79,15 @@ export async function GET() {
 
     rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
 
+    // Listing debut for the rows actually shown. Cached 30 days per
+    // symbol (see lib/debut.js), so this is a one-time cost.
+    const shown = rows.slice(0, 50);
+    const debuts = await fetchDebutBatch(shown.map((r) => r.symbol), { concurrency: CONCURRENCY });
+    const withDebutRows = shown.map((r) => withDebut(r, debuts.get(r.symbol)));
+
     return Response.json({
       fetchedAt: new Date().toISOString(),
-      results: rows.slice(0, 50),
+      results: withDebutRows,
       universeSize: MIDCAP_UNIVERSE.length,
     });
   } catch (err) {
