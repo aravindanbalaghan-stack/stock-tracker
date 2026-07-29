@@ -221,7 +221,11 @@ export default function Page() {
           <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
         {activeTab === "screeners" && (
-          <ScreenersScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
+          <ScreenersScreen
+            onAddToWatchlist={handleAdd}
+            watchlistSymbols={symbols}
+            onOpenDetail={setDetailSymbol}
+          />
         )}
         {activeTab === "niftybank" && <NiftyBankTab />}
       </main>
