@@ -8,6 +8,7 @@ import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import StockDepthPanel from "@/components/StockDepthPanel";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
@@ -57,6 +58,44 @@ function DeliveryPctBadge({ pct }) {
 // deliveryTier/DeliveryPctBadge above; period-history rendering now lives
 // in the shared components/DeliveryHistoryPanel.js (also used by the
 // Sector Deliverability tab).
+
+// Expanded delivery row: the delivery-history strip it always had, plus
+// the order book / volume-at-price view. Depth is lazy — it only fetches
+// when you actually switch to it, since it hits NSE per symbol.
+function ExpandedRowDetail({ row }) {
+  const [view, setView] = useState("history");
+  const TABS = [
+    { id: "history", label: "Delivery history" },
+    { id: "depth", label: "Order book & volume at price" },
+  ];
+  return (
+    <div>
+      <div className="flex gap-1 px-4 pt-3">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setView(t.id);
+            }}
+            className="px-2.5 py-1 text-[11px] rounded-[4px]"
+            style={{
+              background: view === t.id ? "var(--surface-3)" : "transparent",
+              color: view === t.id ? "var(--text)" : "var(--text-muted)",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div onClick={(e) => e.stopPropagation()}>
+        {view === "history" && <DeliveryHistoryPanel history={row.deliveryHistory} />}
+        {view === "depth" && <StockDepthPanel symbol={row.symbol} />}
+      </div>
+    </div>
+  );
+}
 
 function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
@@ -156,7 +195,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
                     <td colSpan={showCap ? 13 : 11} className="p-0">
-                      <DeliveryHistoryPanel history={r.deliveryHistory} />
+                      <ExpandedRowDetail row={r} />
                     </td>
                   </tr>
                 )}

@@ -11,6 +11,9 @@ import {
 } from "@/lib/screenerIndicators";
 import { SCREENS } from "@/lib/screens";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
+import { analyzeStage2, mightBeStage2 } from "@/lib/stageAnalysis";
+import { resolveWideUniverse } from "@/lib/nifty500";
+import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -34,6 +37,18 @@ const YAHOO_CONCURRENCY = 8;
 // list. See the note in the response payload.
 const MARKET_CAP_CONCURRENCY = 6;
 const MARKET_CAP_TIMEOUT_MS = 4000;
+
+// Stage 2 scans a ~500-stock universe (the NIFTY 500 where NSE's endpoint
+// is reachable, otherwise the top 500 by turnover — see lib/nifty500.js).
+// It can't be pre-filtered from the 31-day bhavcopy window the other
+// screens use, because the stage verdict needs a 30-week MA. Instead it
+// narrows in two passes: cheap WEEKLY bars for all ~500, then full daily
+// history only for the ones that might qualify.
+const STAGE_WEEKLY_CONCURRENCY = 12;
+const STAGE_DAILY_CONCURRENCY = 10;
+// The daily pass is the expensive half, so it's capped independently of
+// SHORTLIST_CAP. In practice the weekly pre-filter lands well under this.
+const STAGE_DAILY_CAP = 220;
 
 async function fetchMarketCapCr(symbol, cookies) {
   const data = await nseApiFetchWithCookies(
@@ -124,6 +139,9 @@ export async function GET(request) {
     let candidates = [];
     let extraNotes = [];
     let listedAfterDate = null;
+    let stageUniverseSource = null;
+    let stageWeeklyScanned = null;
+    let stagePlausible = null;
 
     // ---------------- Cheap bhavcopy-only filters ----------------
     if (screen === "ipo-base") {
@@ -240,6 +258,39 @@ export async function GET(request) {
       });
     }
 
+    if (screen === "stage-2") {
+      // Pass 1 — resolve the ~500-stock universe, then run a cheap weekly
+      // pre-filter over it to find which stocks are plausibly above a
+      // rising 30-week MA. Weekly bars are ~1/5 the payload of daily, so
+      // this is what makes a 500-stock scan affordable at all.
+      const resolved = await resolveWideUniverse(universe);
+      stageUniverseSource = resolved.source;
+      const bySymbol = new Map(universe.map((u) => [u.symbol, u]));
+      const inUniverse = resolved.symbols.map((s) => bySymbol.get(s)).filter(Boolean);
+
+      const weekly = await fetchWeeklyOHLCVBatch(
+        inUniverse.map((u) => u.symbol),
+        { concurrency: STAGE_WEEKLY_CONCURRENCY }
+      );
+
+      const plausible = inUniverse.filter(({ symbol }) => mightBeStage2(weekly.get(symbol)));
+      stageWeeklyScanned = inUniverse.length;
+      stagePlausible = plausible.length;
+
+      // Pass 2 (below, via the shared Yahoo enrichment) gets full daily
+      // history for these only.
+      candidates = plausible.slice(0, STAGE_DAILY_CAP);
+
+      extraNotes.push(
+        `${resolved.sourceLabel} Of those, ${plausible.length} passed a weekly pre-filter and were checked in full against daily data.`
+      );
+      if (plausible.length > STAGE_DAILY_CAP) {
+        extraNotes.push(
+          `Capped at ${STAGE_DAILY_CAP} full daily checks; the most liquid were kept.`
+        );
+      }
+    }
+
     if (screen === "gap-down-reversal") {
       candidates = universe.filter(({ series }) => {
         const today = series[series.length - 1];
@@ -267,8 +318,16 @@ export async function GET(request) {
 
     const history = await fetchDailyOHLCVBatch(
       shortlist.map((c) => c.symbol),
-      { concurrency: YAHOO_CONCURRENCY }
+      { concurrency: screen === "stage-2" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
     );
+
+    // Weinstein required a Stage 2 stock to be OUTPERFORMING the market,
+    // not just rising, so the relative-strength column needs the index.
+    let benchmarkBars = null;
+    if (screen === "stage-2") {
+      const nifty = await fetchIndexOHLCV("^NSEI").catch(() => null);
+      benchmarkBars = nifty?.bars ?? null;
+    }
 
     let rows = [];
     for (const { symbol, series } of shortlist) {
@@ -321,6 +380,13 @@ export async function GET(request) {
 
         row.sma50 = Math.round(sma50 * 100) / 100;
         row.sma200 = Math.round(sma200 * 100) / 100;
+      }
+
+      if (screen === "stage-2") {
+        if (!hist?.bars?.length) continue;
+        const stage = analyzeStage2(hist.bars, benchmarkBars);
+        if (!stage) continue; // not in Stage 2, or not enough history to say
+        Object.assign(row, stage);
       }
 
       if (screen === "gap-up") {
@@ -387,6 +453,9 @@ export async function GET(request) {
       truncated,
       shortlistCap: SHORTLIST_CAP,
       listedAfterDate,
+      stageUniverseSource,
+      stageWeeklyScanned,
+      stagePlausible,
       notes: extraNotes,
       rows,
     });

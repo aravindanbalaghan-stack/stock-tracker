@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
@@ -73,9 +73,84 @@ function VsOpenCell({ pct }) {
   );
 }
 
+// Shown when a Stage 2 row is expanded. Each entry is labelled with whose
+// method it comes from, because Weinstein and Wyckoff would have bought at
+// different points in the same move.
+function StageEntriesPanel({ row }) {
+  if (!row.entries?.length) {
+    return (
+      <div className="px-4 py-3 text-xs" style={{ color: "var(--text-faint)" }}>
+        No entry points could be reconstructed for this stock.
+      </div>
+    );
+  }
+  const stanceColor = {
+    Aggressive: "var(--loss)",
+    Standard: "var(--accent)",
+    Conservative: "var(--gain)",
+    "Add-on": "var(--tier-low)",
+  };
+  return (
+    <div className="px-4 py-3">
+      <div className="flex flex-wrap gap-x-6 gap-y-1 mb-3 text-xs" style={{ color: "var(--text-muted)" }}>
+        <span>
+          Base: <span className="font-mono" style={{ color: "var(--text)" }}>₹{fmt(row.baseSupport)} – ₹{fmt(row.baseResistance)}</span>{" "}
+          over {row.baseWeeks} weeks
+        </span>
+        <span>
+          30-week MA slope:{" "}
+          <span className="font-mono" style={{ color: row.ma30SlopePct >= 0 ? "var(--gain)" : "var(--loss)" }}>
+            {row.ma30SlopePct >= 0 ? "+" : ""}
+            {fmt(row.ma30SlopePct)}%
+          </span>{" "}
+          over 4 weeks
+        </span>
+        {row.breakoutVolumeRatio != null && (
+          <span>
+            Breakout volume:{" "}
+            <span className="font-mono" style={{ color: "var(--accent)" }}>{row.breakoutVolumeRatio}×</span> the prior
+            50-day average
+          </span>
+        )}
+        {row.rsVsBenchmark != null && (
+          <span>
+            26-week RS vs NIFTY:{" "}
+            <span className="font-mono" style={{ color: row.rsVsBenchmark >= 0 ? "var(--gain)" : "var(--loss)" }}>
+              {row.rsVsBenchmark >= 0 ? "+" : ""}
+              {fmt(row.rsVsBenchmark)}%
+            </span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {row.entries.map((e, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded border shrink-0 mt-0.5 whitespace-nowrap"
+              style={{ borderColor: stanceColor[e.stance] ?? "var(--border)", color: stanceColor[e.stance] ?? "var(--text-muted)" }}
+            >
+              {e.stance}
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm" style={{ color: "var(--text)" }}>
+                <span className="font-mono">₹{fmt(e.price)}</span>
+                <span className="text-xs ml-2" style={{ color: "var(--text-faint)" }}>{e.date}</span>
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{e.method}</p>
+              <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>{e.rationale}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [expanded, setExpanded] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +173,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
 
   const showListedOn = screen === "ipo-base";
   const showMarketCap = screen === "pocket-pivot";
+  const isStage2 = screen === "stage-2";
 
   const { sorted, sort, onSort } = useSortableRows(data?.rows, "volumeRatio", "desc");
   const def = SCREENS[screen];
@@ -168,6 +244,28 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   />
                   <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
                   <DebutHeaderCells sort={sort} onSort={onSort} />
+                  {isStage2 && <SortableTh label="Phase" sortKey="stagePhase" sort={sort} onSort={onSort} align="left" />}
+                  {isStage2 && (
+                    <SortableTh
+                      label="Days in St.2"
+                      sortKey="daysSinceEntry"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Trading days since the Stage 2 breakout"
+                    />
+                  )}
+                  {isStage2 && (
+                    <SortableTh
+                      label="Entry ₹"
+                      sortKey="stage2EntryPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="The Stage 2 breakout close — Weinstein's primary buy. Expand the row for every entry both methods give."
+                    />
+                  )}
+                  {isStage2 && (
+                    <SortableTh label="RS vs NIFTY" sortKey="rsVsBenchmark" sort={sort} onSort={onSort} title="26-week relative strength against the NIFTY" />
+                  )}
                   {showListedOn && <SortableTh label="Listed" sortKey="listedOn" sort={sort} onSort={onSort} />}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
                   <th className="py-2 pl-2 pr-4"></th>
@@ -176,8 +274,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
               <tbody>
                 {sorted.map((r, i) => {
                   const up = (r.changePercent ?? 0) >= 0;
+                  const isOpen = expanded === r.symbol;
                   return (
-                    <tr key={r.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                    <Fragment key={r.symbol}>
+                    <tr
+                      className={`border-b last:border-b-0 ${isStage2 ? "cursor-pointer hover:bg-white/5" : ""}`}
+                      style={{ borderColor: "var(--border)" }}
+                      onClick={isStage2 ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
+                      title={isStage2 ? "Click for every entry point both methods give" : undefined}
+                    >
                       <td className="py-2.5 pl-4 pr-2">
                         <div className="flex items-center gap-2">
                           <span className="text-xs w-5" style={{ color: "var(--accent)" }}>
@@ -216,6 +321,37 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
                       </td>
                       <DebutCells row={r} />
+                      {isStage2 && (
+                        <td className="py-2.5 px-2 text-left">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor: r.stagePhase === "Entering" ? "var(--accent)" : "var(--border)",
+                              color: r.stagePhase === "Entering" ? "var(--accent)" : "var(--text-muted)",
+                            }}
+                          >
+                            {r.stagePhase}
+                          </span>
+                        </td>
+                      )}
+                      {isStage2 && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
+                          {r.daysSinceEntry ?? "—"}
+                        </td>
+                      )}
+                      {isStage2 && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.stage2EntryPrice == null ? "—" : `₹${fmt(r.stage2EntryPrice)}`}
+                        </td>
+                      )}
+                      {isStage2 && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: r.rsVsBenchmark == null ? "var(--text-faint)" : r.rsVsBenchmark >= 0 ? "var(--gain)" : "var(--loss)" }}
+                        >
+                          {r.rsVsBenchmark == null ? "—" : `${r.rsVsBenchmark >= 0 ? "+" : ""}${fmt(r.rsVsBenchmark)}%`}
+                        </td>
+                      )}
                       {showListedOn && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {r.listedOn ?? "—"}
@@ -234,6 +370,14 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         />
                       </td>
                     </tr>
+                    {isStage2 && isOpen && (
+                      <tr style={{ background: "var(--surface-2)" }}>
+                        <td colSpan={14} className="p-0">
+                          <StageEntriesPanel row={r} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>
