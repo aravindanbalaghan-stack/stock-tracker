@@ -5,9 +5,21 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
-import { SCREENS } from "@/lib/screens";
+import { SCREENS, CONFLUENCE_SCREEN, CONFLUENCE_DEF } from "@/lib/screens";
 import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+
+function todayIST() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
+
+// The API keeps a month of trading days behind the chosen date, so the
+// picker is bounded to roughly a calendar month back.
+function earliestSelectable() {
+  const d = new Date();
+  d.setDate(d.getDate() - 31);
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+}
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -151,6 +163,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // Empty string means "latest session" — the default, and not the same as
+  // picking today's date, since today may not be a trading day yet.
+  const [asOfDate, setAsOfDate] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +173,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     setError(null);
     (async () => {
       try {
-        const res = await fetch(`/api/screeners?screen=${encodeURIComponent(screen)}`);
+        const qs = new URLSearchParams({ screen });
+        if (asOfDate) qs.set("date", asOfDate);
+        const res = await fetch(`/api/screeners?${qs.toString()}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't run this screen");
         if (!cancelled) setData(json);
@@ -169,23 +186,61 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     return () => {
       cancelled = true;
     };
-  }, [screen]);
+  }, [screen, asOfDate]);
 
   const showListedOn = screen === "ipo-base";
   const showMarketCap = screen === "pocket-pivot";
   const isStage2 = screen === "stage-2";
+  const isConfluence = screen === CONFLUENCE_SCREEN;
 
   const { sorted, sort, onSort } = useSortableRows(data?.rows, "volumeRatio", "desc");
-  const def = SCREENS[screen];
+  const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
 
-  if (error) return <ErrorState>{error}</ErrorState>;
+  const datePicker = (
+    <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
+      As of
+      <input
+        type="date"
+        value={asOfDate}
+        min={earliestSelectable()}
+        max={todayIST()}
+        onChange={(e) => setAsOfDate(e.target.value)}
+        className="rounded-[var(--radius-sm)] px-2 py-1 text-sm border"
+        style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+      />
+      {asOfDate && (
+        <button
+          type="button"
+          onClick={() => setAsOfDate("")}
+          className="px-1.5 py-0.5 rounded border text-[11px]"
+          style={{ borderColor: "var(--border)", color: "var(--accent)" }}
+          title="Back to the latest session"
+        >
+          Latest
+        </button>
+      )}
+    </label>
+  );
+
+  if (error) {
+    return (
+      <div>
+        <ScreenHeader title={def.label} actions={datePicker} />
+        <ErrorState>{error}</ErrorState>
+      </div>
+    );
+  }
 
   if (!data) {
     return (
-      <LoadingState>
-        Scanning every NSE stock for {def?.label ?? "this screen"} — the first run of the day pulls a
-        month of exchange data, so it takes a moment.
-      </LoadingState>
+      <div>
+        <ScreenHeader title={def.label} actions={datePicker} />
+        <LoadingState>
+          {isConfluence
+            ? "Running all six screens over the same session and finding the overlap — this takes longer than a single screen."
+            : `Scanning every NSE stock for ${def?.label ?? "this screen"} — the first run of the day pulls a month of exchange data, so it takes a moment.`}
+        </LoadingState>
+      </div>
     );
   }
 
@@ -193,7 +248,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     <div>
       <ScreenHeader
         title={def.label}
-        meta={`${data.resultCount} match${data.resultCount === 1 ? "" : "es"} from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}`}
+        meta={`${data.resultCount} match${data.resultCount === 1 ? "" : "es"} from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}${
+          data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
+        }`}
+        actions={datePicker}
       />
 
       <div className="mb-3">
@@ -215,12 +273,28 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
               </strong>
             </>
           )}
+          {isConfluence && data.perScreen && (
+            <>
+              {" "}
+              <strong style={{ color: "var(--text-muted)" }}>
+                Matches per screen this session:{" "}
+                {Object.values(data.perScreen)
+                  .map((s) => `${s.label} ${s.failed ? "—" : s.count}`)
+                  .join(", ")}
+                .
+              </strong>
+            </>
+          )}
           {data.notes?.length > 0 && ` ${data.notes.join(" ")}`}
         </InfoNote>
       </div>
 
       {data.rows.length === 0 ? (
-        <EmptyState>No stocks cleared this screen today.</EmptyState>
+        <EmptyState>
+          {isConfluence
+            ? `No stocks appeared in two or more screens on ${data.asOf}.`
+            : `No stocks cleared this screen on ${data.asOf}.`}
+        </EmptyState>
       ) : (
         <div
           className="rounded-[var(--radius)] border overflow-hidden"
@@ -244,6 +318,16 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   />
                   <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
                   <DebutHeaderCells sort={sort} onSort={onSort} />
+                  {isConfluence && (
+                    <SortableTh
+                      label="Screens"
+                      sortKey="matchCount"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="How many of the six screens this stock matched, and which ones"
+                    />
+                  )}
                   {isStage2 && <SortableTh label="Phase" sortKey="stagePhase" sort={sort} onSort={onSort} align="left" />}
                   {isStage2 && (
                     <SortableTh
@@ -321,6 +405,27 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
                       </td>
                       <DebutCells row={r} />
+                      {isConfluence && (
+                        <td className="py-2.5 px-2 text-left">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span
+                              className="font-mono text-xs px-1.5 py-0.5 rounded"
+                              style={{ background: "var(--accent-wash)", color: "var(--accent)" }}
+                            >
+                              {r.matchCount}
+                            </span>
+                            {r.matchedScreenLabels?.map((label) => (
+                              <span
+                                key={label}
+                                className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      )}
                       {isStage2 && (
                         <td className="py-2.5 px-2 text-left">
                           <span

@@ -5,7 +5,7 @@ import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
 import ScreenerTab from "@/components/ScreenerTab";
 import { SubNav } from "@/components/ui/Chrome";
-import { SCREENS, SCREEN_ORDER } from "@/lib/screens";
+import { SCREENS, SCREEN_ORDER, CONFLUENCE_SCREEN, CONFLUENCE_DEF, ALL_SCREEN_IDS } from "@/lib/screens";
 
 // Every view here answers "find me stocks matching a fixed set of
 // conditions" — the difference is the conditions, not the kind of thing
@@ -17,7 +17,11 @@ const BUILT_IN = [
   { id: "wma", label: "30WMA watch" },
 ];
 
-const VIEWS = [...BUILT_IN, ...SCREEN_ORDER.map((id) => ({ id, label: SCREENS[id].label }))];
+const VIEWS = [
+  ...BUILT_IN,
+  ...SCREEN_ORDER.map((id) => ({ id, label: SCREENS[id].label })),
+  { id: CONFLUENCE_SCREEN, label: CONFLUENCE_DEF.label },
+];
 
 export default function ScreenersScreen({ onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [view, setView] = useState("breakouts");
@@ -33,7 +37,7 @@ export default function ScreenersScreen({ onAddToWatchlist, watchlistSymbols, on
       )}
       {view === "wma" && <WmaScreenTab />}
 
-      {SCREEN_ORDER.includes(view) && (
+      {ALL_SCREEN_IDS.includes(view) && (
         <ScreenerTab
           key={view}
           screen={view}

@@ -24,6 +24,15 @@ export const maxDuration = 60;
 // 31 days covers every short-window condition in these screens AND the
 // "vs 30-day average volume" column that all of them display.
 const BHAV_WINDOW = 31;
+// How far back the "as of" date picker may go, in TRADING days — roughly a
+// calendar month. The bhavcopy window is fetched this much wider so a
+// historical run still gets its full 31-day lookback behind the chosen date.
+const MAX_ASOF_TRADING_DAYS = 23;
+
+// The confluence screen isn't a filter of its own — it's the overlap of the
+// other six, so it lives outside SCREENS and is handled separately in GET.
+export const CONFLUENCE_SCREEN = "confluence";
+const CONFLUENCE_MEMBERS = ["stage-2", "ipo-base", "pocket-pivot", "gap-up", "volume-expansion", "gap-down-reversal"];
 
 // Ceiling on how many symbols get Yahoo history fetched after the cheap
 // bhavcopy filters run. The filters normally narrow the ~2000-stock
@@ -107,35 +116,19 @@ function wma30From(weeklyBars) {
   return closes.reduce((a, b) => a + b, 0) / 30;
 }
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
-  const screen = searchParams.get("screen");
-
-  if (!screen || !SCREENS[screen]) {
-    return Response.json(
-      { error: `Unknown screen. Expected one of: ${Object.keys(SCREENS).join(", ")}` },
-      { status: 400 }
-    );
-  }
-
-  try {
-    const days = await getRecentBhavcopies(BHAV_WINDOW, BHAV_WINDOW * 2 + 20);
-    if (days.length < 6) {
-      return Response.json(
-        { error: "Not enough trading-day data available from NSE yet" },
-        { status: 503 }
-      );
-    }
+/**
+ * Runs one screen against a prepared bhavcopy window.
+ *
+ * Split out of GET so the confluence screen can call it repeatedly, and so
+ * the "as of" date feature works by simply handing in a window that ends
+ * on the chosen date rather than today.
+ *
+ * `days` must be oldest-first and end on the as-of date. `asOfCutoff` is
+ * the epoch second at end-of-day for that date; Yahoo history is truncated
+ * to it so a historical run can't see bars that hadn't happened yet.
+ */
+async function runScreen({ screen, days, universe, asOfCutoff }) {
     const latest = days[days.length - 1];
-
-    // Build per-symbol bhavcopy series once, for every EQ symbol that
-    // traded today. Every screen filters off this same structure.
-    const universe = [];
-    for (const [symbol, row] of latest.bySymbol) {
-      if (row.series !== "EQ" || !row.volume || row.close == null) continue;
-      universe.push({ symbol, series: symbolSeries(symbol, days) });
-    }
-
     let candidates = [];
     let extraNotes = [];
     let listedAfterDate = null;
@@ -150,7 +143,7 @@ export async function GET(request) {
       // symbols already existed then (one file instead of ~300), and the
       // Yahoo enrichment below confirms each survivor's actual first
       // trading day.
-      const cutoff = new Date();
+      const cutoff = new Date(`${latest.date}T00:00:00Z`);
       cutoff.setMonth(cutoff.getMonth() - 15);
       listedAfterDate = cutoff.toISOString().slice(0, 10);
 
@@ -273,7 +266,10 @@ export async function GET(request) {
         { concurrency: STAGE_WEEKLY_CONCURRENCY }
       );
 
-      const plausible = inUniverse.filter(({ symbol }) => mightBeStage2(weekly.get(symbol)));
+      const plausible = inUniverse.filter(({ symbol }) => {
+        const bars = weekly.get(symbol);
+        return mightBeStage2(bars ? bars.filter((b) => b.t <= asOfCutoff) : null);
+      });
       stageWeeklyScanned = inUniverse.length;
       stagePlausible = plausible.length;
 
@@ -316,17 +312,32 @@ export async function GET(request) {
       })
       .slice(0, SHORTLIST_CAP);
 
-    const history = await fetchDailyOHLCVBatch(
+    const historyRaw = await fetchDailyOHLCVBatch(
       shortlist.map((c) => c.symbol),
       { concurrency: screen === "stage-2" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
     );
+
+    // Truncate every fetched series to the as-of date. Without this, a
+    // historical run would compute its 150/200 DMA, 52-week extremes and
+    // Stage 2 verdict from bars that hadn't printed yet on that date —
+    // lookahead bias that would make past results look better than they
+    // were. Yahoo is always fetched to the present and sliced here rather
+    // than fetched per-date, so the cache stays shared across dates.
+    const history = new Map();
+    for (const [sym, hist] of historyRaw) {
+      if (!hist?.bars) {
+        history.set(sym, hist);
+        continue;
+      }
+      history.set(sym, { ...hist, bars: hist.bars.filter((b) => b.t <= asOfCutoff) });
+    }
 
     // Weinstein required a Stage 2 stock to be OUTPERFORMING the market,
     // not just rising, so the relative-strength column needs the index.
     let benchmarkBars = null;
     if (screen === "stage-2") {
       const nifty = await fetchIndexOHLCV("^NSEI").catch(() => null);
-      benchmarkBars = nifty?.bars ?? null;
+      benchmarkBars = nifty?.bars ? nifty.bars.filter((b) => b.t <= asOfCutoff) : null;
     }
 
     let rows = [];
@@ -356,9 +367,12 @@ export async function GET(request) {
         const first = hist?.firstTradeDate;
         if (!first) continue;
         const firstDate = new Date(first * 1000);
-        const cutoff = new Date();
+        const cutoff = new Date(`${latest.date}T00:00:00Z`);
         cutoff.setMonth(cutoff.getMonth() - 15);
         if (firstDate < cutoff) continue;
+        // On a historical run, a stock that listed AFTER the as-of date
+        // obviously wasn't listed yet — exclude it.
+        if (firstDate.getTime() / 1000 > asOfCutoff) continue;
         row.listedOn = firstDate.toISOString().slice(0, 10);
       }
 
@@ -442,7 +456,7 @@ export async function GET(request) {
 
     rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
 
-    return Response.json({
+    return {
       screen,
       label: SCREENS[screen].label,
       description: SCREENS[screen].description,
@@ -457,6 +471,146 @@ export async function GET(request) {
       stageWeeklyScanned,
       stagePlausible,
       notes: extraNotes,
+      rows,
+    };
+}
+
+/**
+ * Prepares the bhavcopy window ending on `asOfDate` (or today when null).
+ *
+ * Rather than teaching getRecentBhavcopies to walk back from an arbitrary
+ * date, this fetches a wider window from today and slices it — the day
+ * files are cached per-date for a week, so a historical run mostly reuses
+ * data an earlier run already pulled.
+ */
+async function prepareWindow(asOfDate) {
+  const wide = BHAV_WINDOW + MAX_ASOF_TRADING_DAYS;
+  const all = await getRecentBhavcopies(wide, wide * 2 + 20);
+  if (all.length < 6) return { error: "Not enough trading-day data available from NSE yet" };
+
+  let days = all;
+  if (asOfDate) {
+    days = all.filter((d) => d.date <= asOfDate);
+    if (days.length < 6) {
+      return {
+        error: `Not enough trading-day data at or before ${asOfDate}. Pick a more recent date.`,
+      };
+    }
+    days = days.slice(-BHAV_WINDOW);
+  } else {
+    days = all.slice(-BHAV_WINDOW);
+  }
+
+  const latest = days[days.length - 1];
+
+  // End-of-day epoch for the as-of date, used to truncate Yahoo history so
+  // a historical run can't see bars that hadn't printed yet.
+  const asOfCutoff = Math.floor(new Date(`${latest.date}T23:59:59+05:30`).getTime() / 1000);
+
+  // Per-symbol series for every EQ symbol that traded on the as-of day.
+  const universe = [];
+  for (const [symbol, row] of latest.bySymbol) {
+    if (row.series !== "EQ" || !row.volume || row.close == null) continue;
+    universe.push({ symbol, series: symbolSeries(symbol, days) });
+  }
+
+  return { days, universe, asOfCutoff, actualDate: latest.date };
+}
+
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const screen = searchParams.get("screen");
+  const dateParam = searchParams.get("date");
+
+  const isConfluence = screen === CONFLUENCE_SCREEN;
+  if (!screen || (!SCREENS[screen] && !isConfluence)) {
+    return Response.json(
+      { error: `Unknown screen. Expected one of: ${[...Object.keys(SCREENS), CONFLUENCE_SCREEN].join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  // Only accept a plain YYYY-MM-DD, and never a future date.
+  let asOfDate = null;
+  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    asOfDate = dateParam > today ? today : dateParam;
+  }
+
+  try {
+    const prepared = await prepareWindow(asOfDate);
+    if (prepared.error) return Response.json({ error: prepared.error }, { status: 503 });
+    const { days, universe, asOfCutoff, actualDate } = prepared;
+
+    // The as-of date the caller asked for may not be a trading day; report
+    // the session actually used so the UI can say so.
+    const requestedDate = asOfDate;
+    const dateAdjusted = !!asOfDate && asOfDate !== actualDate;
+
+    if (!isConfluence) {
+      const result = await runScreen({ screen, days, universe, asOfCutoff });
+      return Response.json({ ...result, requestedDate, dateAdjusted });
+    }
+
+    // ---------------- Confluence ----------------
+    // Runs every screen over the same prepared window and keeps the
+    // symbols that show up in at least two. Sequential rather than
+    // parallel on purpose: the screens share a Yahoo history cache, so
+    // running them one after another lets later screens reuse what
+    // earlier ones already fetched instead of racing for the same symbols.
+    const perScreen = {};
+    const hits = new Map(); // symbol -> { row, screens[] }
+
+    for (const id of CONFLUENCE_MEMBERS) {
+      let result;
+      try {
+        result = await runScreen({ screen: id, days, universe, asOfCutoff });
+      } catch {
+        perScreen[id] = { label: SCREENS[id].label, count: null, failed: true };
+        continue;
+      }
+      perScreen[id] = { label: SCREENS[id].label, count: result.rows.length, failed: false };
+
+      for (const row of result.rows) {
+        const existing = hits.get(row.symbol);
+        if (existing) {
+          existing.screens.push(id);
+          // Keep whichever row carries the most enrichment, so the
+          // confluence table isn't missing columns one screen didn't fill.
+          existing.row = { ...row, ...existing.row };
+        } else {
+          hits.set(row.symbol, { row, screens: [id] });
+        }
+      }
+    }
+
+    const rows = [...hits.values()]
+      .filter((h) => h.screens.length >= 2)
+      .map((h) => ({
+        ...h.row,
+        matchedScreens: h.screens,
+        matchedScreenLabels: h.screens.map((s) => SCREENS[s].label),
+        matchCount: h.screens.length,
+      }))
+      .sort((a, b) => b.matchCount - a.matchCount || (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+
+    const failed = Object.entries(perScreen)
+      .filter(([, v]) => v.failed)
+      .map(([k]) => SCREENS[k].label);
+
+    return Response.json({
+      screen: CONFLUENCE_SCREEN,
+      label: "Confluence",
+      description: "Stocks appearing in at least two of the six screens on the same day.",
+      asOf: actualDate,
+      requestedDate,
+      dateAdjusted,
+      universeSize: universe.length,
+      resultCount: rows.length,
+      perScreen,
+      notes: failed.length
+        ? [`These screens failed to run and are not represented: ${failed.join(", ")}.`]
+        : [],
       rows,
     });
   } catch (err) {
