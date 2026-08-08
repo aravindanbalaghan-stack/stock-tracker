@@ -12,6 +12,14 @@ import {
 import { SCREENS } from "@/lib/screens";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
 import { analyzeStage2, mightBeStage2 } from "@/lib/stageAnalysis";
+import { analyzeReclaim, mightReclaim } from "@/lib/reclaim";
+import {
+  fetchLiveSnapshot,
+  buildLiveDay,
+  sessionProgress,
+  marketIsOpen,
+  istToday,
+} from "@/lib/nseLive";
 import { resolveWideUniverse } from "@/lib/nifty500";
 import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
 
@@ -32,6 +40,11 @@ const MAX_ASOF_TRADING_DAYS = 23;
 // The confluence screen isn't a filter of its own — it's the overlap of the
 // other six, so it lives outside SCREENS and is handled separately in GET.
 export const CONFLUENCE_SCREEN = "confluence";
+// Deliberately the ORIGINAL six, not every screen. Confluence was specified
+// as "any 2 of these 6", so newer screens (30WMA reclaim) are not folded in
+// automatically — that would quietly change what a "2 of 6" match means and
+// make past and present results incomparable. Add "ma-reclaim" here if you
+// do want it counted.
 const CONFLUENCE_MEMBERS = ["stage-2", "ipo-base", "pocket-pivot", "gap-up", "volume-expansion", "gap-down-reversal"];
 
 // Ceiling on how many symbols get Yahoo history fetched after the cheap
@@ -127,7 +140,7 @@ function wma30From(weeklyBars) {
  * the epoch second at end-of-day for that date; Yahoo history is truncated
  * to it so a historical run can't see bars that hadn't happened yet.
  */
-async function runScreen({ screen, days, universe, asOfCutoff }) {
+async function runScreen({ screen, days, universe, asOfCutoff, isLive = false }) {
     const latest = days[days.length - 1];
     let candidates = [];
     let extraNotes = [];
@@ -287,6 +300,34 @@ async function runScreen({ screen, days, universe, asOfCutoff }) {
       }
     }
 
+    if (screen === "ma-reclaim") {
+      // Same two-pass approach as Stage 2: a 30-week MA can't be derived
+      // from the 31-day bhavcopy window, so this resolves the wide
+      // universe, runs a cheap weekly pre-filter, then fetches daily
+      // history only for stocks trading near their MA.
+      const resolved = await resolveWideUniverse(universe);
+      stageUniverseSource = resolved.source;
+      const bySymbol = new Map(universe.map((u) => [u.symbol, u]));
+      const inUniverse = resolved.symbols.map((s) => bySymbol.get(s)).filter(Boolean);
+
+      const weekly = await fetchWeeklyOHLCVBatch(
+        inUniverse.map((u) => u.symbol),
+        { concurrency: STAGE_WEEKLY_CONCURRENCY }
+      );
+
+      const plausible = inUniverse.filter(({ symbol }) => {
+        const bars = weekly.get(symbol);
+        return mightReclaim(bars ? bars.filter((b) => b.t <= asOfCutoff) : null);
+      });
+      stageWeeklyScanned = inUniverse.length;
+      stagePlausible = plausible.length;
+      candidates = plausible.slice(0, STAGE_DAILY_CAP);
+
+      extraNotes.push(
+        `${resolved.sourceLabel} Of those, ${plausible.length} were trading near their 30-week MA and were checked in full against daily data.`
+      );
+    }
+
     if (screen === "gap-down-reversal") {
       candidates = universe.filter(({ series }) => {
         const today = series[series.length - 1];
@@ -403,6 +444,13 @@ async function runScreen({ screen, days, universe, asOfCutoff }) {
         Object.assign(row, stage);
       }
 
+      if (screen === "ma-reclaim") {
+        if (!hist?.bars?.length) continue;
+        const reclaim = analyzeReclaim(hist.bars);
+        if (!reclaim) continue;
+        Object.assign(row, reclaim);
+      }
+
       if (screen === "gap-up") {
         if (!closes) continue;
         const sma150 = sma(closes, 150);
@@ -454,6 +502,20 @@ async function runScreen({ screen, days, universe, asOfCutoff }) {
       );
     }
 
+    if (isLive) {
+      const progress = sessionProgress();
+      for (const row of rows) {
+        row.isLive = true;
+        // Delivery % carried forward from the prior session — there is no
+        // intraday delivery feed (see lib/nseLive.js).
+        row.deliveryIsPreviousSession = true;
+        // Volume so far is partial; the projection is for display only and
+        // is never used by the filters.
+        row.projectedVolume =
+          progress > 0.05 && row.volume != null ? Math.round(row.volume / progress) : null;
+      }
+    }
+
     rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
 
     return {
@@ -483,7 +545,7 @@ async function runScreen({ screen, days, universe, asOfCutoff }) {
  * files are cached per-date for a week, so a historical run mostly reuses
  * data an earlier run already pulled.
  */
-async function prepareWindow(asOfDate) {
+async function prepareWindow(asOfDate, { live = false } = {}) {
   const wide = BHAV_WINDOW + MAX_ASOF_TRADING_DAYS;
   const all = await getRecentBhavcopies(wide, wide * 2 + 20);
   if (all.length < 6) return { error: "Not enough trading-day data available from NSE yet" };
@@ -501,11 +563,50 @@ async function prepareWindow(asOfDate) {
     days = all.slice(-BHAV_WINDOW);
   }
 
+  // ---- Live overlay -------------------------------------------------
+  // Only ever applied to a "latest session" run. Asking for a past date
+  // and a live feed at the same time is contradictory, so live is ignored
+  // there rather than silently mixing today's prices into a historical run.
+  let liveInfo = null;
+  if (live && !asOfDate) {
+    const today = istToday();
+    const eodHasToday = days[days.length - 1]?.date === today;
+    const priorDay = eodHasToday ? days[days.length - 2] : days[days.length - 1];
+
+    // Yahoo fallback is bounded to symbols that traded in the last EOD
+    // session, so it can't fan out to one request per listed instrument.
+    const fallbackSymbols = priorDay ? [...priorDay.bySymbol.keys()] : [];
+    const snapshot = await fetchLiveSnapshot(fallbackSymbols.slice(0, 600));
+
+    if (snapshot) {
+      const liveDay = buildLiveDay(snapshot, priorDay, today);
+      // Replace today's EOD file if it's already published, otherwise
+      // append — either way the live session becomes the latest day.
+      days = eodHasToday ? [...days.slice(0, -1), liveDay] : [...days.slice(1), liveDay];
+      liveInfo = {
+        active: true,
+        source: snapshot.source,
+        symbolCount: liveDay.bySymbol.size,
+        sessionProgressPct: Math.round(sessionProgress() * 100),
+        marketOpen: marketIsOpen(),
+        feedTimestamp: snapshot.asOfText ?? null,
+        replacedPublishedEod: eodHasToday,
+      };
+    } else {
+      liveInfo = { active: false, reason: "unreachable" };
+    }
+  } else if (live && asOfDate) {
+    liveInfo = { active: false, reason: "historical" };
+  }
+
   const latest = days[days.length - 1];
 
   // End-of-day epoch for the as-of date, used to truncate Yahoo history so
-  // a historical run can't see bars that hadn't printed yet.
-  const asOfCutoff = Math.floor(new Date(`${latest.date}T23:59:59+05:30`).getTime() / 1000);
+  // a historical run can't see bars that hadn't printed yet. In live mode
+  // the cutoff is "now", so today's own bars are included.
+  const asOfCutoff = latest.isLive
+    ? Math.floor(Date.now() / 1000)
+    : Math.floor(new Date(`${latest.date}T23:59:59+05:30`).getTime() / 1000);
 
   // Per-symbol series for every EQ symbol that traded on the as-of day.
   const universe = [];
@@ -514,13 +615,14 @@ async function prepareWindow(asOfDate) {
     universe.push({ symbol, series: symbolSeries(symbol, days) });
   }
 
-  return { days, universe, asOfCutoff, actualDate: latest.date };
+  return { days, universe, asOfCutoff, actualDate: latest.date, liveInfo, isLive: !!latest.isLive };
 }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const screen = searchParams.get("screen");
   const dateParam = searchParams.get("date");
+  const wantLive = searchParams.get("live") === "1" || searchParams.get("live") === "true";
 
   const isConfluence = screen === CONFLUENCE_SCREEN;
   if (!screen || (!SCREENS[screen] && !isConfluence)) {
@@ -538,9 +640,9 @@ export async function GET(request) {
   }
 
   try {
-    const prepared = await prepareWindow(asOfDate);
+    const prepared = await prepareWindow(asOfDate, { live: wantLive });
     if (prepared.error) return Response.json({ error: prepared.error }, { status: 503 });
-    const { days, universe, asOfCutoff, actualDate } = prepared;
+    const { days, universe, asOfCutoff, actualDate, liveInfo, isLive } = prepared;
 
     // The as-of date the caller asked for may not be a trading day; report
     // the session actually used so the UI can say so.
@@ -548,8 +650,8 @@ export async function GET(request) {
     const dateAdjusted = !!asOfDate && asOfDate !== actualDate;
 
     if (!isConfluence) {
-      const result = await runScreen({ screen, days, universe, asOfCutoff });
-      return Response.json({ ...result, requestedDate, dateAdjusted });
+      const result = await runScreen({ screen, days, universe, asOfCutoff, isLive });
+      return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 
     // ---------------- Confluence ----------------
@@ -564,7 +666,7 @@ export async function GET(request) {
     for (const id of CONFLUENCE_MEMBERS) {
       let result;
       try {
-        result = await runScreen({ screen: id, days, universe, asOfCutoff });
+        result = await runScreen({ screen: id, days, universe, asOfCutoff, isLive });
       } catch {
         perScreen[id] = { label: SCREENS[id].label, count: null, failed: true };
         continue;
@@ -605,6 +707,8 @@ export async function GET(request) {
       asOf: actualDate,
       requestedDate,
       dateAdjusted,
+      live: liveInfo,
+      isLive,
       universeSize: universe.length,
       resultCount: rows.length,
       perScreen,

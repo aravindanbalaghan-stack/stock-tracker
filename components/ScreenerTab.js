@@ -166,6 +166,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // Empty string means "latest session" — the default, and not the same as
   // picking today's date, since today may not be a trading day yet.
   const [asOfDate, setAsOfDate] = useState("");
+  // Live mode re-runs the screen against the current session instead of the
+  // last published EOD file. Only meaningful for a "latest" run, so picking
+  // a past date turns it off.
+  const [liveMode, setLiveMode] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +180,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       try {
         const qs = new URLSearchParams({ screen });
         if (asOfDate) qs.set("date", asOfDate);
+        if (liveMode && !asOfDate) qs.set("live", "1");
         const res = await fetch(`/api/screeners?${qs.toString()}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't run this screen");
@@ -186,15 +192,49 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     return () => {
       cancelled = true;
     };
-  }, [screen, asOfDate]);
+  }, [screen, asOfDate, liveMode, refreshTick]);
 
   const showListedOn = screen === "ipo-base";
   const showMarketCap = screen === "pocket-pivot";
   const isStage2 = screen === "stage-2";
   const isConfluence = screen === CONFLUENCE_SCREEN;
+  const isReclaim = screen === "ma-reclaim";
 
   const { sorted, sort, onSort } = useSortableRows(data?.rows, "volumeRatio", "desc");
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
+
+  // While live, re-run periodically. 90s rather than something faster
+  // because a full screen re-run is a heavy request, not a quote poll.
+  useEffect(() => {
+    if (!liveMode || asOfDate) return;
+    const id = setInterval(() => setRefreshTick((t) => t + 1), 90 * 1000);
+    return () => clearInterval(id);
+  }, [liveMode, asOfDate]);
+
+  const liveToggle = (
+    <button
+      type="button"
+      onClick={() => setLiveMode((v) => !v)}
+      disabled={!!asOfDate}
+      className="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border text-xs disabled:opacity-40"
+      style={{
+        borderColor: liveMode && !asOfDate ? "var(--gain)" : "var(--border)",
+        color: liveMode && !asOfDate ? "var(--gain)" : "var(--text-muted)",
+        background: liveMode && !asOfDate ? "var(--gain-dim)" : "transparent",
+      }}
+      title={
+        asOfDate
+          ? "Live applies to the current session only — clear the date to use it"
+          : "Re-run this screen against the live session instead of the last published end-of-day file"
+      }
+    >
+      <span
+        className="inline-block w-1.5 h-1.5 rounded-full"
+        style={{ background: liveMode && !asOfDate ? "var(--gain)" : "var(--text-faint)" }}
+      />
+      Live
+    </button>
+  );
 
   const datePicker = (
     <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-faint)" }}>
@@ -225,7 +265,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   if (error) {
     return (
       <div>
-        <ScreenHeader title={def.label} actions={datePicker} />
+        <ScreenHeader title={def.label} actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>} />
         <ErrorState>{error}</ErrorState>
       </div>
     );
@@ -234,7 +274,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   if (!data) {
     return (
       <div>
-        <ScreenHeader title={def.label} actions={datePicker} />
+        <ScreenHeader title={def.label} actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>} />
         <LoadingState>
           {isConfluence
             ? "Running all six screens over the same session and finding the overlap — this takes longer than a single screen."
@@ -251,8 +291,46 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         meta={`${data.resultCount} match${data.resultCount === 1 ? "" : "es"} from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
-        actions={datePicker}
+        actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>}
       />
+
+      {liveMode && !asOfDate && (
+        <div
+          className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs"
+          style={{
+            borderColor: data.live?.active ? "var(--gain)" : "var(--border)",
+            background: data.live?.active ? "var(--gain-dim)" : "var(--surface-2)",
+            color: "var(--text-muted)",
+          }}
+        >
+          {data.live?.active ? (
+            <>
+              <span style={{ color: "var(--gain)" }}>● Live</span> — running against the current session
+              via {data.live.source === "nse" ? "NSE's own feed" : "Yahoo (NSE was unreachable)"},{" "}
+              {data.live.symbolCount?.toLocaleString("en-IN")} stocks
+              {data.live.feedTimestamp ? ` · NSE timestamp ${data.live.feedTimestamp}` : ""}
+              {" · "}
+              {data.live.marketOpen
+                ? `session ${data.live.sessionProgressPct}% elapsed`
+                : "market closed — this is the final state of the last session"}
+              . Re-runs every 90s.
+              <div className="mt-1" style={{ color: "var(--text-faint)" }}>
+                Delivery % is carried over from the previous session — there is no intraday delivery feed
+                at any price, so it is never estimated here. Volume is only what has traded so far, so
+                volume-based screens fill in as the day progresses rather than firing early.
+              </div>
+            </>
+          ) : data.live?.reason === "historical" ? (
+            <>Live doesn&apos;t apply to a past date — showing the end-of-day data for {data.asOf}.</>
+          ) : (
+            <>
+              Live feed unavailable right now, so this is the last published end-of-day data ({data.asOf}).
+              NSE blocks hosted servers frequently; the Yahoo fallback also didn&apos;t return. This tends
+              to work from a local machine during market hours.
+            </>
+          )}
+        </div>
+      )}
 
       <div className="mb-3">
         <InfoNote label={`What ${def.label} looks for`}>
@@ -282,6 +360,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   .map((s) => `${s.label} ${s.failed ? "—" : s.count}`)
                   .join(", ")}
                 .
+              </strong>
+            </>
+          )}
+          {isReclaim && (
+            <>
+              {" "}
+              <strong style={{ color: "var(--text-muted)" }}>
+                A “*” marks a weekly reclaim whose week hasn&apos;t closed yet — the signal is provisional
+                until Friday and can still be lost.
               </strong>
             </>
           )}
@@ -326,6 +413,25 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       onSort={onSort}
                       align="left"
                       title="How many of the six screens this stock matched, and which ones"
+                    />
+                  )}
+                  {isReclaim && (
+                    <SortableTh
+                      label="Type"
+                      sortKey="reclaimType"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Which condition put this stock on the list — the daily reclaim, the weekly one, or both"
+                    />
+                  )}
+                  {isReclaim && (
+                    <SortableTh
+                      label="Above MA"
+                      sortKey="reclaimAbovePct"
+                      sort={sort}
+                      onSort={onSort}
+                      title="How far above the 30-week MA it closed — a wider margin is a more decisive reclaim than a close sitting on the line"
                     />
                   )}
                   {isStage2 && <SortableTh label="Phase" sortKey="stagePhase" sort={sort} onSort={onSort} align="left" />}
@@ -392,11 +498,32 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       >
                         {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
                       </td>
-                      <td className="py-2.5 px-2 text-right">
+                      <td
+                        className="py-2.5 px-2 text-right"
+                        title={
+                          r.deliveryIsPreviousSession
+                            ? "Previous session's delivery % — delivery data is only published end-of-day"
+                            : undefined
+                        }
+                      >
                         <DeliveryPctCell pct={r.deliveryPct} />
+                        {r.deliveryIsPreviousSession && (
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            prev
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                         {fmtVolume(r.volume)}
+                        {r.isLive && r.projectedVolume != null && (
+                          <span
+                            className="block text-[10px]"
+                            style={{ color: "var(--text-faint)" }}
+                            title="Projected full-day volume at the current pace. Shown for context only — the screen's filters use actual volume so far."
+                          >
+                            ~{fmtVolume(r.projectedVolume)} proj
+                          </span>
+                        )}
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                         {r.volumeRatio ? `${r.volumeRatio.toFixed(2)}×` : "—"}
@@ -424,6 +551,45 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                               </span>
                             ))}
                           </div>
+                        </td>
+                      )}
+                      {isReclaim && (
+                        <td className="py-2.5 px-2 text-left">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor:
+                                r.reclaimType === "both"
+                                  ? "var(--accent)"
+                                  : r.reclaimType === "weekly"
+                                  ? "var(--tier-low)"
+                                  : "var(--border)",
+                              color:
+                                r.reclaimType === "both"
+                                  ? "var(--accent)"
+                                  : r.reclaimType === "weekly"
+                                  ? "var(--tier-low)"
+                                  : "var(--text-muted)",
+                            }}
+                            title={
+                              r.reclaimType === "both"
+                                ? "Closed back above the 30-week MA on the day AND recovered it within the week"
+                                : r.reclaimType === "weekly"
+                                ? `Week dipped to ₹${fmt(r.weekly?.weekLow)} (${fmt(r.weekly?.dipPct, 1)}% below the MA) then closed back above it${r.weekly?.weekInProgress ? " — week still in progress, so this can still be lost" : ""}`
+                                : `Closed ₹${fmt(r.daily?.prevClose)} below the MA yesterday, back above it today`
+                            }
+                          >
+                            {r.reclaimLabel}
+                            {r.reclaimType !== "daily" && r.weekly?.weekInProgress ? " *" : ""}
+                          </span>
+                        </td>
+                      )}
+                      {isReclaim && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: "var(--gain)" }}
+                        >
+                          {r.reclaimAbovePct == null ? "—" : `+${fmt(r.reclaimAbovePct, 1)}%`}
                         </td>
                       )}
                       {isStage2 && (
