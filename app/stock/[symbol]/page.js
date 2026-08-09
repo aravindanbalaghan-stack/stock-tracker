@@ -131,15 +131,29 @@ export default function StockInsightPage({ params }) {
         <Link href="/" className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
           ← Back
         </Link>
-        <div>
-          <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
-            {sym}
-          </h1>
-          {data?.asOf && (
-            <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-              Delivery data as of {data.asOf}
-            </p>
-          )}
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-2.5 flex-wrap">
+            <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
+              {sym}
+            </h1>
+            {data?.name && (
+              <span className="text-base" style={{ color: "var(--text-muted)" }}>
+                {data.name}
+              </span>
+            )}
+          </div>
+          <p className="text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: "var(--text-faint)" }}>
+            {data?.industry && (
+              <span
+                className="px-1.5 py-0.5 rounded border"
+                style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              >
+                {data.industry}
+              </span>
+            )}
+            {data?.exchange && <span>{data.exchange}</span>}
+            {data?.asOf && <span>· Delivery data as of {data.asOf}</span>}
+          </p>
         </div>
       </div>
 
@@ -296,16 +310,26 @@ export default function StockInsightPage({ params }) {
                     value={`${A.daysAboveThreshold ?? "—"}/${A.accumulationWindow}`}
                     sub={`${A.accumulationMinDays}+ needed`}
                   />
+                  <Stat
+                    label="Vol × basis"
+                    value={`${data.volumeAvgDays ?? 30}d`}
+                    sub="each day vs its own trailing average"
+                  />
                 </div>
                 <div className="table-scroll" style={{ maxHeight: "22rem" }}>
                   <table className="w-full border-collapse table-sticky">
                     <thead>
                       <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-                        {["Date", "Close", "Chg %", "Delivery %", "Volume"].map((h, i) => (
+                        {["Date", "Close", "Chg %", "Delivery %", "Volume", `Vol \u00d7`].map((h, i) => (
                           <th
                             key={h}
                             className={`py-2 text-xs font-medium uppercase tracking-wider ${i === 0 ? "pl-4" : "px-2 text-right"}`}
                             style={{ color: "var(--text-faint)" }}
+                            title={
+                              h.startsWith("Vol")
+                                ? `That day's volume against its own trailing ${data.volumeAvgDays ?? 30}-day average`
+                                : undefined
+                            }
                           >
                             {h}
                           </th>
@@ -332,6 +356,22 @@ export default function StockInsightPage({ params }) {
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                               {vol(r.volume)}
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-xs">
+                              {r.volumeRatio == null ? (
+                                <span style={{ color: "var(--text-faint)" }}>—</span>
+                              ) : (
+                                <span
+                                  className="px-1.5 py-0.5 rounded"
+                                  style={{
+                                    color: r.volumeRatio >= 2 ? "var(--accent)" : "var(--text-muted)",
+                                    background: r.volumeRatio >= 2 ? "var(--accent-wash)" : "transparent",
+                                  }}
+                                  title={`vs ${vol(r.avgVolume)} average over the prior ${r.avgVolumeDays} session${r.avgVolumeDays === 1 ? "" : "s"}`}
+                                >
+                                  {r.volumeRatio.toFixed(2)}×
+                                </span>
+                              )}
                             </td>
                           </tr>
                         );

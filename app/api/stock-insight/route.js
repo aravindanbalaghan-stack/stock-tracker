@@ -13,7 +13,13 @@ export const maxDuration = 45;
 
 const NSE_TIMEOUT_MS = 6000;
 const MONTH_TRADING_DAYS = 22;
-const BHAV_WINDOW = 31;
+// Every row in the accumulation table shows volume against ITS OWN
+// trailing 30-day average, so the oldest displayed day still needs 30
+// sessions behind it: 22 + 30, plus slack for holidays. The per-date
+// bhavcopy files are cached for a week, so the wider window is mostly a
+// first-load cost.
+const VOLUME_AVG_DAYS = 30;
+const BHAV_WINDOW = MONTH_TRADING_DAYS + VOLUME_AVG_DAYS + 5;
 // A day counts as a volume spike when it trades this many times its own
 // trailing 30-day average.
 const VOLUME_SPIKE_MULTIPLE = 2;
@@ -88,6 +94,20 @@ async function fetchBlockDeals(symbol, cookies) {
   return { available: true, deals: matches, sessionOnly: true };
 }
 
+/**
+ * Sector/industry label. NSE carries this on the plain quote-equity
+ * payload; like everything else behind that endpoint it's session-gated
+ * and often blocked, so it degrades to null rather than failing the page.
+ */
+async function fetchIndustry(symbol, cookies) {
+  const data = await nseApiFetchWithCookies(
+    `/api/quote-equity?symbol=${encodeURIComponent(symbol)}`,
+    cookies,
+    NSE_TIMEOUT_MS
+  );
+  return data?.info?.industry ?? data?.industryInfo?.industry ?? data?.metadata?.industry ?? null;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const symbol = (searchParams.get("symbol") || "").trim().toUpperCase();
@@ -144,9 +164,21 @@ export async function GET(request) {
     let accumulation = null;
     if (days.length > 0) {
       const rows = [];
-      for (const day of days.slice(-MONTH_TRADING_DAYS)) {
+      const firstShown = Math.max(0, days.length - MONTH_TRADING_DAYS);
+      for (let i = firstShown; i < days.length; i++) {
+        const day = days[i];
         const r = day.bySymbol.get(symbol);
         if (!r) continue;
+
+        // Trailing average of the 30 sessions BEFORE this one — each day is
+        // measured against the norm as it stood at the time, not against a
+        // single average taken from the end of the window.
+        const priorVols = days
+          .slice(Math.max(0, i - VOLUME_AVG_DAYS), i)
+          .map((d) => d.bySymbol.get(symbol)?.volume)
+          .filter((v) => v > 0);
+        const avgVol = priorVols.length ? priorVols.reduce((a, b) => a + b, 0) / priorVols.length : null;
+
         rows.push({
           date: day.date,
           close: r.close,
@@ -154,6 +186,13 @@ export async function GET(request) {
             r.prevClose && r.close ? Math.round(((r.close - r.prevClose) / r.prevClose) * 10000) / 100 : null,
           deliveryPct: r.deliveryPct,
           volume: r.volume,
+          avgVolume: avgVol != null ? Math.round(avgVol) : null,
+          // How many times its own recent norm the day traded. Null rather
+          // than 0 when there isn't enough history to judge.
+          volumeRatio: avgVol && avgVol > 0 ? Math.round((r.volume / avgVol) * 100) / 100 : null,
+          // Days with too few prior sessions are flagged so the UI doesn't
+          // present a thin average as if it were a full one.
+          avgVolumeDays: priorVols.length,
         });
       }
 
@@ -166,7 +205,7 @@ export async function GET(request) {
         const r = day.bySymbol.get(symbol);
         if (!r || !r.volume) continue;
         const priorVols = days
-          .slice(Math.max(0, i - 30), i)
+          .slice(Math.max(0, i - VOLUME_AVG_DAYS), i)
           .map((d) => d.bySymbol.get(symbol)?.volume)
           .filter((v) => v > 0);
         if (priorVols.length < 5) continue;
@@ -204,11 +243,13 @@ export async function GET(request) {
     // ---- NSE-gated extras --------------------------------------------
     let shareholding = null;
     let blockDeals = null;
+    let industry = null;
     try {
       const cookies = await getSessionCookies();
-      [shareholding, blockDeals] = await Promise.all([
+      [shareholding, blockDeals, industry] = await Promise.all([
         fetchShareholding(symbol, cookies).catch(() => null),
         fetchBlockDeals(symbol, cookies).catch(() => null),
+        fetchIndustry(symbol, cookies).catch(() => null),
       ]);
     } catch {
       // NSE unreachable — both stay null and the UI says so.
@@ -216,6 +257,10 @@ export async function GET(request) {
 
     return Response.json({
       symbol,
+      name: hist?.name ?? null,
+      exchange: hist?.exchange ?? null,
+      industry,
+      volumeAvgDays: VOLUME_AVG_DAYS,
       levels,
       accumulation,
       shareholding,
