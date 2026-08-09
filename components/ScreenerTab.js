@@ -8,6 +8,7 @@ import InfoNote from "@/components/InfoNote";
 import { SCREENS, CONFLUENCE_SCREEN, CONFLUENCE_DEF } from "@/lib/screens";
 import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+import SymbolLink from "@/components/SymbolLink";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -478,15 +479,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           <span className="text-xs w-5" style={{ color: "var(--accent)" }}>
                             {i + 1}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => onOpenDetail?.(r.symbol)}
-                            className="font-mono text-sm hover:underline"
-                            style={{ color: "var(--text)" }}
-                            title={`News and recent moves for ${r.symbol}`}
-                          >
-                            {r.symbol}
-                          </button>
+                          <SymbolLink symbol={r.symbol} className="text-sm" />
                         </div>
                       </td>
                       <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>

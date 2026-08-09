@@ -7,6 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+import SymbolLink from "@/components/SymbolLink";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -89,7 +90,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
                 <td className="py-2.5 pl-4 pr-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                    <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                    <SymbolLink symbol={r.symbol} className="text-sm" />
                     {repeated && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded border font-mono"

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
+import SymbolLink from "@/components/SymbolLink";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -93,22 +94,12 @@ function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
   return (
     <tr className={`border-b ${flash ?? ""}`} style={{ borderColor: "var(--border)" }}>
       <td className="py-3 pl-4 pr-2">
-        <button
-          type="button"
-          onClick={() => onOpenDetail?.(quote.symbol)}
-          className="flex flex-col text-left group"
-          title={`News and recent moves for ${quote.symbol}`}
-        >
-          <span
-            className="font-mono text-sm group-hover:underline"
-            style={{ color: "var(--text)" }}
-          >
-            {quote.symbol}
-          </span>
+        <div className="flex flex-col">
+          <SymbolLink symbol={quote.symbol} className="text-sm" />
           <span className="text-xs truncate max-w-[160px]" style={{ color: "var(--text-muted)" }}>
             {quote.name}
           </span>
-        </button>
+        </div>
       </td>
       <td className="py-3 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
         {stale ? "—" : `₹${fmt(quote.price)}`}

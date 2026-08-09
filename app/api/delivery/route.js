@@ -16,6 +16,9 @@ import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
 export const dynamic = "force-dynamic";
+// How far back the "as of" picker may go, in trading days — about a
+// calendar month, matching the Screener tabs.
+const MAX_ASOF_TRADING_DAYS = 23;
 // Monthly view's history drill-down needs ~215 trading days of bhavcopy on
 // a cold cache (see lookbackDaysFor) — that's a lot of individual NSE
 // fetches the first time anyone loads Monthly. Bump the function timeout
@@ -70,16 +73,39 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const searchSymbol = searchParams.get("symbol");
   const periodParam = searchParams.get("period");
+  const dateParam = searchParams.get("date");
   const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
   const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
   try {
-    const lookback = lookbackDaysFor(period);
+    // "As of" support: only a plain YYYY-MM-DD is accepted, never a future
+    // date. The window is fetched wider and sliced, rather than teaching
+    // getRecentBhavcopies to start from an arbitrary day — the per-date
+    // files are cached for a week, so a historical run largely reuses what
+    // a previous run already pulled.
+    const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    let asOfDate = null;
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      asOfDate = dateParam > todayIST ? todayIST : dateParam;
+    }
+
+    const lookback = lookbackDaysFor(period) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
     // getRecentBhavcopies walks backward one weekday at a time and skips
     // holidays automatically, so it needs a generous calendar-day budget
     // to find `lookback` actual trading days — a plain 1:1 would come up
     // short once lookback gets into Monthly territory.
-    const days = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    const allDays = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    let days = allDays;
+    if (asOfDate) {
+      days = allDays.filter((d) => d.date <= asOfDate);
+      if (days.length < periodTradingDays + 1) {
+        return Response.json(
+          { error: `Not enough trading-day data at or before ${asOfDate}. Pick a more recent date.` },
+          { status: 503 }
+        );
+      }
+      days = days.slice(-lookbackDaysFor(period));
+    }
     if (days.length < periodTradingDays + 1) {
       return Response.json(
         { error: "Not enough trading-day data available from NSE yet for this period" },
@@ -107,6 +133,8 @@ export async function GET(request) {
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
+      requestedDate: asOfDate,
+      dateAdjusted: !!asOfDate && asOfDate !== latest.date,
         period,
         result: withDebut(
           {
@@ -198,6 +226,8 @@ export async function GET(request) {
 
     return Response.json({
       asOf: latest.date,
+      requestedDate: asOfDate,
+      dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,
       stocks,
       other,

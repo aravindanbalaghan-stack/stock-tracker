@@ -10,9 +10,12 @@ import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+import DatePicker from "@/components/DatePicker";
+import SymbolLink from "@/components/SymbolLink";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
+
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -143,7 +146,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                   <td className="py-2.5 pl-4 pr-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                      <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                      <SymbolLink symbol={r.symbol} className="text-sm" />
                     </div>
                   </td>
                   <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>
@@ -438,6 +441,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [error, setError] = useState(null);
   const [category, setCategory] = useState("stocks"); // "stocks" | "other"
   const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
+  const [asOfDate, setAsOfDate] = useState(""); // "" means the latest session
 
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
@@ -449,7 +453,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
     setData(null); // show the loading state immediately on period change rather than stale data
     async function load() {
       try {
-        const res = await fetch(`/api/delivery?period=${period}`);
+        const res = await fetch(`/api/delivery?period=${period}${asOfDate ? `&date=${asOfDate}` : ""}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load delivery screen");
         if (!cancelled) setData(json);
@@ -463,7 +467,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [period]);
+  }, [period, asOfDate]);
 
   async function runSearch(symbol) {
     const clean = symbol.trim().toUpperCase();
@@ -471,7 +475,9 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await fetch(`/api/delivery?symbol=${encodeURIComponent(clean)}&period=${period}`);
+      const res = await fetch(
+        `/api/delivery?symbol=${encodeURIComponent(clean)}&period=${period}${asOfDate ? `&date=${asOfDate}` : ""}`
+      );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Search failed");
       setSearchResult(json.result);
@@ -502,13 +508,20 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
   const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
+  const metaLine =
+    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "");
 
   return (
     <div>
       <ScreenHeader
         title="Delivery leaders"
-        meta={`As of ${data.asOf}`}
-        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+        meta={metaLine}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <PeriodToggle period={period} onChange={setPeriod} />
+            <DatePicker value={asOfDate} onChange={setAsOfDate} />
+          </div>
+        }
       >
         <div className="flex items-center gap-2">
           <DeliverySearchBox onPick={runSearch} query={query} setQuery={setQuery} />

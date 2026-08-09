@@ -5,6 +5,7 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+import SymbolLink from "@/components/SymbolLink";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -93,7 +94,7 @@ export default function MidcapVolumeTab() {
                     <td className="py-2.5 pl-4 pr-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                        <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{r.symbol}</span>
+                        <SymbolLink symbol={r.symbol} className="text-sm" />
                       </div>
                     </td>
                     <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.close)}</td>

@@ -13,6 +13,9 @@ import { fetchDebutBatch, withDebut } from "@/lib/debut";
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
 // lookups beyond NSE's own daily file, so this stays fast and reliable.
 export const dynamic = "force-dynamic";
+// How far back the "as of" picker may go, in trading days — about a
+// calendar month, matching the Screener tabs.
+const MAX_ASOF_TRADING_DAYS = 23;
 // See app/api/delivery/route.js for why this is bumped — Monthly view's
 // 10-period-deep history needs ~215 trading days of bhavcopy on a cold
 // cache.
@@ -69,12 +72,35 @@ function buildSectorPeriodHistory(symbols, days, periodTradingDays, periods) {
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const periodParam = searchParams.get("period");
+  const dateParam = searchParams.get("date");
   const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
   const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
   try {
-    const lookback = lookbackDaysFor(period);
-    const days = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    // "As of" support: only a plain YYYY-MM-DD is accepted, never a future
+    // date. The window is fetched wider and sliced, rather than teaching
+    // getRecentBhavcopies to start from an arbitrary day — the per-date
+    // files are cached for a week, so a historical run largely reuses what
+    // a previous run already pulled.
+    const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    let asOfDate = null;
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      asOfDate = dateParam > todayIST ? todayIST : dateParam;
+    }
+
+    const lookback = lookbackDaysFor(period) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
+    const allDays = await getRecentBhavcopies(lookback, lookback * 2 + 20);
+    let days = allDays;
+    if (asOfDate) {
+      days = allDays.filter((d) => d.date <= asOfDate);
+      if (days.length < periodTradingDays + 1) {
+        return Response.json(
+          { error: `Not enough trading-day data at or before ${asOfDate}. Pick a more recent date.` },
+          { status: 503 }
+        );
+      }
+      days = days.slice(-lookbackDaysFor(period));
+    }
     if (days.length < periodTradingDays + 1) {
       return Response.json(
         { error: "Not enough trading-day data available from NSE yet for this period" },
@@ -162,6 +188,8 @@ export async function GET(request) {
 
     return Response.json({
       asOf: latest.date,
+      requestedDate: asOfDate,
+      dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,
       sectors,
       tradingDaysUsed: days.length,

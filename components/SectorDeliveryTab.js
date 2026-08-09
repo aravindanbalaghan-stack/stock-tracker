@@ -9,9 +9,12 @@ import PeriodToggle from "@/components/PeriodToggle";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
+import DatePicker from "@/components/DatePicker";
+import SymbolLink from "@/components/SymbolLink";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
+
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -85,7 +88,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                   style={{ borderColor: "var(--border)" }}
                   onClick={() => setExpandedSymbol(isExpanded ? null : c.symbol)}
                 >
-                  <td className="py-2 pl-4 pr-2 font-mono text-xs" style={{ color: "var(--text)" }}>{c.symbol}</td>
+                  <td className="py-2 pl-4 pr-2"><SymbolLink symbol={c.symbol} className="text-xs" /></td>
                   <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>₹{fmt(c.close)}</td>
                   <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
                     {c.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(c.changePercent)}%`}
@@ -208,13 +211,14 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
+  const [asOfDate, setAsOfDate] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     setData(null); // show the loading state immediately on period change rather than stale data
     async function load() {
       try {
-        const res = await fetch(`/api/sector-delivery?period=${period}`);
+        const res = await fetch(`/api/sector-delivery?period=${period}${asOfDate ? `&date=${asOfDate}` : ""}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load sector delivery screen");
         if (!cancelled) setData(json);
@@ -228,7 +232,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       cancelled = true;
       clearInterval(id);
     };
-  }, [period]);
+  }, [period, asOfDate]);
 
   if (error) {
     return (
@@ -250,13 +254,20 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
   const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
+  const sectorMetaLine =
+    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "");
 
   return (
     <div>
       <ScreenHeader
         title="Sector deliverability"
-        meta={`As of ${data.asOf}`}
-        actions={<PeriodToggle period={period} onChange={setPeriod} />}
+        meta={sectorMetaLine}
+        actions={
+          <div className="flex items-center gap-2 flex-wrap">
+            <PeriodToggle period={period} onChange={setPeriod} />
+            <DatePicker value={asOfDate} onChange={setAsOfDate} />
+          </div>
+        }
       />
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
         Click a column header to sort (Shift+click to add a tiebreaker) · click a sector row for its {historyLabel} trend and constituent stocks
