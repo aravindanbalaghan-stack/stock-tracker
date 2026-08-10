@@ -6,6 +6,8 @@ import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { SCREENS, CONFLUENCE_SCREEN, CONFLUENCE_DEF } from "@/lib/screens";
+import NumericFilters from "@/components/NumericFilters";
+import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } from "@/lib/rowFilters";
 import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
@@ -177,6 +179,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // loading state, which is what the Watchlist does too.
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
+  // Price/volume bounds are applied client-side: the API already returned
+  // the matching rows, so narrowing them shouldn't cost another full scan.
+  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -231,7 +236,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isConfluence = screen === CONFLUENCE_SCREEN;
   const isReclaim = screen === "ma-reclaim";
 
-  const { sorted, sort, onSort } = useSortableRows(data?.rows, "volumeRatio", "desc");
+  const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
+  const { sorted, sort, onSort } = useSortableRows(filteredRows, "volumeRatio", "desc");
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
 
   // While live, re-run periodically. 90s rather than something faster
@@ -324,11 +330,19 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     <div>
       <ScreenHeader
         title={def.label}
-        meta={`${data.resultCount} match${data.resultCount === 1 ? "" : "es"} from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}${
+        meta={`${
+          hasActiveNumericFilters(numeric)
+            ? `${filteredRows.length} of ${data.resultCount} matches shown`
+            : `${data.resultCount} match${data.resultCount === 1 ? "" : "es"}`
+        } from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
         actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>}
       />
+
+      <div className="mb-3">
+        <NumericFilters filters={numeric} onChange={setNumeric} />
+      </div>
 
       {liveMode && !asOfDate && (
         <div
@@ -423,7 +437,12 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         </InfoNote>
       </div>
 
-      {data.rows.length === 0 ? (
+      {data.rows.length > 0 && filteredRows.length === 0 ? (
+        <EmptyState>
+          {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall
+          within the price and volume bounds set above.
+        </EmptyState>
+      ) : data.rows.length === 0 ? (
         <EmptyState>
           {isConfluence
             ? `No stocks appeared in two or more screens on ${data.asOf}.`

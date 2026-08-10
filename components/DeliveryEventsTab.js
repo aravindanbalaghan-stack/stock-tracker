@@ -7,6 +7,9 @@ import SymbolLink from "@/components/SymbolLink";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DatePicker from "@/components/DatePicker";
 import InfoNote from "@/components/InfoNote";
+import SymbolSearchBox from "@/components/SymbolSearchBox";
+import NumericFilters from "@/components/NumericFilters";
+import { EMPTY_NUMERIC_FILTERS, appendNumericParams } from "@/lib/rowFilters";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 
 function fmt(n, d = 2) {
@@ -80,7 +83,15 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
   const [deliveryMin, setDeliveryMin] = useState(70);
   const [lookback, setLookback] = useState(30);
   const [asOfDate, setAsOfDate] = useState("");
-  const [applied, setApplied] = useState({ volMultiple: 2, deliveryMin: 70, lookback: 30 });
+  const [symbol, setSymbol] = useState("");
+  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
+  const [applied, setApplied] = useState({
+    volMultiple: 2,
+    deliveryMin: 70,
+    lookback: 30,
+    symbol: "",
+    numeric: { ...EMPTY_NUMERIC_FILTERS },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +104,8 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
           deliveryMin: String(applied.deliveryMin),
           lookback: String(applied.lookback),
         });
+        if (applied.symbol) qs.set("symbol", applied.symbol);
+        appendNumericParams(qs, applied.numeric);
         if (asOfDate) qs.set("date", asOfDate);
         const res = await fetch(`/api/delivery-events?${qs.toString()}`);
         const json = await res.json();
@@ -111,6 +124,19 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
 
   const controls = (
     <div className="flex items-end gap-3 flex-wrap">
+      <SymbolSearchBox
+        value={symbol}
+        onSelect={(s) => {
+          setSymbol(s);
+          setApplied((a) => ({ ...a, symbol: s, numeric }));
+        }}
+        onClear={() => {
+          setSymbol("");
+          setApplied((a) => ({ ...a, symbol: "" }));
+        }}
+        placeholder="Search a stock…"
+        width="w-48"
+      />
       <label className="flex flex-col text-xs" style={{ color: "var(--text-faint)" }}>
         Volume ≥
         <div className="flex items-center gap-1 mt-1">
@@ -165,6 +191,8 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
             volMultiple: Number(volMultiple) || 2,
             deliveryMin: Number(deliveryMin) || 70,
             lookback: Number(lookback) || 30,
+            symbol,
+            numeric,
           })
         }
         className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium"
@@ -173,6 +201,9 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
         Apply
       </button>
       <DatePicker value={asOfDate} onChange={setAsOfDate} />
+      <div className="w-full">
+        <NumericFilters filters={numeric} onChange={setNumeric} priceLabel="Event price" />
+      </div>
     </div>
   );
 
@@ -198,12 +229,15 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
   }
 
   const c = data.criteria;
+  const hasBounds = Object.values(c.bounds ?? {}).some((v) => v != null);
 
   return (
     <div>
       <ScreenHeader
         title="Delivery events"
-        meta={`${data.eventCount} event${data.eventCount === 1 ? "" : "s"} in the last ${c.lookback} trading days · as of ${data.asOf}${
+        meta={`${data.eventCount} event${data.eventCount === 1 ? "" : "s"}${
+          data.symbolQuery ? ` for ${data.symbolQuery}` : ""
+        } in the last ${c.lookback} trading days${hasBounds ? " (price/volume bounds applied)" : ""} · as of ${data.asOf}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
         actions={controls}
@@ -233,8 +267,27 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
 
       {data.rows.length === 0 ? (
         <EmptyState>
-          No days matched {c.volMultiple}× volume with delivery above {c.deliveryMin}% in this window. Try
-          loosening the thresholds or widening the lookback.
+          {data.symbolInfo ? (
+            data.symbolInfo.tradedInWindow ? (
+              <>
+                {data.symbolInfo.symbol} traded in this window but had no day clearing {c.volMultiple}×
+                volume with delivery above {c.deliveryMin}%
+                {hasBounds ? " within the price and volume bounds set" : ""}. Loosen the thresholds or
+                widen the lookback to see more.
+              </>
+            ) : (
+              <>
+                No trading data for {data.symbolInfo.symbol} in this window — check the symbol, or it may
+                not be an EQ-series stock.
+              </>
+            )
+          ) : (
+            <>
+              No days matched {c.volMultiple}× volume with delivery above {c.deliveryMin}%
+              {hasBounds ? " within the price and volume bounds set" : ""} in this window. Try loosening
+              the thresholds or widening the lookback.
+            </>
+          )}
         </EmptyState>
       ) : (
         <div

@@ -1,4 +1,5 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
+import { readNumericParams, passesNumericBounds } from "@/lib/rowFilters";
 
 export const dynamic = "force-dynamic";
 // Wholly bhavcopy-driven: no Yahoo, no NSE session endpoints. The window
@@ -51,6 +52,17 @@ export async function GET(request) {
     Math.max(5, Number(searchParams.get("lookback")) || DEFAULT_EVENT_LOOKBACK)
   );
 
+  // Searching one stock answers a different question from browsing the
+  // whole market: "has THIS stock had these days, and what followed?".
+  // So a symbol search relaxes the row cap and reports when the stock
+  // simply had no qualifying days, rather than returning an empty table
+  // that looks the same as a failed request.
+  const symbolQuery = (searchParams.get("symbol") || "").trim().toUpperCase();
+
+  // Price and volume bounds, applied to the EVENT day — the price you'd
+  // have paid and the volume that actually traded when the signal fired.
+  const bounds = readNumericParams(searchParams);
+
   // Optional "as of" so this tab behaves like the rest of Delivery.
   const dateParam = searchParams.get("date");
   const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -84,6 +96,8 @@ export async function GET(request) {
       const day = days[i];
       for (const [symbol, r] of day.bySymbol) {
         if (r.series !== "EQ" || !r.volume || r.close == null) continue;
+        if (symbolQuery && symbol !== symbolQuery) continue;
+        if (!passesNumericBounds({ price: r.close, volume: r.volume }, bounds)) continue;
         if (r.deliveryPct == null || r.deliveryPct < deliveryMin) continue;
 
         // Volume against this symbol's own trailing average as it stood on
@@ -135,7 +149,20 @@ export async function GET(request) {
 
     // Most recent events first — the actionable end of the list.
     rows.sort((a, b) => (a.eventDate < b.eventDate ? 1 : a.eventDate > b.eventDate ? -1 : (b.eventVolumeRatio ?? 0) - (a.eventVolumeRatio ?? 0)));
-    const truncated = rows.length > MAX_ROWS;
+    // A single-symbol search returns everything it found — the cap exists
+    // to keep a whole-market scan manageable, not to hide a stock's own
+    // history from you.
+    const rowLimit = symbolQuery ? rows.length : MAX_ROWS;
+    const truncated = rows.length > rowLimit;
+
+    // When a symbol search comes back empty, say whether the stock traded
+    // at all in the window. "No qualifying days" and "no such symbol" look
+    // identical in an empty table but mean very different things.
+    let symbolInfo = null;
+    if (symbolQuery) {
+      const traded = days.some((d) => d.bySymbol.has(symbolQuery));
+      symbolInfo = { symbol: symbolQuery, tradedInWindow: traded, eventCount: rows.length };
+    }
 
     // Summary of how this setup actually behaved across the window — the
     // point of the tab is the pattern, not any single row.
@@ -157,12 +184,14 @@ export async function GET(request) {
       asOf: latest.date,
       requestedDate: asOfDate,
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
-      criteria: { volMultiple, deliveryMin, lookback, avgWindow: AVG_WINDOW },
+      criteria: { volMultiple, deliveryMin, lookback, avgWindow: AVG_WINDOW, bounds },
+      symbolQuery: symbolQuery || null,
+      symbolInfo,
       eventCount: rows.length,
       truncated,
       maxRows: MAX_ROWS,
       summary,
-      rows: rows.slice(0, MAX_ROWS),
+      rows: rows.slice(0, rowLimit),
     });
   } catch (err) {
     return Response.json(

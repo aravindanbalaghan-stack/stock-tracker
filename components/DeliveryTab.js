@@ -11,6 +11,8 @@ import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import DatePicker from "@/components/DatePicker";
+import NumericFilters from "@/components/NumericFilters";
+import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } from "@/lib/rowFilters";
 import SymbolLink from "@/components/SymbolLink";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
@@ -442,6 +444,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [category, setCategory] = useState("stocks"); // "stocks" | "other"
   const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
   const [asOfDate, setAsOfDate] = useState(""); // "" means the latest session
+  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
 
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);
@@ -508,8 +511,16 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
   const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
+  const visibleStocks = applyNumericFilters(data.stocks, numeric, { priceKey: "close", volumeKey: "volume" });
+  const visibleOther = applyNumericFilters(data.other, numeric, { priceKey: "close", volumeKey: "volume" });
+  const filterNote = hasActiveNumericFilters(numeric)
+    ? ` · ${(category === "stocks" ? visibleStocks : visibleOther).length} of ${
+        (category === "stocks" ? data.stocks : data.other)?.length ?? 0
+      } shown`
+    : "";
+
   const metaLine =
-    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "");
+    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "") + filterNote;
 
   return (
     <div>
@@ -580,10 +591,14 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
         </span>
       </div>
 
+      <div className="mb-3">
+        <NumericFilters filters={numeric} onChange={setNumeric} />
+      </div>
+
       {category === "stocks" ? (
-        <ResultTable rows={data.stocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
+        <ResultTable rows={visibleStocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
       ) : (
-        <ResultTable rows={data.other} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
+        <ResultTable rows={visibleOther} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
       )}
 
       <div className="mt-3">
