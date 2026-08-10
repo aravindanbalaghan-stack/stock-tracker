@@ -1,4 +1,4 @@
-import { SECTOR_LIST } from "@/lib/sectors";
+import { getResolvedSectorList } from "@/lib/sectorOverrides";
 import { fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
 import { classifyStage, ma30Series, MA_WEEKS } from "@/lib/stageAnalysis";
 
@@ -69,6 +69,7 @@ function weeksSinceReclaim(bars, ma) {
 
 export async function GET() {
   try {
+    const SECTOR_LIST = await getResolvedSectorList();
     const allSymbols = [...new Set(SECTOR_LIST.flatMap((s) => s.symbols))];
     const weekly = await fetchWeeklyOHLCVBatch(allSymbols, { concurrency: CONCURRENCY });
 

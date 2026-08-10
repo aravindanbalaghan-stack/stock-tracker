@@ -19,11 +19,12 @@ function vol(n) {
   if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
   return n.toLocaleString("en-IN");
 }
-function Signed({ value, digits = 2, invertColour = false }) {
+function Signed({ value, digits = 2 }) {
   if (value == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
-  const good = invertColour ? value <= 0 : value >= 0;
+  // Sign decides the colour. Max down is always negative, so an "inverted"
+  // scale rendered every drawdown green — which read as a gain at a glance.
   return (
-    <span style={{ color: good ? "var(--gain)" : "var(--loss)" }}>
+    <span style={{ color: value >= 0 ? "var(--gain)" : "var(--loss)" }}>
       {value >= 0 ? "+" : ""}
       {fmt(value, digits)}%
     </span>
@@ -289,7 +290,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
                       <Signed value={r.maxUpPct} />
                     </td>
                     <td className="py-2.5 px-2 text-right font-mono text-xs">
-                      <Signed value={r.maxDownPct} invertColour />
+                      <Signed value={r.maxDownPct} />
                     </td>
                     <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                       {r.volatilityPct == null ? "—" : `${fmt(r.volatilityPct, 1)}%`}

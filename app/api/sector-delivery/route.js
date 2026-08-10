@@ -7,7 +7,7 @@ import {
   BASELINE_TRADING_DAYS,
   lookbackDaysFor,
 } from "@/lib/deliveryMetrics";
-import { SECTOR_LIST } from "@/lib/sectors";
+import { getResolvedSectorList } from "@/lib/sectorOverrides";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
 
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
@@ -77,6 +77,10 @@ export async function GET(request) {
   const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
   try {
+    // Base sector lists plus any stocks the user has added (see
+    // lib/sectorOverrides.js), so manual additions show up here too.
+    const SECTOR_LIST = await getResolvedSectorList();
+
     // "As of" support: only a plain YYYY-MM-DD is accepted, never a future
     // date. The window is fetched wider and sliced, rather than teaching
     // getRecentBhavcopies to start from an arbitrary day — the per-date

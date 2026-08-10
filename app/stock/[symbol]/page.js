@@ -154,6 +154,35 @@ export default function StockInsightPage({ params }) {
             {data?.exchange && <span>{data.exchange}</span>}
             {data?.asOf && <span>· Delivery data as of {data.asOf}</span>}
           </p>
+          {data?.sectors?.length > 0 && (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+                Sectors
+              </span>
+              {data.sectors.map((s) => (
+                <Link
+                  key={s.key}
+                  href={`/sector/${encodeURIComponent(s.key)}`}
+                  className="text-[11px] px-1.5 py-0.5 rounded border hover:underline"
+                  style={{ borderColor: "var(--border)", color: "var(--accent)" }}
+                  title={
+                    s.viaOverride
+                      ? `${s.name} — added to this sector manually`
+                      : `See every stock in ${s.name}`
+                  }
+                >
+                  {s.name}
+                  {s.viaOverride ? " *" : ""}
+                </Link>
+              ))}
+            </div>
+          )}
+          {data && data.sectors?.length === 0 && (
+            <p className="text-[11px] mt-1.5" style={{ color: "var(--text-faint)" }}>
+              Not in any of the app&apos;s sector lists — those are hand-maintained, so you can add this
+              stock from any sector page.
+            </p>
+          )}
         </div>
       </div>
 

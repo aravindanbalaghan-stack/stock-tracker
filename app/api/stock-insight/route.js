@@ -1,6 +1,7 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import { fetchDailyOHLCV, sma, ema, toWeeklyBars } from "@/lib/screenerIndicators";
+import { getSectorsForSymbol } from "@/lib/sectorOverrides";
 import {
   computeMetrics,
   ACCUMULATION_WINDOW,
@@ -114,9 +115,12 @@ export async function GET(request) {
   if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
 
   try {
-    const [days, hist] = await Promise.all([
+    const [days, hist, sectors] = await Promise.all([
       getRecentBhavcopies(BHAV_WINDOW, BHAV_WINDOW * 2 + 20).catch(() => []),
       fetchDailyOHLCV(symbol, "2y").catch(() => null),
+      // Every sector this stock belongs to — a stock can genuinely sit in
+      // several, so all of them are returned rather than just the first.
+      getSectorsForSymbol(symbol).catch(() => []),
     ]);
 
     // ---- Price levels & indicators (Yahoo) ----------------------------
@@ -260,6 +264,7 @@ export async function GET(request) {
       name: hist?.name ?? null,
       exchange: hist?.exchange ?? null,
       industry,
+      sectors,
       volumeAvgDays: VOLUME_AVG_DAYS,
       levels,
       accumulation,

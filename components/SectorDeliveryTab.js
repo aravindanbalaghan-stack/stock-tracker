@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
@@ -11,6 +11,7 @@ import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import DatePicker from "@/components/DatePicker";
 import SymbolLink from "@/components/SymbolLink";
+import Link from "next/link";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -164,7 +165,15 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                   <td className="py-2.5 pl-4 pr-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                      <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{s.name}</span>
+                      <Link
+                        href={`/sector/${encodeURIComponent(s.key)}`}
+                        className="text-sm font-medium hover:underline"
+                        style={{ color: "var(--text)" }}
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Open ${s.name} — every stock, with accumulation and relative strength`}
+                      >
+                        {s.name}
+                      </Link>
                     </div>
                   </td>
                   {showStage && (
@@ -265,6 +274,9 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
   const [showStage, setShowStage] = useState(false);
   const [stageData, setStageData] = useState(null);
   const [stageLoading, setStageLoading] = useState(false);
+  const [stageError, setStageError] = useState(null);
+  // Bumped to request a retry; the effect only runs when it changes.
+  const [stageAttempt, setStageAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -287,17 +299,36 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
     };
   }, [period, asOfDate]);
 
+  // An attempt marker rather than deriving "should I fetch" from the
+  // loading flag. Previously stageLoading was both a dependency AND set
+  // inside the effect, so a failed fetch flipped it back to false, which
+  // re-fired the effect, which fetched again — an endless retry that left
+  // the button reading "Loading stages…" forever.
+  const stageAttemptRef = useRef(0);
+
   useEffect(() => {
-    if (!showStage || stageData || stageLoading) return;
+    if (!showStage) return;
+    if (stageAttemptRef.current === stageAttempt) return;
+    stageAttemptRef.current = stageAttempt;
+
     let cancelled = false;
     setStageLoading(true);
+    setStageError(null);
     (async () => {
       try {
         const res = await fetch("/api/sector-stage");
         const json = await res.json();
-        if (!cancelled && res.ok) setStageData(json);
-      } catch {
-        /* stage overlay is optional — the tab still works without it */
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
+        setStageData(json);
+      } catch (err) {
+        if (!cancelled) {
+          setStageError(
+            err?.name === "AbortError" || /timeout/i.test(err?.message ?? "")
+              ? "The stage scan timed out. It reads two years of weekly history for every constituent, which can exceed the request limit on a cold cache — try again and it should be quicker."
+              : err?.message || "Couldn't compute sector stages."
+          );
+        }
       } finally {
         if (!cancelled) setStageLoading(false);
       }
@@ -305,7 +336,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
     return () => {
       cancelled = true;
     };
-  }, [showStage, stageData, stageLoading]);
+  }, [showStage, stageAttempt]);
 
   if (error) {
     return (
@@ -363,7 +394,13 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
             </label>
             <button
               type="button"
-              onClick={() => setShowStage((v) => !v)}
+              onClick={() => {
+                setShowStage((v) => {
+                  const next = !v;
+                  if (next && !stageData) setStageAttempt((a) => a + 1);
+                  return next;
+                });
+              }}
               className="px-2.5 py-1 rounded-[var(--radius-sm)] border text-xs"
               style={{
                 borderColor: showStage ? "var(--accent)" : "var(--border)",
@@ -380,6 +417,23 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
         Click a column header to sort (Shift+click to add a tiebreaker) · click a sector row for its {historyLabel} trend and constituent stocks
       </p>
+
+      {stageError && (
+        <div
+          className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs flex items-start justify-between gap-3"
+          style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text-muted)" }}
+        >
+          <span>{stageError}</span>
+          <button
+            type="button"
+            onClick={() => setStageAttempt((a) => a + 1)}
+            className="px-2 py-0.5 rounded border text-[11px] shrink-0"
+            style={{ borderColor: "var(--border)", color: "var(--accent)" }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       <SectorTable
         rows={visibleSectors}
