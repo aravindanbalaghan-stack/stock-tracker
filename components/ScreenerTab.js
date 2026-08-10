@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
@@ -172,11 +172,31 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // a past date turns it off.
   const [liveMode, setLiveMode] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
+  // True only while a BACKGROUND refresh is in flight — the live re-run
+  // keeps the current table on screen rather than dropping back to the
+  // loading state, which is what the Watchlist does too.
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // Identity of the query itself, separate from the refresh counter. When
+  // this changes the user asked for genuinely different data, so clearing
+  // the table is right. When only refreshTick changes it's the same query
+  // re-run, and blanking the screen every 90 seconds would be wrong.
+  const queryKey = `${screen}|${asOfDate}|${liveMode ? "live" : "eod"}`;
+  const lastQueryKeyRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
-    setError(null);
+    const isNewQuery = lastQueryKeyRef.current !== queryKey;
+    lastQueryKeyRef.current = queryKey;
+
+    if (isNewQuery) {
+      setData(null);
+      setError(null);
+    } else {
+      setRefreshing(true);
+    }
+
     (async () => {
       try {
         const qs = new URLSearchParams({ screen });
@@ -185,15 +205,25 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         const res = await fetch(`/api/screeners?${qs.toString()}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't run this screen");
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          setError(null);
+          setLastUpdated(new Date());
+        }
       } catch (err) {
-        if (!cancelled) setError(err.message);
+        if (cancelled) return;
+        // A failed background refresh must not destroy a good table — keep
+        // what's on screen and surface the problem inline instead.
+        if (isNewQuery) setError(err.message);
+        else setError(`Last refresh failed: ${err.message}`);
+      } finally {
+        if (!cancelled) setRefreshing(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [screen, asOfDate, liveMode, refreshTick]);
+  }, [queryKey, refreshTick, screen, asOfDate, liveMode]);
 
   const showListedOn = screen === "ipo-base";
   const showMarketCap = screen === "pocket-pivot";
@@ -231,9 +261,12 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     >
       <span
         className="inline-block w-1.5 h-1.5 rounded-full"
-        style={{ background: liveMode && !asOfDate ? "var(--gain)" : "var(--text-faint)" }}
+        style={{
+          background: liveMode && !asOfDate ? "var(--gain)" : "var(--text-faint)",
+          opacity: refreshing ? 0.35 : 1,
+        }}
       />
-      Live
+      {refreshing ? "Refreshing…" : "Live"}
     </button>
   );
 
@@ -263,7 +296,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     </label>
   );
 
-  if (error) {
+  // Only take over the screen when there's nothing to show. With data
+  // already rendered, a refresh failure is reported inline below the header.
+  if (error && !data) {
     return (
       <div>
         <ScreenHeader title={def.label} actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>} />
@@ -314,7 +349,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
               {data.live.marketOpen
                 ? `session ${data.live.sessionProgressPct}% elapsed`
                 : "market closed — this is the final state of the last session"}
-              . Re-runs every 90s.
+              . Re-runs every 90s
+              {lastUpdated ? `, last updated ${lastUpdated.toLocaleTimeString("en-IN")}` : ""}.
               <div className="mt-1" style={{ color: "var(--text-faint)" }}>
                 Delivery % is carried over from the previous session — there is no intraday delivery feed
                 at any price, so it is never estimated here. Volume is only what has traded so far, so
@@ -330,6 +366,16 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
               to work from a local machine during market hours.
             </>
           )}
+        </div>
+      )}
+
+      {error && data && (
+        <div
+          className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs"
+          style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text-muted)" }}
+        >
+          {error} — showing the last good results
+          {lastUpdated ? ` from ${lastUpdated.toLocaleTimeString("en-IN")}` : ""}.
         </div>
       )}
 

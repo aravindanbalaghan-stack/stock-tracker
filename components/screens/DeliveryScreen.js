@@ -3,16 +3,18 @@
 import { useState } from "react";
 import DeliveryTab from "@/components/DeliveryTab";
 import SectorDeliveryTab from "@/components/SectorDeliveryTab";
+import DeliveryEventsTab from "@/components/DeliveryEventsTab";
 import { SubNav } from "@/components/ui/Chrome";
 
-// Both views answer "where is delivery-based accumulation happening" —
-// one ranks individual stocks, the other rolls the same bhavcopy data up
-// by sector. They also share the Daily/Weekly/Monthly period concept, so
-// keeping them apart as sibling top-level tabs made the relationship
-// harder to see than it needed to be.
+// All three views answer "where is delivery-based accumulation happening" —
+// one ranks individual stocks, one rolls the same bhavcopy data up by
+// sector, and one looks backwards at what actually followed the strongest
+// volume + delivery days. They share the Daily/Weekly/Monthly period idea
+// and the as-of date, so they belong together.
 const VIEWS = [
   { id: "stocks", label: "By stock" },
   { id: "sectors", label: "By sector" },
+  { id: "events", label: "Events & follow-through" },
 ];
 
 export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
@@ -27,6 +29,9 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
       )}
       {view === "sectors" && (
         <SectorDeliveryTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+      )}
+      {view === "events" && (
+        <DeliveryEventsTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       )}
     </div>
   );

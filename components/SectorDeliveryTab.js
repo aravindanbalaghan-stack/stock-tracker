@@ -123,7 +123,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
   );
 }
 
-function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel }) {
+function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel, showStage }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -134,6 +134,15 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
             <SortableTh label="Sector" sortKey="name" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            {showStage && (
+              <th
+                className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-left"
+                style={{ color: "var(--text-faint)" }}
+                title="Stage of the sector's equal-weighted composite, plus how many of its stocks are individually in Stage 2"
+              >
+                Stage
+              </th>
+            )}
             <SortableTh label={`Avg Chg % (${periodLabel})`} sortKey="avgChangePercent" sort={sort} onSort={onSort} />
             <SortableTh label={`Sector Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} title="Volume-weighted: total delivered ÷ total traded across the sector's stocks over this period" />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
@@ -158,6 +167,43 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                       <span className="text-sm font-medium" style={{ color: "var(--text)" }}>{s.name}</span>
                     </div>
                   </td>
+                  {showStage && (
+                    <td className="py-2.5 px-2 text-left">
+                      {!s.stageInfo ? (
+                        <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                          —
+                        </span>
+                      ) : !s.stageInfo.available ? (
+                        <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                          n/a
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor:
+                                s.stageInfo.stage === 2 ? "var(--gain)" : s.stageInfo.stage === 4 ? "var(--loss)" : "var(--border)",
+                              color:
+                                s.stageInfo.stage === 2 ? "var(--gain)" : s.stageInfo.stage === 4 ? "var(--loss)" : "var(--text-muted)",
+                            }}
+                            title={`Composite 30-week MA slope ${s.stageInfo.ma30SlopePct >= 0 ? "+" : ""}${s.stageInfo.ma30SlopePct}% over 4 weeks`}
+                          >
+                            {s.stageInfo.stageLabel}
+                          </span>
+                          {s.stageInfo.breadthPct != null && (
+                            <span
+                              className="text-[10px] font-mono"
+                              style={{ color: "var(--text-faint)" }}
+                              title={`${s.stageInfo.membersInStage2} of ${s.stageInfo.membersJudged} stocks in this sector are individually in Stage 2`}
+                            >
+                              {s.stageInfo.breadthPct}% breadth
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
                     {s.avgChangePercent == null ? "—" : `${up ? "+" : ""}${fmt(s.avgChangePercent)}%`}
                   </td>
@@ -178,7 +224,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={6} className="p-0">
+                    <td colSpan={showStage ? 7 : 6} className="p-0">
                       <div className="border-b" style={{ borderColor: "var(--border)" }}>
                         <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
                           {historyLabel} sector delivery % trend
@@ -212,6 +258,13 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
   const [error, setError] = useState(null);
   const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
   const [asOfDate, setAsOfDate] = useState("");
+  // Filter for "sectors with accumulation above X%", and an optional
+  // stage overlay that's fetched separately because it needs two years of
+  // weekly history per constituent.
+  const [minDelivery, setMinDelivery] = useState(0);
+  const [showStage, setShowStage] = useState(false);
+  const [stageData, setStageData] = useState(null);
+  const [stageLoading, setStageLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -234,6 +287,26 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
     };
   }, [period, asOfDate]);
 
+  useEffect(() => {
+    if (!showStage || stageData || stageLoading) return;
+    let cancelled = false;
+    setStageLoading(true);
+    (async () => {
+      try {
+        const res = await fetch("/api/sector-stage");
+        const json = await res.json();
+        if (!cancelled && res.ok) setStageData(json);
+      } catch {
+        /* stage overlay is optional — the tab still works without it */
+      } finally {
+        if (!cancelled) setStageLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showStage, stageData, stageLoading]);
+
   if (error) {
     return (
       <ErrorState>{error}</ErrorState>
@@ -254,6 +327,14 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
   const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
+  // Merge the stage overlay in by sector key, and apply the "accumulation
+  // above X%" filter. Both are display-side: the API returns every sector,
+  // so toggling the filter never refetches.
+  const stageByKey = new Map((stageData?.sectors ?? []).map((s) => [s.key, s]));
+  const visibleSectors = (data.sectors ?? [])
+    .map((s) => ({ ...s, stageInfo: stageByKey.get(s.key) ?? null }))
+    .filter((s) => (minDelivery > 0 ? (s.deliveryPct ?? 0) >= minDelivery : true));
+
   const sectorMetaLine =
     "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "");
 
@@ -265,6 +346,33 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         actions={
           <div className="flex items-center gap-2 flex-wrap">
             <PeriodToggle period={period} onChange={setPeriod} />
+            <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
+              Accum ≥
+              <input
+                type="number"
+                step="5"
+                min="0"
+                max="100"
+                value={minDelivery}
+                onChange={(e) => setMinDelivery(Number(e.target.value) || 0)}
+                className="w-14 rounded-[var(--radius-sm)] px-2 py-1 text-sm border"
+                style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+                title="Show only sectors whose volume-weighted delivery % is at least this high"
+              />
+              %
+            </label>
+            <button
+              type="button"
+              onClick={() => setShowStage((v) => !v)}
+              className="px-2.5 py-1 rounded-[var(--radius-sm)] border text-xs"
+              style={{
+                borderColor: showStage ? "var(--accent)" : "var(--border)",
+                color: showStage ? "var(--accent)" : "var(--text-muted)",
+              }}
+              title="Work out which stage each sector's composite is in — needs two years of weekly history per constituent, so it takes a moment"
+            >
+              {stageLoading ? "Loading stages…" : showStage ? "Stage on" : "Show stage"}
+            </button>
             <DatePicker value={asOfDate} onChange={setAsOfDate} />
           </div>
         }
@@ -274,7 +382,8 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       </p>
 
       <SectorTable
-        rows={data.sectors}
+        rows={visibleSectors}
+        showStage={showStage}
         onAddToWatchlist={onAddToWatchlist}
         watchlistSymbols={watchlistSymbols}
         periodLabel={periodLabel}
