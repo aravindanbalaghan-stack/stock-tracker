@@ -6,6 +6,7 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import SectorSyncPanel from "@/components/SectorSyncPanel";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -331,7 +332,12 @@ export default function SectorPage({ params }) {
           </div>
 
           <div>
-            <SectionTitle meta="Applies everywhere in the app">Missing a stock?</SectionTitle>
+            <SectionTitle meta="Compare against Zerodha's sector lists">Check for missing stocks</SectionTitle>
+            <SectorSyncPanel sectorKey={sectorKey} onApplied={() => setReloadTick((t) => t + 1)} />
+          </div>
+
+          <div>
+            <SectionTitle meta="Applies everywhere in the app">Add one manually</SectionTitle>
             <Panel>
               <AddStockForm sectorKey={sectorKey} onAdded={() => setReloadTick((t) => t + 1)} />
               <p className="text-[11px] mt-3" style={{ color: "var(--text-faint)" }}>
