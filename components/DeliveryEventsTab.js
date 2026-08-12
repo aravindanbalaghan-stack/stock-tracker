@@ -11,6 +11,7 @@ import SymbolSearchBox from "@/components/SymbolSearchBox";
 import NumericFilters from "@/components/NumericFilters";
 import { EMPTY_NUMERIC_FILTERS, appendNumericParams } from "@/lib/rowFilters";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
+import { formatDayLabel } from "@/lib/periodLabel";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -237,7 +238,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
         title="Delivery events"
         meta={`${data.eventCount} event${data.eventCount === 1 ? "" : "s"}${
           data.symbolQuery ? ` for ${data.symbolQuery}` : ""
-        } in the last ${c.lookback} trading days${hasBounds ? " (price/volume bounds applied)" : ""} · as of ${data.asOf}${
+        } in the ${c.lookback} sessions ending ${formatDayLabel(data.asOf)}${hasBounds ? " · price/volume bounds applied" : ""}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
         actions={controls}

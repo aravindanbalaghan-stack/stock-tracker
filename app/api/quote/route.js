@@ -41,26 +41,57 @@ async function fetchChartQuote(yahooSymbol) {
     const meta = result.meta || {};
     const timestamps = result.timestamp || [];
     const closes = result.indicators?.quote?.[0]?.close || [];
-    // Only keep (timestamp, close) pairs where a close actually exists —
-    // the most recent bar can be null intraday.
-    const validCloses = timestamps.map((_, i) => closes[i]).filter((c) => c != null);
+    // Keep timestamps alongside closes — the previous close has to be
+    // chosen by DATE, not by position (see below).
+    const bars = timestamps
+      .map((t, i) => ({ t, c: closes[i] }))
+      .filter((b) => b.c != null && b.t != null);
 
-    const price = meta.regularMarketPrice ?? validCloses[validCloses.length - 1] ?? null;
+    const price = meta.regularMarketPrice ?? bars[bars.length - 1]?.c ?? null;
 
-    // IMPORTANT: don't trust meta.chartPreviousClose here — it's the close
-    // from *before the requested range started*, not necessarily
-    // yesterday's close (with range=5d it can be ~6 trading days back,
-    // which silently inflates % change). Instead, take the second-to-last
-    // close in the actual daily series returned, which is always the
-    // prior trading day's close.
+    // Two things this must not do:
+    //
+    //  * Don't trust meta.chartPreviousClose — it's the close from before
+    //    the requested RANGE started, so with range=5d it can be ~6
+    //    trading days back and silently inflates the % change.
+    //
+    //  * Don't take a fixed bars[length - 2] either. That's only correct
+    //    while today's (partial) bar exists. Before the open, or when an
+    //    illiquid symbol hasn't printed a bar yet, the last bar IS
+    //    yesterday — so length-2 picks the day BEFORE yesterday and the
+    //    quote shows yesterday's move as though it were today's. That's
+    //    the "change % sometimes doesn't update" symptom.
+    //
+    // Instead: work out which session `price` belongs to, then take the
+    // last bar from a strictly earlier date. Correct intraday, after the
+    // close, before the open, and after holidays alike.
+    const istDate = (epochSeconds) =>
+      new Date(epochSeconds * 1000).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
+    const sessionEpoch = meta.regularMarketTime ?? bars[bars.length - 1]?.t ?? null;
+    const sessionDate = sessionEpoch != null ? istDate(sessionEpoch) : null;
+
     let prevClose = null;
-    if (validCloses.length >= 2) {
-      prevClose = validCloses[validCloses.length - 2];
-    } else {
-      prevClose = meta.previousClose ?? meta.chartPreviousClose ?? null;
+    let prevCloseDate = null;
+    if (sessionDate) {
+      for (let i = bars.length - 1; i >= 0; i--) {
+        const d = istDate(bars[i].t);
+        if (d < sessionDate) {
+          prevClose = bars[i].c;
+          prevCloseDate = d;
+          break;
+        }
+      }
     }
 
-    return { meta, price, prevClose };
+    // Yahoo's own previous-close field is the one it pairs with
+    // regularMarketPrice, so it's the right fallback when the series
+    // doesn't reach back far enough.
+    if (prevClose == null) {
+      prevClose = meta.regularMarketPreviousClose ?? meta.previousClose ?? null;
+    }
+
+    return { meta, price, prevClose, prevCloseDate, sessionDate };
   } catch {
     return null;
   }
@@ -107,7 +138,7 @@ export async function GET(request) {
         };
       }
 
-      const { meta, price, prevClose } = chart;
+      const { meta, price, prevClose, prevCloseDate, sessionDate } = chart;
       const change = price != null && prevClose != null ? price - prevClose : null;
       const changePercent = change != null && prevClose ? (change / prevClose) * 100 : null;
 
@@ -119,6 +150,8 @@ export async function GET(request) {
         change,
         changePercent,
         previousClose: prevClose,
+        previousCloseDate: prevCloseDate ?? null,
+        sessionDate: sessionDate ?? null,
         dayHigh: meta.regularMarketDayHigh ?? null,
         dayLow: meta.regularMarketDayLow ?? null,
         volume: meta.regularMarketVolume ?? null,

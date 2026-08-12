@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import TickerTape from "@/components/TickerTape";
 import AddStock from "@/components/AddStock";
 import WatchlistTable from "@/components/WatchlistTable";
 import AlertsPanel from "@/components/AlertsPanel";
 import TabBar from "@/components/TabBar";
+import { useRouter, useSearchParams } from "next/navigation";
 import GlobalSearch from "@/components/GlobalSearch";
-import StockDetailDrawer from "@/components/StockDetailDrawer";
 import MarketScreen from "@/components/screens/MarketScreen";
 import DeliveryScreen from "@/components/screens/DeliveryScreen";
 import ScreenersScreen from "@/components/screens/ScreenersScreen";
@@ -32,7 +32,7 @@ const TABS = [
   { id: "niftybank", label: "Bank Nifty" },
 ];
 
-export default function Page() {
+function PageInner() {
   const [activeTab, setActiveTab] = useState("watchlist");
   // Lazy initializer instead of DEFAULT_WATCHLIST + a mount effect — reads
   // localStorage during the initial render (loadWatchlist() already guards
@@ -47,7 +47,23 @@ export default function Page() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [identity, setIdentity] = useState(() => readIdentityCookie());
-  const [detailSymbol, setDetailSymbol] = useState(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // The active tab lives in the URL. That's what makes "back" from a stock
+  // or sector page land on the tab you left rather than resetting to
+  // Watchlist — the browser simply returns to the previous URL.
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && TABS.some((t) => t.id === tab)) setActiveTab(tab);
+  }, [searchParams]);
+
+  function changeTab(id) {
+    setActiveTab(id);
+    // replace, not push: switching tabs shouldn't fill the back stack with
+    // every tab you glanced at on the way somewhere.
+    router.replace(id === "watchlist" ? "/" : `/?tab=${encodeURIComponent(id)}`, { scroll: false });
+  }
   const pollRef = useRef(null);
 
   const fetchQuotes = useCallback(async (syms) => {
@@ -166,7 +182,14 @@ export default function Page() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <GlobalSearch onSelect={setDetailSymbol} />
+          <GlobalSearch
+            onSelect={(sym) =>
+              // Full insight page rather than the side drawer — the drawer
+              // only ever showed news and recent moves, while the page has
+              // the levels, holdings, accumulation table and depth.
+              router.push(`/stock/${encodeURIComponent(sym)}`)
+            }
+          />
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span className="hidden md:inline">{identity}</span>
@@ -178,7 +201,7 @@ export default function Page() {
         </div>
       </header>
 
-      <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
+      <TabBar tabs={TABS} active={activeTab} onChange={changeTab} />
 
       <main className="flex-1 px-4 md:px-8 py-6">
         {activeTab === "watchlist" && (
@@ -205,7 +228,7 @@ export default function Page() {
                   meta={meta}
                   onRemove={handleRemove}
                   onNotesChange={handleNotesChange}
-                  onOpenDetail={setDetailSymbol}
+                  onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}
                 />
               </>
             )}
@@ -224,18 +247,22 @@ export default function Page() {
           <ScreenersScreen
             onAddToWatchlist={handleAdd}
             watchlistSymbols={symbols}
-            onOpenDetail={setDetailSymbol}
+            onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}
           />
         )}
         {activeTab === "niftybank" && <NiftyBankTab />}
       </main>
 
-      <StockDetailDrawer
-        symbol={detailSymbol}
-        onClose={() => setDetailSymbol(null)}
-        onAddToWatchlist={handleAdd}
-        inWatchlist={detailSymbol ? symbols.includes(detailSymbol) : false}
-      />
     </div>
+  );
+}
+
+// useSearchParams opts the tree into client rendering, which Next requires
+// to be wrapped so the rest of the shell can still prerender.
+export default function Page() {
+  return (
+    <Suspense fallback={null}>
+      <PageInner />
+    </Suspense>
   );
 }

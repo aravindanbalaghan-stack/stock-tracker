@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
@@ -111,6 +112,26 @@ function AddStockForm({ sectorKey, onAdded }) {
   );
 }
 
+function BackButton() {
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        // Return to wherever you came from, tab and scroll intact. Only
+        // falls back to the dashboard when there's no history to go back
+        // to — e.g. the page was opened directly from a link.
+        if (typeof window !== "undefined" && window.history.length > 1) router.back();
+        else router.push("/");
+      }}
+      className="text-xs px-2 py-1 rounded border"
+      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+    >
+      ← Back
+    </button>
+  );
+}
+
 export default function SectorPage({ params }) {
   const { key } = use(params);
   const sectorKey = decodeURIComponent(key);
@@ -153,13 +174,7 @@ export default function SectorPage({ params }) {
   return (
     <div className="min-h-screen px-4 md:px-8 py-6">
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <Link
-          href="/"
-          className="text-xs px-2 py-1 rounded border"
-          style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-        >
-          ← Back
-        </Link>
+        <BackButton />
         <div>
           <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
             {data?.name ?? sectorKey}

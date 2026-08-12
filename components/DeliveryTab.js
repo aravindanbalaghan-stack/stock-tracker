@@ -14,6 +14,7 @@ import DatePicker from "@/components/DatePicker";
 import NumericFilters from "@/components/NumericFilters";
 import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } from "@/lib/rowFilters";
 import SymbolLink from "@/components/SymbolLink";
+import { periodCoverageLabel } from "@/lib/periodLabel";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -519,8 +520,14 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       } shown`
     : "";
 
+  const coverage = periodCoverageLabel({
+    asOf: data.asOf,
+    period: data.period ?? period,
+    periodTradingDays: data.criteria?.periodTradingDays ?? 1,
+    firstDate: data.windowFirstDate,
+  });
   const metaLine =
-    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "") + filterNote;
+    coverage.full + (data.dateAdjusted ? " · " + data.requestedDate + " wasn\u2019t a trading day" : "") + filterNote;
 
   return (
     <div>

@@ -12,6 +12,7 @@ import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import DatePicker from "@/components/DatePicker";
 import SymbolLink from "@/components/SymbolLink";
 import Link from "next/link";
+import { periodCoverageLabel } from "@/lib/periodLabel";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -366,8 +367,14 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
     .map((s) => ({ ...s, stageInfo: stageByKey.get(s.key) ?? null }))
     .filter((s) => (minDelivery > 0 ? (s.deliveryPct ?? 0) >= minDelivery : true));
 
+  const coverage = periodCoverageLabel({
+    asOf: data.asOf,
+    period: data.period ?? period,
+    periodTradingDays: data.criteria?.periodTradingDays ?? 1,
+    firstDate: data.windowFirstDate,
+  });
   const sectorMetaLine =
-    "As of " + data.asOf + (data.dateAdjusted ? " (" + data.requestedDate + " wasn\u2019t a trading day)" : "");
+    coverage.full + (data.dateAdjusted ? " · " + data.requestedDate + " wasn\u2019t a trading day" : "");
 
   return (
     <div>

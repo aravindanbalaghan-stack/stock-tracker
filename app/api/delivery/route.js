@@ -133,6 +133,9 @@ export async function GET(request) {
       const { category, _volumeAboveAvg, ...rest } = metrics;
       return Response.json({
         asOf: latest.date,
+      // First session actually included, so the UI can state the exact
+      // range rather than inferring it from a trading-day count.
+      windowFirstDate: days[Math.max(0, days.length - periodTradingDays)]?.date ?? null,
       requestedDate: asOfDate,
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
         period,
@@ -226,6 +229,9 @@ export async function GET(request) {
 
     return Response.json({
       asOf: latest.date,
+      // First session actually included, so the UI can state the exact
+      // range rather than inferring it from a trading-day count.
+      windowFirstDate: days[Math.max(0, days.length - periodTradingDays)]?.date ?? null,
       requestedDate: asOfDate,
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,

@@ -523,6 +523,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
       label: SCREENS[screen].label,
       description: SCREENS[screen].description,
       asOf: latest.date,
+      windowFirstDate: days[0]?.date ?? null,
       universeSize: universe.length,
       matchedBeforeEnrichment: candidates.length,
       resultCount: rows.length,

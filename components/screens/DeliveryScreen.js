@@ -4,6 +4,7 @@ import { useState } from "react";
 import DeliveryTab from "@/components/DeliveryTab";
 import SectorDeliveryTab from "@/components/SectorDeliveryTab";
 import DeliveryEventsTab from "@/components/DeliveryEventsTab";
+import DeliveryEntryTab from "@/components/DeliveryEntryTab";
 import { SubNav } from "@/components/ui/Chrome";
 
 // All three views answer "where is delivery-based accumulation happening" —
@@ -15,6 +16,7 @@ const VIEWS = [
   { id: "stocks", label: "By stock" },
   { id: "sectors", label: "By sector" },
   { id: "events", label: "Events & follow-through" },
+  { id: "entry", label: "Entry" },
 ];
 
 export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
@@ -32,6 +34,9 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
       )}
       {view === "events" && (
         <DeliveryEventsTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+      )}
+      {view === "entry" && (
+        <DeliveryEntryTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       )}
     </div>
   );

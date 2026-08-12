@@ -11,6 +11,7 @@ import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } f
 import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
+import { formatDayLabel } from "@/lib/periodLabel";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -334,7 +335,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
           hasActiveNumericFilters(numeric)
             ? `${filteredRows.length} of ${data.resultCount} matches shown`
             : `${data.resultCount} match${data.resultCount === 1 ? "" : "es"}`
-        } from ${data.universeSize.toLocaleString("en-IN")} stocks · as of ${data.asOf}${
+        } from ${data.universeSize.toLocaleString("en-IN")} stocks · trading session of ${formatDayLabel(data.asOf)}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
         actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>}

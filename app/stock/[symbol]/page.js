@@ -2,6 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 
@@ -99,6 +100,26 @@ function HoldingsTable({ shareholding }) {
   );
 }
 
+function BackButton() {
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        // Return to wherever you came from, tab and scroll intact. Only
+        // falls back to the dashboard when there's no history to go back
+        // to — e.g. the page was opened directly from a link.
+        if (typeof window !== "undefined" && window.history.length > 1) router.back();
+        else router.push("/");
+      }}
+      className="text-xs px-2 py-1 rounded border"
+      style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+    >
+      ← Back
+    </button>
+  );
+}
+
 export default function StockInsightPage({ params }) {
   const { symbol } = use(params);
   const sym = decodeURIComponent(symbol).toUpperCase();
@@ -128,9 +149,7 @@ export default function StockInsightPage({ params }) {
   return (
     <div className="min-h-screen px-4 md:px-8 py-6">
       <div className="flex items-center gap-3 mb-5 flex-wrap">
-        <Link href="/" className="text-xs px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
-          ← Back
-        </Link>
+        <BackButton />
         <div className="min-w-0">
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
