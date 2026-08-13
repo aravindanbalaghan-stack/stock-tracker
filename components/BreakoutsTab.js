@@ -120,6 +120,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
                     symbol={r.symbol}
                     inWatchlist={watchlistSymbols?.includes(r.symbol)}
                     onAdd={onAddToWatchlist}
+                        source={"Breakouts"}
                   />
                 </td>
               </tr>

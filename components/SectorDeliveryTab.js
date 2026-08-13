@@ -106,6 +106,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                       symbol={c.symbol}
                       inWatchlist={watchlistSymbols?.includes(c.symbol)}
                       onAdd={onAddToWatchlist}
+                        source={"Sector deliverability"}
                     />
                   </td>
                 </tr>
@@ -205,9 +206,21 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                             <span
                               className="text-[10px] font-mono"
                               style={{ color: "var(--text-faint)" }}
-                              title={`${s.stageInfo.membersInStage2} of ${s.stageInfo.membersJudged} stocks in this sector are individually in Stage 2`}
+                              title={[
+                                `${s.stageInfo.membersInStage2} of ${s.stageInfo.membersJudged} constituents are individually in Stage 2.`,
+                                `Judged over the same ${s.stageInfo.alignedWeeks}-week window as the sector composite.`,
+                                s.stageInfo.excludedShortHistory
+                                  ? `${s.stageInfo.excludedShortHistory} stock(s) excluded — too little history to judge.`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                             >
                               {s.stageInfo.breadthPct}% breadth
+                              <span style={{ opacity: 0.7 }}>
+                                {" "}
+                                ({s.stageInfo.membersInStage2}/{s.stageInfo.membersJudged})
+                              </span>
                             </span>
                           )}
                         </div>
@@ -266,13 +279,13 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
 export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
-  const [asOfDate, setAsOfDate] = useState("");
+  const [period, setPeriod] = usePersistentState("sector.period", "daily"); // "daily" | "weekly" | "monthly"
+  const [asOfDate, setAsOfDate] = usePersistentState("sector.date", "");
   // Filter for "sectors with accumulation above X%", and an optional
   // stage overlay that's fetched separately because it needs two years of
   // weekly history per constituent.
-  const [minDelivery, setMinDelivery] = useState(0);
-  const [showStage, setShowStage] = useState(false);
+  const [minDelivery, setMinDelivery] = usePersistentState("sector.minDelivery", 0);
+  const [showStage, setShowStage] = usePersistentState("sector.showStage", false);
   const [stageData, setStageData] = useState(null);
   const [stageLoading, setStageLoading] = useState(false);
   const [stageError, setStageError] = useState(null);

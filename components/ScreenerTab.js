@@ -169,11 +169,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const [expanded, setExpanded] = useState(null);
   // Empty string means "latest session" — the default, and not the same as
   // picking today's date, since today may not be a trading day yet.
-  const [asOfDate, setAsOfDate] = useState("");
+  const [asOfDate, setAsOfDate] = usePersistentState("screener.date", "");
   // Live mode re-runs the screen against the current session instead of the
   // last published EOD file. Only meaningful for a "latest" run, so picking
   // a past date turns it off.
-  const [liveMode, setLiveMode] = useState(false);
+  const [liveMode, setLiveMode] = usePersistentState("screener.live", false);
   const [refreshTick, setRefreshTick] = useState(0);
   // True only while a BACKGROUND refresh is in flight — the live re-run
   // keeps the current table on screen rather than dropping back to the
@@ -182,7 +182,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const [lastUpdated, setLastUpdated] = useState(null);
   // Price/volume bounds are applied client-side: the API already returned
   // the matching rows, so narrowing them shouldn't cost another full scan.
-  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
+  const [numeric, setNumeric] = usePersistentState("screener.numeric", EMPTY_NUMERIC_FILTERS);
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -697,6 +697,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           symbol={r.symbol}
                           inWatchlist={watchlistSymbols?.includes(r.symbol)}
                           onAdd={onAddToWatchlist}
+                        source={`Screener · ${def.label}`}
                         />
                       </td>
                     </tr>

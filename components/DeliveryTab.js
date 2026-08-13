@@ -195,6 +195,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                       symbol={r.symbol}
                       inWatchlist={watchlistSymbols?.includes(r.symbol)}
                       onAdd={onAddToWatchlist}
+                        source={"Delivery leaders"}
                     />
                   </td>
                 </tr>
@@ -228,6 +229,7 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
             symbol={result.symbol}
             inWatchlist={watchlistSymbols?.includes(result.symbol)}
             onAdd={onAddToWatchlist}
+                        source={"Delivery leaders"}
           />
           <button onClick={onClear} className="text-xs" style={{ color: "var(--text-faint)" }}>Clear</button>
         </div>
@@ -442,10 +444,10 @@ function DeliverySearchBox({ onPick, query, setQuery }) {
 export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [category, setCategory] = useState("stocks"); // "stocks" | "other"
-  const [period, setPeriod] = useState("daily"); // "daily" | "weekly" | "monthly"
-  const [asOfDate, setAsOfDate] = useState(""); // "" means the latest session
-  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
+  const [category, setCategory] = usePersistentState("delivery.category", "stocks"); // "stocks" | "other"
+  const [period, setPeriod] = usePersistentState("delivery.period", "daily"); // "daily" | "weekly" | "monthly"
+  const [asOfDate, setAsOfDate] = usePersistentState("delivery.date", ""); // "" means the latest session
+  const [numeric, setNumeric] = usePersistentState("delivery.numeric", EMPTY_NUMERIC_FILTERS);
 
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState(null);

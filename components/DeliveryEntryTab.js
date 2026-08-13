@@ -201,10 +201,10 @@ function BacktestPanel({ bt, target }) {
 export default function DeliveryEntryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [target, setTarget] = useState(20);
-  const [backtestMode, setBacktestMode] = useState(false);
-  const [splitDate, setSplitDate] = useState("");
-  const [applied, setApplied] = useState({ target: 20, backtest: false, date: "" });
+  const [target, setTarget] = usePersistentState("entry.target", 20);
+  const [backtestMode, setBacktestMode] = usePersistentState("entry.backtest", false);
+  const [splitDate, setSplitDate] = usePersistentState("entry.splitDate", "");
+  const [applied, setApplied] = usePersistentState("entry.applied", { target: 20, backtest: false, date: "" });
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -450,6 +450,7 @@ export default function DeliveryEntryTab({ onAddToWatchlist, watchlistSymbols })
                         symbol={r.symbol}
                         inWatchlist={watchlistSymbols?.includes(r.symbol)}
                         onAdd={onAddToWatchlist}
+                        source={"Entry candidates"}
                       />
                     </td>
                   </tr>

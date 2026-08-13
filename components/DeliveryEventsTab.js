@@ -80,18 +80,18 @@ function SummaryStrip({ summary, criteria }) {
 export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [volMultiple, setVolMultiple] = useState(2);
-  const [deliveryMin, setDeliveryMin] = useState(70);
-  const [lookback, setLookback] = useState(30);
-  const [asOfDate, setAsOfDate] = useState("");
-  const [symbol, setSymbol] = useState("");
-  const [numeric, setNumeric] = useState({ ...EMPTY_NUMERIC_FILTERS });
-  const [applied, setApplied] = useState({
+  const [volMultiple, setVolMultiple] = usePersistentState("events.volMultiple", 2);
+  const [deliveryMin, setDeliveryMin] = usePersistentState("events.deliveryMin", 70);
+  const [lookback, setLookback] = usePersistentState("events.lookback", 30);
+  const [asOfDate, setAsOfDate] = usePersistentState("events.date", "");
+  const [symbol, setSymbol] = usePersistentState("events.symbol", "");
+  const [numeric, setNumeric] = usePersistentState("events.numeric", EMPTY_NUMERIC_FILTERS);
+  const [applied, setApplied] = usePersistentState("events.applied", {
     volMultiple: 2,
     deliveryMin: 70,
     lookback: 30,
     symbol: "",
-    numeric: { ...EMPTY_NUMERIC_FILTERS },
+    numeric: EMPTY_NUMERIC_FILTERS,
   });
 
   useEffect(() => {
@@ -354,6 +354,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
                         symbol={r.symbol}
                         inWatchlist={watchlistSymbols?.includes(r.symbol)}
                         onAdd={onAddToWatchlist}
+                        source={"Delivery events"}
                       />
                     </td>
                   </tr>

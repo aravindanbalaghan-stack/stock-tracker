@@ -1,6 +1,6 @@
 "use client";
 
-export default function WatchlistAddButton({ symbol, inWatchlist, onAdd }) {
+export default function WatchlistAddButton({ symbol, inWatchlist, onAdd, source }) {
   if (!onAdd) return null;
   return (
     <button
@@ -8,7 +8,7 @@ export default function WatchlistAddButton({ symbol, inWatchlist, onAdd }) {
       disabled={inWatchlist}
       onClick={(e) => {
         e.stopPropagation();
-        onAdd(symbol);
+        onAdd(symbol, source);
       }}
       className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap transition-colors disabled:opacity-50"
       style={{

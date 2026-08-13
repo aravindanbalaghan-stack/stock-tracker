@@ -99,6 +99,17 @@ function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
           <span className="text-xs truncate max-w-[160px]" style={{ color: "var(--text-muted)" }}>
             {quote.name}
           </span>
+          {meta?.source && (
+            <span
+              className="text-[10px] mt-0.5 truncate max-w-[160px]"
+              style={{ color: "var(--text-faint)" }}
+              title={`Added from ${meta.source}${
+                meta.addedAt ? ` on ${new Date(meta.addedAt).toLocaleDateString("en-IN")}` : ""
+              }`}
+            >
+              via {meta.source}
+            </span>
+          )}
         </div>
       </td>
       <td className="py-3 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
