@@ -12,6 +12,7 @@ import NumericFilters from "@/components/NumericFilters";
 import { EMPTY_NUMERIC_FILTERS, appendNumericParams } from "@/lib/rowFilters";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { formatDayLabel } from "@/lib/periodLabel";
+import { usePersistentState } from "@/lib/usePersistentState";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";

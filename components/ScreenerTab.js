@@ -12,6 +12,7 @@ import { ScreenHeader, ErrorState, LoadingState, EmptyState } from "@/components
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
 import { formatDayLabel } from "@/lib/periodLabel";
+import { usePersistentState } from "@/lib/usePersistentState";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });

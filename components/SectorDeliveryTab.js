@@ -13,6 +13,7 @@ import DatePicker from "@/components/DatePicker";
 import SymbolLink from "@/components/SymbolLink";
 import Link from "next/link";
 import { periodCoverageLabel } from "@/lib/periodLabel";
+import { usePersistentState } from "@/lib/usePersistentState";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };

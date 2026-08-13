@@ -9,6 +9,7 @@ import { formatDayLabel } from "@/lib/periodLabel";
 import DatePicker from "@/components/DatePicker";
 import SectorAssign from "@/components/SectorAssign";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
+import { usePersistentState } from "@/lib/usePersistentState";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
