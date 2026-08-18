@@ -26,55 +26,6 @@ const BHAV_WINDOW = MONTH_TRADING_DAYS + VOLUME_AVG_DAYS + 5;
 const VOLUME_SPIKE_MULTIPLE = 2;
 
 /**
- * Shareholding pattern (promoter / FII / DII / public).
- *
- * This comes from NSE's corp-info endpoint, which is both session-gated
- * and frequently blocked from hosted servers. It is also QUARTERLY data —
- * companies file it after each quarter ends, so the newest figures can be
- * up to ~3 months old. There is no live shareholding feed; anything
- * claiming otherwise is showing stale data without saying so. Returns null
- * on any failure, and the UI states plainly when it's unavailable.
- */
-async function fetchShareholding(symbol, cookies) {
-  const data = await nseApiFetchWithCookies(
-    `/api/quote-equity?symbol=${encodeURIComponent(symbol)}&section=corp_info`,
-    cookies,
-    NSE_TIMEOUT_MS
-  );
-  const rows = data?.corporate?.shareholdingPatterns?.data;
-  if (!rows || typeof rows !== "object") return null;
-
-  // The payload is keyed by period, each holding an array of
-  // { category: value } pairs. Take the most recent period present.
-  const periods = Object.keys(rows);
-  if (periods.length === 0) return null;
-  const latestPeriod = periods[0];
-  const entries = rows[latestPeriod];
-  if (!Array.isArray(entries)) return null;
-
-  const pick = (needles) => {
-    for (const entry of entries) {
-      for (const [k, v] of Object.entries(entry)) {
-        const key = k.toLowerCase();
-        if (needles.some((n) => key.includes(n))) {
-          const num = parseFloat(String(v).replace(/[^0-9.]/g, ""));
-          if (Number.isFinite(num)) return num;
-        }
-      }
-    }
-    return null;
-  };
-
-  const promoter = pick(["promoter"]);
-  const fii = pick(["foreign", "fii"]);
-  const dii = pick(["domestic", "dii", "institution"]);
-  const publicHolding = pick(["public"]);
-
-  if (promoter == null && fii == null && dii == null && publicHolding == null) return null;
-  return { period: latestPeriod, promoter, fii, dii, public: publicHolding };
-}
-
-/**
  * Recent block deals for this symbol. NSE's block-deal endpoint only
  * carries the CURRENT session's deals — there's no public historical block
  * deal archive behind it — so an empty result means "none today", not
@@ -161,6 +112,8 @@ export async function GET(request) {
         aboveWma30: wma30 != null ? last.c > wma30 : null,
         sma50: round(sma(closes, 50)),
         sma200: round(sma(closes, 200)),
+        aboveSma50: sma(closes, 50) != null ? last.c > sma(closes, 50) : null,
+        aboveSma200: sma(closes, 200) != null ? last.c > sma(closes, 200) : null,
       };
     }
 
@@ -245,13 +198,11 @@ export async function GET(request) {
     }
 
     // ---- NSE-gated extras --------------------------------------------
-    let shareholding = null;
     let blockDeals = null;
     let industry = null;
     try {
       const cookies = await getSessionCookies();
-      [shareholding, blockDeals, industry] = await Promise.all([
-        fetchShareholding(symbol, cookies).catch(() => null),
+      [blockDeals, industry] = await Promise.all([
         fetchBlockDeals(symbol, cookies).catch(() => null),
         fetchIndustry(symbol, cookies).catch(() => null),
       ]);
@@ -268,7 +219,6 @@ export async function GET(request) {
       volumeAvgDays: VOLUME_AVG_DAYS,
       levels,
       accumulation,
-      shareholding,
       blockDeals,
       asOf: days.length ? days[days.length - 1].date : null,
       fetchedAt: new Date().toISOString(),

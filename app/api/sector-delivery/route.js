@@ -65,7 +65,35 @@ function buildSectorPeriodHistory(symbols, days, periodTradingDays, periods) {
     const { volume, deliveryQty } = sumSectorDays(symbols, chunkDays);
     const startDate = chunkDays[0]?.date ?? null;
     const endDate = chunkDays[chunkDays.length - 1]?.date ?? null;
-    return { date: endDate, startDate, endDate, deliveryPct: weightedPct(volume, deliveryQty), volume: volume || null };
+
+    // Average price move across the sector's constituents for this bucket,
+    // equal-weighted — so one heavyweight can't speak for the sector.
+    const changes = [];
+    for (const symbol of symbols) {
+      let firstPrev = null;
+      let lastClose = null;
+      for (const d of chunkDays) {
+        const row = d.bySymbol.get(symbol);
+        if (!row || row.series !== "EQ" || !row.volume) continue;
+        if (firstPrev == null) firstPrev = row.prevClose ?? row.close;
+        lastClose = row.close;
+      }
+      if (firstPrev && lastClose) changes.push(((lastClose - firstPrev) / firstPrev) * 100);
+    }
+
+    return {
+      date: endDate,
+      startDate,
+      endDate,
+      deliveryPct: weightedPct(volume, deliveryQty),
+      volume: volume || null,
+      // See lib/deliveryMetrics.js — the ratio alone hides a shrinking
+      // denominator, so the delivered quantity is reported too.
+      deliveryQty: deliveryQty || null,
+      changePercent: changes.length
+        ? Math.round((changes.reduce((a, b) => a + b, 0) / changes.length) * 100) / 100
+        : null,
+    };
   });
 }
 

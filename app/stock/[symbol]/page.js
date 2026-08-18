@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import GlobalSearch from "@/components/GlobalSearch";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 
@@ -54,49 +55,12 @@ function RangeBar({ low, high, price, position }) {
   );
 }
 
-function HoldingsTable({ shareholding }) {
-  if (!shareholding) {
-    return (
-      <Panel>
-        <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-          Shareholding data wasn&apos;t available. It comes from NSE&apos;s corporate-info endpoint, which is
-          session-gated and blocks hosted servers often. Note that even when it loads, shareholding is
-          filed <strong>quarterly</strong> — the newest figures can be up to three months old. There is no
-          live shareholding feed.
-        </p>
-      </Panel>
-    );
-  }
-  const rows = [
-    { label: "Promoter", value: shareholding.promoter, color: "var(--accent)" },
-    { label: "FII", value: shareholding.fii, color: "var(--tier-low)" },
-    { label: "DII", value: shareholding.dii, color: "var(--gain)" },
-    { label: "Public", value: shareholding.public, color: "var(--text-muted)" },
-  ];
+function SearchAnotherStock() {
+  const router = useRouter();
   return (
-    <Panel>
-      <p className="text-[11px] mb-2" style={{ color: "var(--text-faint)" }}>
-        As filed for {shareholding.period} — quarterly data, so it lags the market.
-      </p>
-      <div className="flex flex-col gap-2">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-center gap-3">
-            <span className="text-xs w-16 shrink-0" style={{ color: "var(--text-muted)" }}>
-              {r.label}
-            </span>
-            <div className="flex-1 h-2 rounded-full" style={{ background: "var(--surface-3)" }}>
-              <div
-                className="h-2 rounded-full"
-                style={{ width: `${Math.min(100, r.value ?? 0)}%`, background: r.color }}
-              />
-            </div>
-            <span className="font-mono text-xs w-14 text-right" style={{ color: "var(--text)" }}>
-              {r.value == null ? "—" : `${fmt(r.value)}%`}
-            </span>
-          </div>
-        ))}
-      </div>
-    </Panel>
+    <div className="shrink-0">
+      <GlobalSearch onSelect={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)} />
+    </div>
   );
 }
 
@@ -148,7 +112,8 @@ export default function StockInsightPage({ params }) {
 
   return (
     <div className="min-h-screen px-4 md:px-8 py-6">
-      <div className="flex items-center gap-3 mb-5 flex-wrap">
+      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
         <BackButton />
         <div className="min-w-0">
           <div className="flex items-baseline gap-2.5 flex-wrap">
@@ -203,6 +168,9 @@ export default function StockInsightPage({ params }) {
             </p>
           )}
         </div>
+        </div>
+
+        <SearchAnotherStock />
       </div>
 
       {error && <ErrorState>{error}</ErrorState>}
@@ -250,8 +218,18 @@ export default function StockInsightPage({ params }) {
                     sub={L.aboveWma30 == null ? null : L.aboveWma30 ? "price above" : "price below"}
                     tone={L.aboveWma30 == null ? undefined : L.aboveWma30 ? "var(--gain)" : "var(--loss)"}
                   />
-                  <Stat label="50 DMA" value={`₹${fmt(L.sma50)}`} />
-                  <Stat label="200 DMA" value={`₹${fmt(L.sma200)}`} />
+                  <Stat
+                    label="50 DMA"
+                    value={`₹${fmt(L.sma50)}`}
+                    sub={L.aboveSma50 == null ? null : L.aboveSma50 ? "price above" : "price below"}
+                    tone={L.aboveSma50 == null ? undefined : L.aboveSma50 ? "var(--gain)" : "var(--loss)"}
+                  />
+                  <Stat
+                    label="200 DMA"
+                    value={`₹${fmt(L.sma200)}`}
+                    sub={L.aboveSma200 == null ? null : L.aboveSma200 ? "price above" : "price below"}
+                    tone={L.aboveSma200 == null ? undefined : L.aboveSma200 ? "var(--gain)" : "var(--loss)"}
+                  />
                 </div>
               </Panel>
             ) : (
@@ -264,10 +242,6 @@ export default function StockInsightPage({ params }) {
           </div>
 
           {/* ---- Holdings ---- */}
-          <div>
-            <SectionTitle meta="Promoter / FII / DII / Public">Shareholding</SectionTitle>
-            <HoldingsTable shareholding={data.shareholding} />
-          </div>
 
           {/* ---- Block deals & volume spikes ---- */}
           <div>
