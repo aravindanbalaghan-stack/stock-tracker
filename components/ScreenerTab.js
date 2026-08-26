@@ -164,6 +164,65 @@ function StageEntriesPanel({ row }) {
   );
 }
 
+function BacktestStat({ label, stat }) {
+  return (
+    <span>
+      {label}:{" "}
+      <span className="font-mono" style={{ color: stat.probability == null ? "var(--text-faint)" : "var(--accent)" }}>
+        {stat.probability == null ? "not enough signals yet" : `${stat.probability}%`}
+      </span>
+      {stat.sampleSize > 0 && (
+        <span style={{ color: "var(--text-faint)" }}> (n={stat.sampleSize}{stat.pending ? `, ${stat.pending} too recent to score` : ""})</span>
+      )}
+    </span>
+  );
+}
+
+// Wyckoff tab: the 6-month backtest probability banner. Fetched once per
+// mount (not per date/live toggle — the backtest is its own independent,
+// cached statistic, not a function of which session the table is showing).
+function WyckoffBacktestBanner() {
+  const [bt, setBt] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/wyckoff-backtest");
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || "Couldn't load the backtest");
+        if (!cancelled) setBt(json);
+      } catch (e) {
+        if (!cancelled) setErr(e.message);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (err) return null; // non-critical — the screen still works without it
+  if (!bt) {
+    return (
+      <div className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
+        Loading the 6-month backtest probability…
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs flex flex-wrap items-center gap-x-6 gap-y-1" style={{ borderColor: "var(--accent)", background: "var(--accent-wash)", color: "var(--text-muted)" }}>
+      <span style={{ color: "var(--text)" }}>
+        6-month backtest — win = +{bt.targetPct}% reached before -{bt.stopPct}% within {bt.horizonDays} trading days:
+      </span>
+      <BacktestStat label="Aggressive (Spring)" stat={bt.aggressive} />
+      <BacktestStat label="Conservative (LPS)" stat={bt.conservative} />
+      <span style={{ color: "var(--text-faint)" }}>· {bt.scanned} stocks scanned</span>
+    </div>
+  );
+}
+
 export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -237,6 +296,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isStage2 = screen === "stage-2";
   const isConfluence = screen === CONFLUENCE_SCREEN;
   const isReclaim = screen === "ma-reclaim";
+  const isWyckoff = screen === "wyckoff";
+  const isWeinstein = screen === "weinstein";
+  // Both new tabs show their own "Reason added" / "Entry" columns instead
+  // of the generic 30WMA + debut columns, per the requested column set.
+  const hideGenericCols = isWyckoff || isWeinstein;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
   const { sorted, sort, onSort } = useSortableRows(filteredRows, "volumeRatio", "desc");
@@ -395,6 +459,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         </div>
       )}
 
+      {isWyckoff && <WyckoffBacktestBanner />}
+
       <div className="mb-3">
         <InfoNote label={`What ${def.label} looks for`}>
           {def.description}{" "}
@@ -448,6 +514,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         <EmptyState>
           {isConfluence
             ? `No stocks appeared in two or more screens on ${data.asOf}.`
+            : isWyckoff
+            ? `No stock has a recent Wyckoff Aggressive or Conservative entry as of ${data.asOf}.`
+            : isWeinstein
+            ? `No stock entered a new Weinstein stage in the last few weeks, as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
         </EmptyState>
       ) : (
@@ -471,8 +541,46 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                     onSort={onSort}
                     title="Today's volume against the trailing 30-day average"
                   />
-                  <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />
-                  <DebutHeaderCells sort={sort} onSort={onSort} />
+                  {!hideGenericCols && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
+                  {!hideGenericCols && <DebutHeaderCells sort={sort} onSort={onSort} />}
+                  {isWyckoff && (
+                    <SortableTh
+                      label="Reason added"
+                      sortKey="wyckoffStance"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Which Wyckoff entry fired, and why"
+                    />
+                  )}
+                  {isWyckoff && (
+                    <SortableTh
+                      label="Entry"
+                      sortKey="wyckoffEntryPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="The price of the qualifying Spring or LPS entry"
+                    />
+                  )}
+                  {isWeinstein && (
+                    <SortableTh
+                      label="Reason added"
+                      sortKey="weinsteinStage"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Which of the four stages, and when it was entered"
+                    />
+                  )}
+                  {isWeinstein && (
+                    <SortableTh
+                      label="Entry"
+                      sortKey="entryPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Weekly close at the moment the stage changed"
+                    />
+                  )}
                   {isConfluence && (
                     <SortableTh
                       label="Screens"
@@ -536,10 +644,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   return (
                     <Fragment key={r.symbol}>
                     <tr
-                      className={`border-b last:border-b-0 ${isStage2 ? "cursor-pointer hover:bg-white/5" : ""}`}
+                      className={`border-b last:border-b-0 ${isStage2 || isWyckoff ? "cursor-pointer hover:bg-white/5" : ""}`}
                       style={{ borderColor: "var(--border)" }}
-                      onClick={isStage2 ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
-                      title={isStage2 ? "Click for every entry point both methods give" : undefined}
+                      onClick={isStage2 || isWyckoff ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
+                      title={isStage2 || isWyckoff ? "Click for every entry point both methods give" : undefined}
                     >
                       <td className="py-2.5 pl-4 pr-2">
                         <div className="flex items-center gap-2">
@@ -588,10 +696,77 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                         {r.volumeRatio ? `${r.volumeRatio.toFixed(2)}×` : "—"}
                       </td>
-                      <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                        {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
-                      </td>
-                      <DebutCells row={r} />
+                      {!hideGenericCols && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
+                        </td>
+                      )}
+                      {!hideGenericCols && <DebutCells row={r} />}
+                      {isWyckoff && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor: r.wyckoffStance === "Aggressive" ? "var(--loss)" : "var(--gain)",
+                              color: r.wyckoffStance === "Aggressive" ? "var(--loss)" : "var(--gain)",
+                            }}
+                          >
+                            {r.wyckoffStance}
+                          </span>
+                          <p className="text-xs mt-1 leading-snug" style={{ color: "var(--text-muted)" }}>
+                            {r.wyckoffMethod}
+                          </p>
+                          <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>
+                            {r.wyckoffRationale}
+                          </p>
+                        </td>
+                      )}
+                      {isWyckoff && (
+                        <td className="py-2.5 px-2 text-right">
+                          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+                            ₹{fmt(r.wyckoffEntryPrice)}
+                          </span>
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {r.wyckoffEntryDate}
+                          </span>
+                        </td>
+                      )}
+                      {isWeinstein && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor:
+                                r.weinsteinTone === "bullish"
+                                  ? "var(--gain)"
+                                  : r.weinsteinTone === "bearish"
+                                  ? "var(--loss)"
+                                  : "var(--border)",
+                              color:
+                                r.weinsteinTone === "bullish"
+                                  ? "var(--gain)"
+                                  : r.weinsteinTone === "bearish"
+                                  ? "var(--loss)"
+                                  : "var(--text-muted)",
+                            }}
+                          >
+                            {r.weinsteinStageLabel}
+                          </span>
+                          <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--text-faint)" }}>
+                            {r.reason}
+                          </p>
+                        </td>
+                      )}
+                      {isWeinstein && (
+                        <td className="py-2.5 px-2 text-right">
+                          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+                            ₹{fmt(r.entryPrice)}
+                          </span>
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {r.entryDate}
+                          </span>
+                        </td>
+                      )}
                       {isConfluence && (
                         <td className="py-2.5 px-2 text-left">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -702,9 +877,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         />
                       </td>
                     </tr>
-                    {isStage2 && isOpen && (
+                    {(isStage2 || isWyckoff) && isOpen && (
                       <tr style={{ background: "var(--surface-2)" }}>
-                        <td colSpan={14} className="p-0">
+                        <td colSpan={20} className="p-0">
                           <StageEntriesPanel row={r} />
                         </td>
                       </tr>

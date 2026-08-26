@@ -11,7 +11,7 @@ import {
 } from "@/lib/screenerIndicators";
 import { SCREENS } from "@/lib/screens";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
-import { analyzeStage2, mightBeStage2 } from "@/lib/stageAnalysis";
+import { analyzeStage2, mightBeStage2, classifyStageTransition, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
 import { analyzeReclaim, mightReclaim } from "@/lib/reclaim";
 import {
   fetchLiveSnapshot,
@@ -71,6 +71,12 @@ const STAGE_DAILY_CONCURRENCY = 10;
 // The daily pass is the expensive half, so it's capped independently of
 // SHORTLIST_CAP. In practice the weekly pre-filter lands well under this.
 const STAGE_DAILY_CAP = 220;
+
+// Wyckoff tab: how recent an Aggressive/Conservative entry has to be to
+// still count as a current opportunity. Calendar days rather than trading
+// days (simpler, and the difference — a few days at this horizon — doesn't
+// change which stocks qualify).
+const WYCKOFF_RECENT_MS = 60 * 24 * 60 * 60 * 1000; // ~60 calendar days
 
 async function fetchMarketCapCr(symbol, cookies) {
   const data = await nseApiFetchWithCookies(
@@ -264,7 +270,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
       });
     }
 
-    if (screen === "stage-2") {
+    if (screen === "stage-2" || screen === "wyckoff") {
       // Pass 1 — resolve the ~500-stock universe, then run a cheap weekly
       // pre-filter over it to find which stocks are plausibly above a
       // rising 30-week MA. Weekly bars are ~1/5 the payload of daily, so
@@ -355,7 +361,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
 
     const historyRaw = await fetchDailyOHLCVBatch(
       shortlist.map((c) => c.symbol),
-      { concurrency: screen === "stage-2" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
+      { concurrency: screen === "stage-2" || screen === "wyckoff" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
     );
 
     // Truncate every fetched series to the as-of date. Without this, a
@@ -437,7 +443,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
         row.sma200 = Math.round(sma200 * 100) / 100;
       }
 
-      if (screen === "stage-2") {
+      if (screen === "stage-2" || screen === "wyckoff") {
         if (!hist?.bars?.length) continue;
         const stage = analyzeStage2(hist.bars, benchmarkBars);
         if (!stage) continue; // not in Stage 2, or not enough history to say
@@ -472,10 +478,46 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
       rows.push(row);
     }
 
+    // ---------------- Wyckoff: keep only recent Aggressive/Conservative ----
+    // Stage 2 keeps every stock still in the trend, however old the base.
+    // The Wyckoff tab is narrower on purpose — it's meant to answer "is
+    // there a live Spring or LPS entry right now", so a stock whose only
+    // Wyckoff entries are from six months ago is dropped, even though it
+    // may still show up on Stage 2.
+    if (screen === "wyckoff") {
+      const nowMs = asOfCutoff * 1000;
+      const withEntry = [];
+      for (const row of rows) {
+        if (!row.entries?.length) continue;
+        const qualifying = row.entries.filter(
+          (e) =>
+            (e.stance === "Aggressive" || e.stance === "Conservative") &&
+            nowMs - new Date(`${e.date}T00:00:00Z`).getTime() <= WYCKOFF_RECENT_MS
+        );
+        if (!qualifying.length) continue;
+        // If both an Aggressive Spring and a Conservative LPS are recent,
+        // the Spring is reported as the headline entry — it's the earlier
+        // of the two and the one a reader would act on first. The LPS is
+        // still visible in the expandable entries panel either way.
+        const chosen =
+          qualifying.find((e) => e.stance === "Aggressive") ??
+          qualifying.sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+        withEntry.push({
+          ...row,
+          wyckoffStance: chosen.stance,
+          wyckoffMethod: chosen.method,
+          wyckoffRationale: chosen.rationale,
+          wyckoffEntryPrice: chosen.price,
+          wyckoffEntryDate: chosen.date,
+        });
+      }
+      rows = withEntry;
+    }
+
     // ---------------- Listing debut ----------------
     // Cheap after the first lookup of each symbol — a debut price can
     // never change, so lib/debut.js caches it for 30 days.
-    if (rows.length > 0) {
+    if (rows.length > 0 && screen !== "wyckoff") {
       const debuts = await fetchDebutBatch(rows.map((r) => r.symbol), { concurrency: YAHOO_CONCURRENCY });
       rows = rows.map((r) => withDebut(r, debuts.get(r.symbol)));
     }
@@ -619,6 +661,79 @@ async function prepareWindow(asOfDate, { live = false } = {}) {
   return { days, universe, asOfCutoff, actualDate: latest.date, liveInfo, isLive: !!latest.isLive };
 }
 
+/**
+ * Weinstein tab — stocks that recently transitioned into ANY of the four
+ * stages, not just Stage 2. This runs on weekly bars alone (see
+ * classifyStageTransition), so unlike Stage 2 / Wyckoff it never needs a
+ * per-symbol daily-history fetch — a single weekly-bar pass over the wide
+ * universe is enough to both classify the stage and date the transition.
+ */
+async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive }) {
+  const latest = days[days.length - 1];
+
+  const resolved = await resolveWideUniverse(universe);
+  const bySymbol = new Map(universe.map((u) => [u.symbol, u]));
+  const inUniverse = resolved.symbols.map((s) => bySymbol.get(s)).filter(Boolean);
+
+  const weekly = await fetchWeeklyOHLCVBatch(
+    inUniverse.map((u) => u.symbol),
+    { concurrency: STAGE_WEEKLY_CONCURRENCY }
+  );
+
+  const rows = [];
+  for (const { symbol, series } of inUniverse) {
+    const bars = weekly.get(symbol);
+    const truncated = bars ? bars.filter((b) => b.t <= asOfCutoff) : null;
+    const transition = classifyStageTransition(truncated);
+    if (!transition || !transition.isEntering) continue;
+
+    const row = baseRow(symbol, series);
+    const info = WEINSTEIN_STAGE_INFO[transition.stage];
+    row.weinsteinStage = transition.stage;
+    row.weinsteinStageLabel = info.name;
+    row.weinsteinTone = info.tone;
+    row.weeksInStage = transition.weeksInStage;
+    row.entryPrice = transition.transitionPrice;
+    row.entryDate = transition.transitionWeekKey;
+    row.wma30 = Math.round(transition.ma30 * 100) / 100;
+    row.ma30SlopePct = Math.round(transition.slopePct * 100) / 100;
+    const trend = transition.rising ? "30-week MA rising" : transition.falling ? "30-week MA falling" : "30-week MA roughly flat";
+    row.reason = `Weinstein — ${info.name}. Crossed into this stage the week of ${transition.transitionWeekKey}, ${transition.weeksInStage} week${
+      transition.weeksInStage === 1 ? "" : "s"
+    } ago, ${trend} at ₹${fmt2(transition.ma30)}.`;
+    rows.push(row);
+  }
+
+  if (isLive) {
+    const progress = sessionProgress();
+    for (const row of rows) {
+      row.isLive = true;
+      row.deliveryIsPreviousSession = true;
+      row.projectedVolume = progress > 0.05 && row.volume != null ? Math.round(row.volume / progress) : null;
+    }
+  }
+
+  rows.sort((a, b) => a.weeksInStage - b.weeksInStage || (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+
+  return {
+    screen: "weinstein",
+    label: SCREENS.weinstein.label,
+    description: SCREENS.weinstein.description,
+    asOf: latest.date,
+    windowFirstDate: days[0]?.date ?? null,
+    universeSize: universe.length,
+    stageUniverseSource: resolved.source,
+    stageWeeklyScanned: inUniverse.length,
+    resultCount: rows.length,
+    notes: [resolved.sourceLabel],
+    rows,
+  };
+}
+
+function fmt2(n) {
+  return n == null ? "—" : Math.round(n * 100) / 100;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const screen = searchParams.get("screen");
@@ -649,6 +764,11 @@ export async function GET(request) {
     // the session actually used so the UI can say so.
     const requestedDate = asOfDate;
     const dateAdjusted = !!asOfDate && asOfDate !== actualDate;
+
+    if (screen === "weinstein") {
+      const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive });
+      return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
+    }
 
     if (!isConfluence) {
       const result = await runScreen({ screen, days, universe, asOfCutoff, isLive });
