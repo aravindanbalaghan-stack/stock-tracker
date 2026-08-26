@@ -241,6 +241,129 @@ export default function StockInsightPage({ params }) {
             )}
           </div>
 
+          {/* ---- Wyckoff & Weinstein ---- */}
+          <div>
+            <SectionTitle
+              meta={
+                data.weinstein
+                  ? `${data.weinstein.stageLabel}${data.weinstein.isEntering ? " · entering" : ""}`
+                  : undefined
+              }
+            >
+              Wyckoff &amp; Weinstein
+            </SectionTitle>
+            <Panel>
+              {!data.weinstein && !data.wyckoff?.entries?.length ? (
+                <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+                  Not enough weekly history to classify this stock&apos;s stage yet.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {data.weinstein && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-wider mb-1.5" style={{ color: "var(--text-muted)" }}>
+                        Weinstein stage
+                      </p>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className="text-xs px-2 py-1 rounded border"
+                          style={{
+                            borderColor:
+                              data.weinstein.tone === "bullish"
+                                ? "var(--gain)"
+                                : data.weinstein.tone === "bearish"
+                                ? "var(--loss)"
+                                : "var(--border)",
+                            color:
+                              data.weinstein.tone === "bullish"
+                                ? "var(--gain)"
+                                : data.weinstein.tone === "bearish"
+                                ? "var(--loss)"
+                                : "var(--text-muted)",
+                          }}
+                        >
+                          {data.weinstein.stageLabel}
+                        </span>
+                        <span className="text-xs" style={{ color: "var(--text-faint)" }}>
+                          {data.weinstein.weeksInStage} week{data.weinstein.weeksInStage === 1 ? "" : "s"} in this
+                          stage
+                          {data.weinstein.transitionWeekKey ? ` · since the week of ${data.weinstein.transitionWeekKey}` : ""}
+                        </span>
+                      </div>
+                      <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
+                        30-week MA ₹{fmt(data.weinstein.ma30)}, {data.weinstein.ma30SlopePct >= 0 ? "+" : ""}
+                        {fmt(data.weinstein.ma30SlopePct)}% over 4 weeks
+                      </p>
+                    </div>
+                  )}
+
+                  {data.wyckoff?.inStage2 ? (
+                    <div className="pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+                      <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: "var(--text-muted)" }}>
+                        Wyckoff — {data.wyckoff.stagePhase} · base ₹{fmt(data.wyckoff.baseSupport)}–₹
+                        {fmt(data.wyckoff.baseResistance)} over {data.wyckoff.baseWeeks}w
+                      </p>
+                      <div className="flex flex-col gap-2.5">
+                        {data.wyckoff.entries.map((e, i) => (
+                          <div key={i} className="flex items-start gap-3">
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded border shrink-0 mt-0.5 whitespace-nowrap"
+                              style={{
+                                borderColor:
+                                  e.stance === "Aggressive"
+                                    ? "var(--loss)"
+                                    : e.stance === "Conservative"
+                                    ? "var(--gain)"
+                                    : "var(--accent)",
+                                color:
+                                  e.stance === "Aggressive"
+                                    ? "var(--loss)"
+                                    : e.stance === "Conservative"
+                                    ? "var(--gain)"
+                                    : "var(--accent)",
+                              }}
+                            >
+                              {e.stance}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm" style={{ color: "var(--text)" }}>
+                                <span className="font-mono">₹{fmt(e.price)}</span>
+                                <span className="text-xs ml-2" style={{ color: "var(--text-faint)" }}>
+                                  {e.date}
+                                </span>
+                              </p>
+                              <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
+                                {e.method}
+                              </p>
+                              <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>
+                                {e.rationale}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {data.wyckoff.rsVsBenchmark != null && (
+                        <p
+                          className="text-xs mt-3"
+                          style={{ color: data.wyckoff.rsVsBenchmark >= 0 ? "var(--gain)" : "var(--loss)" }}
+                        >
+                          26-week RS vs NIFTY: {data.wyckoff.rsVsBenchmark >= 0 ? "+" : ""}
+                          {fmt(data.wyckoff.rsVsBenchmark)}%
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+                      <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+                        Not currently in a Stage-2 base/breakout, so no Wyckoff entries to show.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Panel>
+          </div>
+
           {/* ---- Holdings ---- */}
 
           {/* ---- Block deals & volume spikes ---- */}

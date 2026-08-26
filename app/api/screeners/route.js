@@ -502,9 +502,12 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
         const chosen =
           qualifying.find((e) => e.stance === "Aggressive") ??
           qualifying.sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+        const wyckoffPhase =
+          chosen.stance === "Aggressive" ? "Phase C — Spring / Shakeout" : "Phase D — Last Point of Support";
         withEntry.push({
           ...row,
           wyckoffStance: chosen.stance,
+          wyckoffPhase,
           wyckoffMethod: chosen.method,
           wyckoffRationale: chosen.rationale,
           wyckoffEntryPrice: chosen.price,

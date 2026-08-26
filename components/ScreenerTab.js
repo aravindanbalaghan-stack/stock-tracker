@@ -243,6 +243,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // Price/volume bounds are applied client-side: the API already returned
   // the matching rows, so narrowing them shouldn't cost another full scan.
   const [numeric, setNumeric] = usePersistentState("screener.numeric", EMPTY_NUMERIC_FILTERS);
+  // Dedicated filters for the two new tabs — kept separate per screen so
+  // switching tabs doesn't leak one screen's filter selection into the
+  // other's differently-shaped values ("Aggressive" vs "2").
+  const [wyckoffPhaseFilter, setWyckoffPhaseFilter] = usePersistentState("screener.wyckoffPhaseFilter", "all");
+  const [weinsteinStageFilter, setWeinsteinStageFilter] = usePersistentState("screener.weinsteinStageFilter", "all");
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -303,7 +308,13 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const hideGenericCols = isWyckoff || isWeinstein;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
-  const { sorted, sort, onSort } = useSortableRows(filteredRows, "volumeRatio", "desc");
+  const phaseFilteredRows =
+    isWyckoff && wyckoffPhaseFilter !== "all"
+      ? filteredRows?.filter((r) => r.wyckoffStance === wyckoffPhaseFilter)
+      : isWeinstein && weinsteinStageFilter !== "all"
+      ? filteredRows?.filter((r) => String(r.weinsteinStage) === weinsteinStageFilter)
+      : filteredRows;
+  const { sorted, sort, onSort } = useSortableRows(phaseFilteredRows, "volumeRatio", "desc");
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
 
   // While live, re-run periodically. 90s rather than something faster
@@ -392,19 +403,59 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     );
   }
 
+  const hasPhaseFilter = (isWyckoff && wyckoffPhaseFilter !== "all") || (isWeinstein && weinsteinStageFilter !== "all");
+
   return (
     <div>
       <ScreenHeader
         title={def.label}
         meta={`${
-          hasActiveNumericFilters(numeric)
-            ? `${filteredRows.length} of ${data.resultCount} matches shown`
+          hasActiveNumericFilters(numeric) || hasPhaseFilter
+            ? `${phaseFilteredRows.length} of ${data.resultCount} matches shown`
             : `${data.resultCount} match${data.resultCount === 1 ? "" : "es"}`
         } from ${data.universeSize.toLocaleString("en-IN")} stocks · trading session of ${formatDayLabel(data.asOf)}${
           data.dateAdjusted ? ` (${data.requestedDate} wasn't a trading day)` : ""
         }`}
         actions={<div className="flex items-center gap-2 flex-wrap">{liveToggle}{datePicker}</div>}
       />
+
+      {isWyckoff && (
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }}>
+            Phase
+          </label>
+          <select
+            value={wyckoffPhaseFilter}
+            onChange={(e) => setWyckoffPhaseFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="all">All</option>
+            <option value="Aggressive">Aggressive — Phase C (Spring)</option>
+            <option value="Conservative">Conservative — Phase D (LPS)</option>
+          </select>
+        </div>
+      )}
+
+      {isWeinstein && (
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }}>
+            Stage
+          </label>
+          <select
+            value={weinsteinStageFilter}
+            onChange={(e) => setWeinsteinStageFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="all">All</option>
+            <option value="1">Stage 1 — Basing</option>
+            <option value="2">Stage 2 — Advancing</option>
+            <option value="3">Stage 3 — Topping</option>
+            <option value="4">Stage 4 — Declining</option>
+          </select>
+        </div>
+      )}
 
       <div className="mb-3">
         <NumericFilters filters={numeric} onChange={setNumeric} />
@@ -505,10 +556,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
         </InfoNote>
       </div>
 
-      {data.rows.length > 0 && filteredRows.length === 0 ? (
+      {data.rows.length > 0 && phaseFilteredRows.length === 0 ? (
         <EmptyState>
-          {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall
-          within the price and volume bounds set above.
+          {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall within
+          the {hasPhaseFilter ? "phase/stage or " : ""}price and volume bounds set above.
         </EmptyState>
       ) : data.rows.length === 0 ? (
         <EmptyState>
@@ -545,6 +596,16 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   {!hideGenericCols && <DebutHeaderCells sort={sort} onSort={onSort} />}
                   {isWyckoff && (
                     <SortableTh
+                      label="Phase"
+                      sortKey="wyckoffStance"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Aggressive = Wyckoff Phase C (Spring); Conservative = Phase D (Last Point of Support)"
+                    />
+                  )}
+                  {isWyckoff && (
+                    <SortableTh
                       label="Reason added"
                       sortKey="wyckoffStance"
                       sort={sort}
@@ -560,6 +621,16 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       sort={sort}
                       onSort={onSort}
                       title="The price of the qualifying Spring or LPS entry"
+                    />
+                  )}
+                  {isWeinstein && (
+                    <SortableTh
+                      label="Stage"
+                      sortKey="weinsteinStage"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Which of the four Weinstein stages this stock is in"
                     />
                   )}
                   {isWeinstein && (
@@ -703,7 +774,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       )}
                       {!hideGenericCols && <DebutCells row={r} />}
                       {isWyckoff && (
-                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                        <td className="py-2.5 px-2 text-left">
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
                             style={{
@@ -713,7 +784,14 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           >
                             {r.wyckoffStance}
                           </span>
-                          <p className="text-xs mt-1 leading-snug" style={{ color: "var(--text-muted)" }}>
+                          <span className="block text-[10px] mt-0.5" style={{ color: "var(--text-faint)" }}>
+                            {r.wyckoffPhase}
+                          </span>
+                        </td>
+                      )}
+                      {isWyckoff && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <p className="text-xs leading-snug" style={{ color: "var(--text-muted)" }}>
                             {r.wyckoffMethod}
                           </p>
                           <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>
@@ -732,7 +810,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         </td>
                       )}
                       {isWeinstein && (
-                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                        <td className="py-2.5 px-2 text-left">
                           <span
                             className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
                             style={{
@@ -752,7 +830,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           >
                             {r.weinsteinStageLabel}
                           </span>
-                          <p className="text-[11px] mt-1 leading-snug" style={{ color: "var(--text-faint)" }}>
+                        </td>
+                      )}
+                      {isWeinstein && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <p className="text-[11px] leading-snug" style={{ color: "var(--text-faint)" }}>
                             {r.reason}
                           </p>
                         </td>

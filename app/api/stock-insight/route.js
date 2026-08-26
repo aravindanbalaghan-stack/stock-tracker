@@ -1,7 +1,8 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
-import { fetchDailyOHLCV, sma, ema, toWeeklyBars } from "@/lib/screenerIndicators";
+import { fetchDailyOHLCV, fetchIndexOHLCV, sma, ema, toWeeklyBars } from "@/lib/screenerIndicators";
 import { getSectorsForSymbol } from "@/lib/sectorOverrides";
+import { analyzeStage2, classifyStageTransition, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
 import {
   computeMetrics,
   ACCUMULATION_WINDOW,
@@ -76,6 +77,8 @@ export async function GET(request) {
 
     // ---- Price levels & indicators (Yahoo) ----------------------------
     let levels = null;
+    let weinstein = null;
+    let wyckoff = null;
     if (hist?.bars?.length) {
       const bars = hist.bars;
       const closes = bars.map((b) => b.c);
@@ -115,6 +118,49 @@ export async function GET(request) {
         aboveSma50: sma(closes, 50) != null ? last.c > sma(closes, 50) : null,
         aboveSma200: sma(closes, 200) != null ? last.c > sma(closes, 200) : null,
       };
+
+      // ---- Weinstein stage (weekly bars only) --------------------------
+      const transition = classifyStageTransition(weekly);
+      if (transition) {
+        const info = WEINSTEIN_STAGE_INFO[transition.stage];
+        weinstein = {
+          stage: transition.stage,
+          stageLabel: info.name,
+          tone: info.tone,
+          weeksInStage: transition.weeksInStage,
+          isEntering: transition.isEntering,
+          transitionWeekKey: transition.transitionWeekKey,
+          transitionPrice: round(transition.transitionPrice),
+          ma30: round(transition.ma30),
+          ma30SlopePct: round(transition.slopePct),
+        };
+      }
+
+      // ---- Wyckoff / Stage-2 entries ------------------------------------
+      // Only meaningful when the stock is CURRENTLY in a Stage-2 run —
+      // analyzeStage2 returns null otherwise, same rule the Stage 2/Wyckoff
+      // screens use, so this page and those tabs never disagree.
+      let benchmarkBars = null;
+      try {
+        const nifty = await fetchIndexOHLCV("^NSEI");
+        benchmarkBars = nifty?.bars ?? null;
+      } catch {
+        // RS column just won't be available — not worth failing the page.
+      }
+      const stage2 = analyzeStage2(bars, benchmarkBars);
+      wyckoff = stage2
+        ? {
+            inStage2: true,
+            stagePhase: stage2.stagePhase,
+            daysSinceEntry: stage2.daysSinceEntry,
+            baseSupport: stage2.baseSupport,
+            baseResistance: stage2.baseResistance,
+            baseWeeks: stage2.baseWeeks,
+            breakoutVolumeRatio: stage2.breakoutVolumeRatio,
+            rsVsBenchmark: stage2.rsVsBenchmark,
+            entries: stage2.entries,
+          }
+        : { inStage2: false, entries: [] };
     }
 
     // ---- One month of accumulation data (bhavcopy) --------------------
@@ -218,6 +264,8 @@ export async function GET(request) {
       sectors,
       volumeAvgDays: VOLUME_AVG_DAYS,
       levels,
+      weinstein,
+      wyckoff,
       accumulation,
       blockDeals,
       asOf: days.length ? days[days.length - 1].date : null,
