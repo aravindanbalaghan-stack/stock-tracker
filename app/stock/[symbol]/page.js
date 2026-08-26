@@ -84,6 +84,30 @@ function BackButton() {
   );
 }
 
+// Explicit destinations alongside Back — useful when this page was opened
+// directly (a shared link, a new tab from search) rather than navigated to
+// from within the app, where "history.back()" has nowhere useful to go.
+function HomeAndWatchlistLinks() {
+  return (
+    <div className="flex items-center gap-2">
+      <Link
+        href="/"
+        className="text-xs px-2 py-1 rounded border"
+        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+      >
+        Home
+      </Link>
+      <Link
+        href="/?tab=watchlist"
+        className="text-xs px-2 py-1 rounded border"
+        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+      >
+        Watchlist
+      </Link>
+    </div>
+  );
+}
+
 export default function StockInsightPage({ params }) {
   const { symbol } = use(params);
   const sym = decodeURIComponent(symbol).toUpperCase();
@@ -115,6 +139,7 @@ export default function StockInsightPage({ params }) {
       <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
         <BackButton />
+        <HomeAndWatchlistLinks />
         <div className="min-w-0">
           <div className="flex items-baseline gap-2.5 flex-wrap">
             <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>

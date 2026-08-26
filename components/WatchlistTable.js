@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
+import { usePersistentState } from "@/lib/usePersistentState";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 
@@ -18,6 +19,38 @@ function fmtVolume(n) {
   return String(n);
 }
 
+// How many <SortableTh>/<th> cells the header row has — the date-group
+// separator row spans all of them. Kept as a named constant rather than a
+// magic number so a future column addition is an obvious two-line diff.
+const COLUMN_COUNT = 9;
+
+function formatGroupDate(dateKey) {
+  if (!dateKey) return "Added before this was tracked";
+  const today = new Date();
+  const todayKey = today.toISOString().slice(0, 10);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = yesterday.toISOString().slice(0, 10);
+  if (dateKey === todayKey) return "Added today";
+  if (dateKey === yesterdayKey) return "Added yesterday";
+  const d = new Date(`${dateKey}T00:00:00`);
+  return `Added ${d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+function GroupHeaderRow({ dateKey, count }) {
+  return (
+    <tr style={{ background: "var(--surface-2)" }}>
+      <td colSpan={COLUMN_COUNT} className="py-1.5 px-4">
+        <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
+          {formatGroupDate(dateKey)}
+        </span>
+        <span className="text-[11px] ml-2" style={{ color: "var(--text-faint)" }}>
+          {count} stock{count === 1 ? "" : "s"}
+        </span>
+      </td>
+    </tr>
+  );
+}
 function DayRangeBar({ low, high, price }) {
   if (low == null || high == null || price == null || high === low) {
     return <div className="h-1 rounded-full w-24" style={{ background: "var(--border)" }} />;
@@ -157,6 +190,7 @@ function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
 
 export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, onOpenDetail }) {
   const { sorted, sort, onSort } = useSortableRows(quotes, null, "desc");
+  const [groupByDate, setGroupByDate] = usePersistentState("watchlist.groupByDate", false);
 
   if (quotes.length === 0) {
     return (
@@ -174,41 +208,88 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, 
     );
   }
 
+  // Bucket the already-sorted rows by the calendar day they were added,
+  // most recent day first — a symbol with no addedAt (e.g. seeded before
+  // this was tracked) falls into its own group at the very end regardless
+  // of date order, rather than being mixed in as if it were "oldest".
+  let groups = null;
+  if (groupByDate) {
+    const byKey = new Map();
+    for (const q of sorted) {
+      const addedAt = meta?.[q.symbol]?.addedAt;
+      const key = addedAt ? addedAt.slice(0, 10) : null;
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(q);
+    }
+    const orderedKeys = [...byKey.keys()].filter((k) => k !== null).sort((a, b) => (a < b ? 1 : -1));
+    if (byKey.has(null)) orderedKeys.push(null);
+    groups = orderedKeys.map((key) => ({ key, rows: byKey.get(key) }));
+  }
+
   return (
-    <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-            <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
-            <SortableTh label="LTP" sortKey="price" sort={sort} onSort={onSort} />
-            <SortableTh label="Chg" sortKey="change" sort={sort} onSort={onSort} />
-            <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden sm:table-cell" style={{ color: "var(--text-faint)" }}>
-              Added
-            </th>
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-faint)" }}>
-              Day range
-            </th>
-            <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
-            <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
-              Notes
-            </th>
-            <th className="py-2 pl-2 pr-4"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((q) => (
-            <Row
-              quote={q}
-              meta={meta?.[q.symbol]}
-              key={q.symbol}
-              onRemove={onRemove}
-              onNotesChange={onNotesChange}
-              onOpenDetail={onOpenDetail}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div>
+      <div className="flex items-center justify-end gap-2 mb-2">
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: "var(--text-muted)" }}>
+          <input
+            type="checkbox"
+            checked={groupByDate}
+            onChange={(e) => setGroupByDate(e.target.checked)}
+            className="accent-current"
+          />
+          Group by date added
+        </label>
+      </div>
+      <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+              <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+              <SortableTh label="LTP" sortKey="price" sort={sort} onSort={onSort} />
+              <SortableTh label="Chg" sortKey="change" sort={sort} onSort={onSort} />
+              <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right hidden sm:table-cell" style={{ color: "var(--text-faint)" }}>
+                Added
+              </th>
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden md:table-cell" style={{ color: "var(--text-faint)" }}>
+                Day range
+              </th>
+              <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
+                Notes
+              </th>
+              <th className="py-2 pl-2 pr-4"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {groups
+              ? groups.map((g) => (
+                  <Fragment key={g.key ?? "unknown"}>
+                    <GroupHeaderRow dateKey={g.key} count={g.rows.length} />
+                    {g.rows.map((q) => (
+                      <Row
+                        quote={q}
+                        meta={meta?.[q.symbol]}
+                        key={q.symbol}
+                        onRemove={onRemove}
+                        onNotesChange={onNotesChange}
+                        onOpenDetail={onOpenDetail}
+                      />
+                    ))}
+                  </Fragment>
+                ))
+              : sorted.map((q) => (
+                  <Row
+                    quote={q}
+                    meta={meta?.[q.symbol]}
+                    key={q.symbol}
+                    onRemove={onRemove}
+                    onNotesChange={onNotesChange}
+                    onOpenDetail={onOpenDetail}
+                  />
+                ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
