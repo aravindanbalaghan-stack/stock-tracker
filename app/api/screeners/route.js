@@ -22,6 +22,7 @@ import {
 } from "@/lib/nseLive";
 import { resolveWideUniverse } from "@/lib/nifty500";
 import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
+import { recordScreenSnapshot } from "@/lib/screenerMembership";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -77,6 +78,12 @@ const STAGE_DAILY_CAP = 220;
 // days (simpler, and the difference — a few days at this horizon — doesn't
 // change which stocks qualify).
 const WYCKOFF_RECENT_MS = 60 * 24 * 60 * 60 * 1000; // ~60 calendar days
+
+// Triple Confirmation tab: the volume and RS bars a Stage-2 stock also has
+// to clear. Trend is already required just to reach this point, since
+// analyzeStage2 returns null for anything not currently in Stage 2.
+const TRIPLE_VOLUME_RATIO_MIN = 1.5; // breakout volume vs. prior 50-day average
+const TRIPLE_RS_MIN = 0; // must be beating NIFTY, not just rising with it
 
 async function fetchMarketCapCr(symbol, cookies) {
   const data = await nseApiFetchWithCookies(
@@ -146,7 +153,7 @@ function wma30From(weeklyBars) {
  * the epoch second at end-of-day for that date; Yahoo history is truncated
  * to it so a historical run can't see bars that hadn't happened yet.
  */
-async function runScreen({ screen, days, universe, asOfCutoff, isLive = false }) {
+async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, recordMembership = false }) {
     const latest = days[days.length - 1];
     let candidates = [];
     let extraNotes = [];
@@ -270,7 +277,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
       });
     }
 
-    if (screen === "stage-2" || screen === "wyckoff") {
+    if (screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation") {
       // Pass 1 — resolve the ~500-stock universe, then run a cheap weekly
       // pre-filter over it to find which stocks are plausibly above a
       // rising 30-week MA. Weekly bars are ~1/5 the payload of daily, so
@@ -361,7 +368,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
 
     const historyRaw = await fetchDailyOHLCVBatch(
       shortlist.map((c) => c.symbol),
-      { concurrency: screen === "stage-2" || screen === "wyckoff" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
+      { concurrency: screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
     );
 
     // Truncate every fetched series to the as-of date. Without this, a
@@ -443,7 +450,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
         row.sma200 = Math.round(sma200 * 100) / 100;
       }
 
-      if (screen === "stage-2" || screen === "wyckoff") {
+      if (screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation") {
         if (!hist?.bars?.length) continue;
         const stage = analyzeStage2(hist.bars, benchmarkBars);
         if (!stage) continue; // not in Stage 2, or not enough history to say
@@ -517,10 +524,34 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
       rows = withEntry;
     }
 
+    // ---------------- Triple Confirmation: trend + volume + RS ------------
+    // Trend is already satisfied by every row reaching this point (rows are
+    // only built when analyzeStage2 confirms Stage 2). This layer adds the
+    // other two legs on top: the breakout traded on confirming volume, and
+    // the stock has actually been beating the market, not just rising with
+    // it.
+    if (screen === "triple-confirmation") {
+      const withAllThree = [];
+      for (const row of rows) {
+        const volumeOk = row.breakoutVolumeRatio != null && row.breakoutVolumeRatio >= TRIPLE_VOLUME_RATIO_MIN;
+        const rsOk = row.rsVsBenchmark != null && row.rsVsBenchmark > TRIPLE_RS_MIN;
+        if (!volumeOk || !rsOk) continue;
+        withAllThree.push({
+          ...row,
+          tripleReason: `Weinstein Triple Confirmation — Trend: weekly close above a rising 30-week MA (${
+            row.ma30SlopePct >= 0 ? "+" : ""
+          }${row.ma30SlopePct}% slope). Volume: breakout traded at ${row.breakoutVolumeRatio}× the prior 50-day average. Relative strength: ${
+            row.rsVsBenchmark >= 0 ? "+" : ""
+          }${row.rsVsBenchmark}% vs. NIFTY over 26 weeks.`,
+        });
+      }
+      rows = withAllThree;
+    }
+
     // ---------------- Listing debut ----------------
     // Cheap after the first lookup of each symbol — a debut price can
     // never change, so lib/debut.js caches it for 30 days.
-    if (rows.length > 0 && screen !== "wyckoff") {
+    if (rows.length > 0 && screen !== "wyckoff" && screen !== "triple-confirmation") {
       const debuts = await fetchDebutBatch(rows.map((r) => r.symbol), { concurrency: YAHOO_CONCURRENCY });
       rows = rows.map((r) => withDebut(r, debuts.get(r.symbol)));
     }
@@ -562,6 +593,19 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false })
     }
 
     rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+
+    // Screener-membership bookkeeping — only when this is TODAY's result
+    // (recordMembership is false for a historical `date=` lookup), so
+    // browsing old dates never overwrites the current snapshot other tabs
+    // (Delivery) read from. Awaited rather than fire-and-forget: this route
+    // handler may not get a chance to run background work after it returns.
+    if (recordMembership) {
+      try {
+        await recordScreenSnapshot(screen, latest.date, rows.map((r) => r.symbol));
+      } catch {
+        // Non-fatal — the screen result itself is already built either way.
+      }
+    }
 
     return {
       screen,
@@ -671,7 +715,7 @@ async function prepareWindow(asOfDate, { live = false } = {}) {
  * per-symbol daily-history fetch — a single weekly-bar pass over the wide
  * universe is enough to both classify the stage and date the transition.
  */
-async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive }) {
+async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMembership = false }) {
   const latest = days[days.length - 1];
 
   const resolved = await resolveWideUniverse(universe);
@@ -717,6 +761,14 @@ async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive }) {
   }
 
   rows.sort((a, b) => a.weeksInStage - b.weeksInStage || (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+
+  if (recordMembership) {
+    try {
+      await recordScreenSnapshot("weinstein", latest.date, rows.map((r) => r.symbol));
+    } catch {
+      // Non-fatal.
+    }
+  }
 
   return {
     screen: "weinstein",
@@ -768,13 +820,17 @@ export async function GET(request) {
     const requestedDate = asOfDate;
     const dateAdjusted = !!asOfDate && asOfDate !== actualDate;
 
+    // Only record membership when this reflects TODAY's screen state, not
+    // a historical `date=` lookup someone is browsing.
+    const recordMembership = !dateParam;
+
     if (screen === "weinstein") {
-      const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive });
+      const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMembership });
       return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 
     if (!isConfluence) {
-      const result = await runScreen({ screen, days, universe, asOfCutoff, isLive });
+      const result = await runScreen({ screen, days, universe, asOfCutoff, isLive, recordMembership });
       return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 
@@ -790,7 +846,7 @@ export async function GET(request) {
     for (const id of CONFLUENCE_MEMBERS) {
       let result;
       try {
-        result = await runScreen({ screen: id, days, universe, asOfCutoff, isLive });
+        result = await runScreen({ screen: id, days, universe, asOfCutoff, isLive, recordMembership });
       } catch {
         perScreen[id] = { label: SCREENS[id].label, count: null, failed: true };
         continue;

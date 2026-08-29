@@ -132,6 +132,20 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <DebutHeaderCells sort={sort} onSort={onSort} />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
+            <th
+              className="py-2 px-2 text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--text-faint)" }}
+              title="Which Screener tabs this stock currently qualifies for, if any"
+            >
+              In screener?
+            </th>
+            <SortableTh
+              label="Added to screener"
+              sortKey="screenerFirstAdded"
+              sort={sort}
+              onSort={onSort}
+              title="The earliest date it started qualifying for any screen it's currently in"
+            />
             <th className="py-2 pl-2 pr-4 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>In accumulation?</th>
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
@@ -180,6 +194,28 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {r.daysOfAccumulation}/{r.accumulationWindowDays}
                   </td>
+                  <td className="py-2.5 px-2 text-left max-w-[220px]">
+                    {r.screenerScreens === undefined ? (
+                      <span className="text-xs" style={{ color: "var(--text-faint)" }}>—</span>
+                    ) : r.screenerScreens.length === 0 ? (
+                      <span className="text-xs" style={{ color: "var(--text-faint)" }}>No</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {r.screenerScreens.map((label) => (
+                          <span
+                            key={label}
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+                          >
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {r.screenerFirstAdded ?? "—"}
+                  </td>
                   <td className="py-2.5 pl-2 pr-4">
                     <span
                       className="text-[10px] px-1.5 py-0.5 rounded border"
@@ -202,7 +238,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={showCap ? 13 : 11} className="p-0">
+                    <td colSpan={showCap ? 15 : 13} className="p-0">
                       <ExpandedRowDetail row={r} />
                     </td>
                   </tr>

@@ -12,6 +12,8 @@ import {
 } from "@/lib/deliveryMetrics";
 import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
+import { getMembershipForSymbols } from "@/lib/screenerMembership";
+import { SCREEN_ORDER, SCREENS } from "@/lib/screens";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
 // inside lib/nseBhavcopy.js, so this route always runs fresh.
@@ -67,6 +69,29 @@ async function fetchMarketCapCr(symbol, cookies) {
     return (issuedSize * lastPrice) / 1e7; // rupees -> crore
   }
   return null;
+}
+
+// Attaches "is this in any Screener tab right now, and since when" to a
+// delivery row. Screener membership is tracked separately (see
+// lib/screenerMembership.js) because computing it here would mean
+// re-running every screen across the whole universe just to render this
+// tab — the membership store makes it a handful of cheap key lookups
+// instead. Fails soft: if KV isn't reachable, rows just don't get the
+// fields rather than the whole tab breaking.
+async function withScreenerMembership(rows) {
+  const membership = await getMembershipForSymbols(
+    rows.map((r) => r.symbol),
+    SCREEN_ORDER
+  );
+  if (!membership) return rows;
+  return rows.map((r) => {
+    const m = membership[r.symbol];
+    return {
+      ...r,
+      screenerScreens: m?.screens?.map((id) => SCREENS[id]?.label ?? id) ?? [],
+      screenerFirstAdded: m?.firstAdded ?? null,
+    };
+  });
 }
 
 export async function GET(request) {
@@ -131,6 +156,7 @@ export async function GET(request) {
       ]);
       const deliveryHistory = buildRecentPeriodHistory(symbol, days, periodTradingDays, HISTORY_PERIODS);
       const { category, _volumeAboveAvg, ...rest } = metrics;
+      const [enriched] = isStock ? await withScreenerMembership([rest]) : [rest];
       return Response.json({
         asOf: latest.date,
       // First session actually included, so the UI can state the exact
@@ -141,7 +167,7 @@ export async function GET(request) {
         period,
         result: withDebut(
           {
-            ...rest,
+            ...enriched,
             category,
             marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
             wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
@@ -212,20 +238,22 @@ export async function GET(request) {
 
     const [marketCaps, wmaMap, debutMap] = await Promise.all([marketCapsPromise, wmaPromise, debutPromise]);
 
-    const stocks = stockCandidates.map((c, i) => {
-      const capCr = i < marketCaps.length ? marketCaps[i] : null;
-      const wma30 = wmaMap.get(c.symbol) ?? null;
-      const { category, _volumeAboveAvg, ...rest } = c;
-      return withDebut(
-        {
-          ...rest,
-          marketCapCr: capCr != null ? Math.round(capCr) : null,
-          wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
-          deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
-        },
-        debutMap.get(c.symbol)
-      );
-    });
+    const stocks = await withScreenerMembership(
+      stockCandidates.map((c, i) => {
+        const capCr = i < marketCaps.length ? marketCaps[i] : null;
+        const wma30 = wmaMap.get(c.symbol) ?? null;
+        const { category, _volumeAboveAvg, ...rest } = c;
+        return withDebut(
+          {
+            ...rest,
+            marketCapCr: capCr != null ? Math.round(capCr) : null,
+            wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
+            deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
+          },
+          debutMap.get(c.symbol)
+        );
+      })
+    );
 
     return Response.json({
       asOf: latest.date,

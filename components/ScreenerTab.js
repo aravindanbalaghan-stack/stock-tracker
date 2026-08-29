@@ -303,9 +303,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isReclaim = screen === "ma-reclaim";
   const isWyckoff = screen === "wyckoff";
   const isWeinstein = screen === "weinstein";
-  // Both new tabs show their own "Reason added" / "Entry" columns instead
-  // of the generic 30WMA + debut columns, per the requested column set.
-  const hideGenericCols = isWyckoff || isWeinstein;
+  const isTriple = screen === "triple-confirmation";
+  // All three of the new tabs show their own "Reason added" / "Entry"
+  // columns instead of the generic 30WMA + debut columns, per the
+  // requested column set.
+  const hideGenericCols = isWyckoff || isWeinstein || isTriple;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
   const phaseFilteredRows =
@@ -569,6 +571,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             ? `No stock has a recent Wyckoff Aggressive or Conservative entry as of ${data.asOf}.`
             : isWeinstein
             ? `No stock entered a new Weinstein stage in the last few weeks, as of ${data.asOf}.`
+            : isTriple
+            ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
         </EmptyState>
       ) : (
@@ -652,6 +656,25 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       title="Weekly close at the moment the stage changed"
                     />
                   )}
+                  {isTriple && (
+                    <SortableTh
+                      label="Reason added"
+                      sortKey="rsVsBenchmark"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Which of the three confirmations lined up, and by how much"
+                    />
+                  )}
+                  {isTriple && (
+                    <SortableTh
+                      label="Entry"
+                      sortKey="stage2EntryPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="The Stage-2 breakout price"
+                    />
+                  )}
                   {isConfluence && (
                     <SortableTh
                       label="Screens"
@@ -715,10 +738,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   return (
                     <Fragment key={r.symbol}>
                     <tr
-                      className={`border-b last:border-b-0 ${isStage2 || isWyckoff ? "cursor-pointer hover:bg-white/5" : ""}`}
+                      className={`border-b last:border-b-0 ${isStage2 || isWyckoff || isTriple ? "cursor-pointer hover:bg-white/5" : ""}`}
                       style={{ borderColor: "var(--border)" }}
-                      onClick={isStage2 || isWyckoff ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
-                      title={isStage2 || isWyckoff ? "Click for every entry point both methods give" : undefined}
+                      onClick={isStage2 || isWyckoff || isTriple ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
+                      title={isStage2 || isWyckoff || isTriple ? "Click for every entry point both methods give" : undefined}
                     >
                       <td className="py-2.5 pl-4 pr-2">
                         <div className="flex items-center gap-2">
@@ -849,6 +872,44 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           </span>
                         </td>
                       )}
+                      {isTriple && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                              style={{ borderColor: "var(--gain)", color: "var(--gain)" }}
+                            >
+                              Trend
+                            </span>
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                              style={{ borderColor: "var(--gain)", color: "var(--gain)" }}
+                            >
+                              Volume {r.breakoutVolumeRatio}×
+                            </span>
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                              style={{ borderColor: "var(--gain)", color: "var(--gain)" }}
+                            >
+                              RS {r.rsVsBenchmark >= 0 ? "+" : ""}
+                              {r.rsVsBenchmark}%
+                            </span>
+                          </div>
+                          <p className="text-[11px] leading-snug" style={{ color: "var(--text-faint)" }}>
+                            {r.tripleReason}
+                          </p>
+                        </td>
+                      )}
+                      {isTriple && (
+                        <td className="py-2.5 px-2 text-right">
+                          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+                            ₹{fmt(r.stage2EntryPrice)}
+                          </span>
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {r.stage2EntryDate}
+                          </span>
+                        </td>
+                      )}
                       {isConfluence && (
                         <td className="py-2.5 px-2 text-left">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -959,7 +1020,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                         />
                       </td>
                     </tr>
-                    {(isStage2 || isWyckoff) && isOpen && (
+                    {(isStage2 || isWyckoff || isTriple) && isOpen && (
                       <tr style={{ background: "var(--surface-2)" }}>
                         <td colSpan={20} className="p-0">
                           <StageEntriesPanel row={r} />
