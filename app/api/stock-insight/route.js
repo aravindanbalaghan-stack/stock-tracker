@@ -100,6 +100,12 @@ export async function GET(request) {
       const round = (n) => (n == null ? null : Math.round(n * 100) / 100);
 
       levels = {
+        // The real trading day this price and the indicators below belong
+        // to — see the placeholder-bar trim in fetchDailyOHLCV. Shown in
+        // the page header so a holiday (or any day Yahoo hasn't published
+        // a fresh close for yet) reads as "price data as of <date>"
+        // rather than silently implying it's today's.
+        asOf: hist.asOf ?? null,
         price: round(last.c),
         high52: round(high52),
         low52: round(low52),

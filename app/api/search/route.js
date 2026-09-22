@@ -1,4 +1,5 @@
 // Server-side proxy for symbol search (autocomplete when adding a stock).
+import { fetchYahooJson } from "@/lib/yahooFinance";
 
 export const dynamic = "force-dynamic";
 
@@ -14,18 +15,9 @@ export async function GET(request) {
 
   try {
     const url = `${YAHOO_SEARCH_URL}?q=${encodeURIComponent(q)}&quotesCount=8&newsCount=0`;
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    const data = await fetchYahooJson(url);
+    if (!data) throw new Error("Upstream search request failed");
 
-    if (!res.ok) throw new Error(`Upstream responded ${res.status}`);
-
-    const data = await res.json();
     const quotes = data?.quotes ?? [];
 
     const results = quotes
@@ -38,6 +30,7 @@ export async function GET(request) {
 
     return Response.json({ results });
   } catch (err) {
+    console.error("search: Yahoo search failed:", err?.message || err);
     return Response.json(
       { error: "Search failed", detail: String(err?.message || err) },
       { status: 502 }

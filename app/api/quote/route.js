@@ -15,8 +15,7 @@
 
 export const dynamic = "force-dynamic"; // never cache — this is a live-data endpoint
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { BROWSER_UA as UA } from "@/lib/browserUA";
 
 function toYahooSymbol(sym) {
   const s = sym.trim().toUpperCase();

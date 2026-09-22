@@ -6,8 +6,7 @@ import { fetchChartQuote } from "@/app/api/indices/route";
 
 export const dynamic = "force-dynamic";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { BROWSER_UA as UA } from "@/lib/browserUA";
 
 const SIGNIFICANT_MOVE_PCT = 4; // flag a day if |change| >= this
 const ACCUMULATION_DELIVERY_THRESHOLD = 55; // avg delivery % over the window

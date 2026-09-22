@@ -13,6 +13,7 @@ import {
 import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 import { getMembershipForSymbols } from "@/lib/screenerMembership";
+import { recordAccumulationSnapshot } from "@/lib/accumulationHistory";
 import { SCREEN_ORDER, SCREENS } from "@/lib/screens";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
@@ -182,11 +183,25 @@ export async function GET(request) {
     // sorted by delivery % descending. No market-cap segregation anymore —
     // market cap is now just a displayed column (see loop below).
     const candidates = [];
+    // Accumulation first-seen bookkeeping (see lib/accumulationHistory.js)
+    // rides along on this same full-universe loop — computePeriodMetrics
+    // is already being called for every symbol here regardless of the
+    // delivery-% filter below, so recording which ones currently read
+    // inAccumulation === true costs nothing extra. Only recorded for a
+    // real "today, daily period" run — never for a historical `date=`
+    // lookup or a non-daily period, so browsing old dates or switching to
+    // Weekly/Monthly can't record a false "first seen" date.
+    const inAccumulationToday = [];
+    const isRealtimeDaily = period === "daily" && !asOfDate;
     for (const symbol of latest.bySymbol.keys()) {
       const metrics = computePeriodMetrics(symbol, days, periodTradingDays);
       if (metrics && metrics.deliveryPct != null && metrics.deliveryPct > DELIVERY_PCT_MIN) {
         candidates.push(metrics);
       }
+      if (isRealtimeDaily && metrics?.inAccumulation) inAccumulationToday.push(symbol);
+    }
+    if (isRealtimeDaily && inAccumulationToday.length) {
+      recordAccumulationSnapshot(latest.date, inAccumulationToday).catch(() => {});
     }
 
     const other = candidates

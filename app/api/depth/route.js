@@ -3,8 +3,7 @@ import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { BROWSER_UA as UA } from "@/lib/browserUA";
 
 const DEPTH_TIMEOUT_MS = 5000;
 const PROFILE_BUCKETS = 24;

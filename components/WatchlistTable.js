@@ -22,7 +22,7 @@ function fmtVolume(n) {
 // How many <SortableTh>/<th> cells the header row has — the date-group
 // separator row spans all of them. Kept as a named constant rather than a
 // magic number so a future column addition is an obvious two-line diff.
-const COLUMN_COUNT = 9;
+const COLUMN_COUNT = 10;
 
 function formatGroupDate(dateKey) {
   if (!dateKey) return "Added before this was tracked";
@@ -107,7 +107,31 @@ function NotesCell({ symbol, notes, onNotesChange }) {
   );
 }
 
-function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
+function AccumulationCell({ status }) {
+  if (!status || status.inAccumulation == null) {
+    return <span className="text-xs" style={{ color: "var(--text-faint)" }}>—</span>;
+  }
+  const { inAccumulation, firstYes } = status;
+  const title = inAccumulation
+    ? firstYes
+      ? `First flagged in accumulation on ${firstYes}`
+      : "Currently reads as accumulation"
+    : "Not currently reading as accumulation — delivery % above threshold on fewer than the required days of the last 20";
+  return (
+    <span
+      title={title}
+      className="text-xs font-medium px-1.5 py-0.5 rounded border cursor-default"
+      style={{
+        borderColor: inAccumulation ? "var(--gain)" : "var(--border)",
+        color: inAccumulation ? "var(--gain)" : "var(--text-faint)",
+      }}
+    >
+      {inAccumulation ? "Yes" : "No"}
+    </span>
+  );
+}
+
+function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
 
@@ -171,6 +195,9 @@ function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
       <td className="py-3 px-2 text-right font-mono text-xs hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>
         {fmtVolume(quote.volume)}
       </td>
+      <td className="py-3 px-2 hidden lg:table-cell">
+        <AccumulationCell status={accumulation} />
+      </td>
       <td className="py-3 px-2 hidden lg:table-cell" style={{ minWidth: "140px" }}>
         <NotesCell symbol={quote.symbol} notes={meta?.notes} onNotesChange={onNotesChange} />
       </td>
@@ -188,7 +215,7 @@ function Row({ quote, meta, onRemove, onNotesChange, onOpenDetail }) {
   );
 }
 
-export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, onOpenDetail }) {
+export default function WatchlistTable({ quotes, meta, accumulation, onRemove, onNotesChange, onOpenDetail }) {
   const { sorted, sort, onSort } = useSortableRows(quotes, null, "desc");
   const [groupByDate, setGroupByDate] = usePersistentState("watchlist.groupByDate", false);
 
@@ -254,6 +281,9 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, 
                 Day range
               </th>
               <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }} title="Delivery-based accumulation read — see the Delivery tab for the exact rule">
+                Accum.
+              </th>
               <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }}>
                 Notes
               </th>
@@ -269,6 +299,7 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, 
                       <Row
                         quote={q}
                         meta={meta?.[q.symbol]}
+                        accumulation={accumulation?.[q.symbol]}
                         key={q.symbol}
                         onRemove={onRemove}
                         onNotesChange={onNotesChange}
@@ -281,6 +312,7 @@ export default function WatchlistTable({ quotes, meta, onRemove, onNotesChange, 
                   <Row
                     quote={q}
                     meta={meta?.[q.symbol]}
+                    accumulation={accumulation?.[q.symbol]}
                     key={q.symbol}
                     onRemove={onRemove}
                     onNotesChange={onNotesChange}

@@ -1,5 +1,6 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
-import { getResolvedSectorList } from "@/lib/sectorOverrides";
+import { computePeriodMetrics } from "@/lib/deliveryMetrics";
+import { getOccurrenceHistory, getCurrentMembers } from "@/lib/screenerMembership";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -7,301 +8,336 @@ export const maxDuration = 60;
 // ---------------------------------------------------------------------------
 // WHAT THIS DOES
 //
-// For every stock-day in the chosen window it computes what the PRIOR 21
-// sessions looked like, then checks whether the next day moved 4%+. That
-// gives, for each pattern, an honest precision figure: of all the times this
-// setup appeared, how often did a big move actually follow?
+// Previously this route auto-tagged every 4%+ move with a generic
+// fingerprint ("volume dried up", "tight 21-day range", "near 21-day
+// high", etc.) and reported hit-rate/lift per tag. Replaced with three
+// specific, named setups instead:
 //
-// THE DENOMINATOR IS THE WHOLE POINT. It would be easy — and useless — to
-// look only at the stocks that moved and report "80% of them had volume
-// contraction". Volume contraction might appear on 80% of ALL stock-days,
-// in which case it tells you nothing. So every pattern is evaluated across
-// every stock-day in the window, not just the winners, and reported as:
+//   a) Accumulation onset — the day a stock's delivery-based accumulation
+//      read (see lib/deliveryMetrics.js) first turns Yes.
+//   b) Delivery streak — the day a stock's trailing 30-day count of
+//      delivery % above 70% first exceeds 5 days.
+//   c) Pocket Pivot repeaters — stocks currently in the Pocket Pivot
+//      screen that have appeared there more than twice in the last 10
+//      trading days, with delivery % above 60%.
 //
-//   occurrences  — how many times the setup appeared at all
-//   hitRate      — share of those followed by a 4%+ move
-//   lift         — hitRate ÷ base rate. 1.0 means the pattern is noise.
+// (a) and (b) are genuine walk-forward backtests, computed the same
+// honest way the old engine was: every ONSET (the day a condition first
+// becomes true, not every day it stays true) is a denominator entry,
+// whether or not it was followed by a good move, and forward return is
+// measured over the FOLLOW_DAYS trading days after.
 //
-// A pattern can look impressive on the movers list and still have a lift of
-// 1.0. That is the common case, and this is built to show it.
+// (c) is NOT a backtest — see its own section below for why it can't be
+// one yet, and what it is instead.
 // ---------------------------------------------------------------------------
 
-const LOOKBACK = 21; // sessions of history each pattern is computed from
-const DEFAULT_WINDOW = 22; // ~1 month of evaluation days
-const MAX_WINDOW = 44;
-const MOVE_THRESHOLD = 4; // % single-day gain that counts as "a move"
-const FOLLOW_DAYS = 5; // sessions after the move, for follow-through
-// Below this, percentage moves are rounding noise on the tick size rather
-// than real movement — sub-₹10 stocks would otherwise dominate the movers.
-const MIN_PRICE = 20;
-const MIN_AVG_VOLUME = 10000;
+const MIN_PRICE = 20; // sub-₹20 stocks are excluded — tick-size noise dominates the % math
+const MIN_AVG_VOLUME = 10000; // liquidity floor, same reasoning as the old engine
+const FOLLOW_DAYS = 10; // trading days of forward return measured after each event
 
-function mean(a) {
-  return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
-}
-function median(a) {
-  const v = a.filter((x) => x != null).sort((x, y) => x - y);
-  if (!v.length) return null;
-  const m = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
-  return Math.round(m * 100) / 100;
-}
+// --- (a) Accumulation onset ------------------------------------------------
+// Matches lookbackDaysFor("daily") in lib/deliveryMetrics.js — the same
+// trailing window the LIVE Delivery tab uses for this exact heuristic, so
+// a backtested "Yes" here means what production would actually have
+// shown on that day, not a number computed with the benefit of hindsight
+// (extra days of history the live app wouldn't have had at the time).
+const ACCUM_LOOKBACK = 36;
+
+// --- (b) Delivery streak ----------------------------------------------------
+const STREAK_WINDOW = 30;
+const STREAK_THRESHOLD = 70; // %
+const STREAK_MIN_DAYS = 5; // "more than 5" => strictly greater than 5
+
+// --- (c) Pocket Pivot repeaters ---------------------------------------------
+const POCKET_PIVOT_WINDOW_DAYS = 10;
+const POCKET_PIVOT_MIN_APPEARANCES = 2; // "more than twice" => strictly greater than 2
+const POCKET_PIVOT_DELIVERY_MIN = 60;
+
+const DEFAULT_WINDOW = 66; // ~3 months of evaluation days
+const MAX_WINDOW = 90;
+
 function round(n, d = 2) {
   return n == null ? null : Math.round(n * 10 ** d) / 10 ** d;
 }
+function median(values) {
+  const v = values.filter((x) => x != null).sort((x, y) => x - y);
+  if (!v.length) return null;
+  const m = v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2;
+  return round(m);
+}
+
+/** Close-to-close return from day `i` to the last available close within
+ * the next FOLLOW_DAYS trading days. Null (not zero) when there isn't
+ * enough forward history yet — e.g. an event from three days ago — so it
+ * can be excluded from the aggregate stats rather than silently treated
+ * as a 0% outcome. */
+function forwardReturn(days, symbol, i) {
+  const cur = days[i]?.bySymbol.get(symbol);
+  if (!cur?.close) return { pct: null, sample: 0 };
+  let last = null;
+  let sample = 0;
+  for (let k = i + 1; k <= i + FOLLOW_DAYS && k < days.length; k++) {
+    const row = days[k]?.bySymbol.get(symbol);
+    if (row?.close != null) {
+      last = row.close;
+      sample++;
+    }
+  }
+  if (last == null) return { pct: null, sample: 0 };
+  return { pct: round(((last - cur.close) / cur.close) * 100), sample };
+}
 
 /**
- * The pre-move fingerprint: everything knowable from the 21 sessions BEFORE
- * the day in question. Nothing here may touch the move day itself — that
- * would be lookahead and would make every pattern look predictive.
+ * Scenario (a): the day a symbol's accumulation read first turns Yes.
+ * `days` is the FULL fetched bhavcopy array; each evaluation day's
+ * accumulation status is computed from a trailing ACCUM_LOOKBACK-day
+ * slice ending on that day — never looking forward — so this can't
+ * "know" about future data the live app wouldn't have had either.
  */
-function describeSetup(hist) {
-  if (hist.length < LOOKBACK) return null;
-  const w = hist.slice(-LOOKBACK);
-  const closes = w.map((d) => d.close).filter((c) => c > 0);
-  const vols = w.map((d) => d.volume).filter((v) => v > 0);
-  const dels = w.map((d) => d.deliveryPct).filter((v) => v != null);
-  if (closes.length < LOOKBACK - 3 || vols.length < LOOKBACK - 3) return null;
-
-  const last = w[w.length - 1];
-  const hi = Math.max(...w.map((d) => d.high ?? d.close).filter(Boolean));
-  const lo = Math.min(...w.map((d) => d.low ?? d.close).filter(Boolean));
-  const avgVol = mean(vols);
-  const recentVol = mean(vols.slice(-5));
-  const priorVol = mean(vols.slice(0, -5));
-  const sma21 = mean(closes);
-  const avgDel = mean(dels);
-  const recentDel = mean(dels.slice(-5));
-  const priorDel = mean(dels.slice(0, -5));
-
-  const tags = [];
-
-  // --- Volume behaviour ---
-  if (recentVol != null && priorVol > 0) {
-    const ratio = recentVol / priorVol;
-    if (ratio < 0.7) tags.push("volume dried up");
-    else if (ratio > 1.5) tags.push("volume building");
+function findAccumulationOnsets(days, symbols, firstEval) {
+  const events = [];
+  for (const symbol of symbols) {
+    let wasAccum = false;
+    for (let i = firstEval; i < days.length; i++) {
+      const windowStart = Math.max(0, i + 1 - ACCUM_LOOKBACK);
+      const metrics = computePeriodMetrics(symbol, days.slice(windowStart, i + 1), 1);
+      const isAccum = metrics?.inAccumulation ?? false;
+      if (isAccum && !wasAccum && metrics.close >= MIN_PRICE) {
+        events.push({ symbol, date: days[i].date, index: i, close: metrics.close, deliveryPct: metrics.deliveryPct });
+      }
+      wasAccum = isAccum;
+    }
   }
+  return events;
+}
 
-  // --- Range / consolidation ---
-  const rangePct = lo > 0 ? ((hi - lo) / lo) * 100 : null;
-  if (rangePct != null) {
-    if (rangePct < 8) tags.push("tight 21-day range");
-    else if (rangePct > 25) tags.push("wide 21-day range");
+/**
+ * Scenario (b): the day a symbol's trailing 30-day count of delivery %
+ * above 70% first exceeds 5 — i.e. crosses from "5 or fewer" to "more
+ * than 5". Counting only the crossing day (not every day the streak
+ * continues) avoids one long qualifying stretch dominating the sample as
+ * if it were dozens of independent setups.
+ */
+function findDeliveryStreakOnsets(days, symbols, firstEval) {
+  const events = [];
+  function countAboveThreshold(symbol, endIdx) {
+    const start = Math.max(0, endIdx + 1 - STREAK_WINDOW);
+    let count = 0;
+    for (let k = start; k <= endIdx; k++) {
+      const row = days[k]?.bySymbol.get(symbol);
+      if (row?.series === "EQ" && row.deliveryPct != null && row.deliveryPct > STREAK_THRESHOLD) count++;
+    }
+    return count;
   }
-
-  // --- Where in the range it sits ---
-  if (hi > lo) {
-    const pos = (last.close - lo) / (hi - lo);
-    if (pos >= 0.85) tags.push("near 21-day high");
-    else if (pos <= 0.15) tags.push("near 21-day low");
+  for (const symbol of symbols) {
+    let wasQualifying = false;
+    for (let i = firstEval; i < days.length; i++) {
+      const cur = days[i]?.bySymbol.get(symbol);
+      if (!cur || cur.series !== "EQ" || !cur.close) continue;
+      const count = countAboveThreshold(symbol, i);
+      const isQualifying = count > STREAK_MIN_DAYS;
+      if (isQualifying && !wasQualifying && cur.close >= MIN_PRICE) {
+        events.push({
+          symbol,
+          date: days[i].date,
+          index: i,
+          close: cur.close,
+          deliveryPct: cur.deliveryPct,
+          daysAboveThreshold: count,
+        });
+      }
+      wasQualifying = isQualifying;
+    }
   }
+  return events;
+}
 
-  // --- Trend ---
-  if (sma21 != null) tags.push(last.close > sma21 ? "above 21-day average" : "below 21-day average");
-
-  // --- Delivery ---
-  if (avgDel != null) {
-    if (avgDel >= 60) tags.push("sustained high delivery");
-    else if (avgDel < 35) tags.push("low delivery throughout");
-  }
-  if (recentDel != null && priorDel != null && priorDel > 0) {
-    if (recentDel > priorDel * 1.25) tags.push("delivery rising");
-  }
-
-  // --- Recent quiet before the move ---
-  const lastFive = w.slice(-5);
-  const flat = lastFive.every((d) => {
-    if (!d.prevClose || !d.close) return false;
-    return Math.abs((d.close - d.prevClose) / d.prevClose) * 100 < 2;
+/** Turns a raw event list into the summary block the UI renders: sample
+ * size, win rate, median/average forward return, and the individual
+ * events (most recent first, capped so the payload stays reasonable). */
+function summarize(events, days, label, description) {
+  const withForward = events.map((e) => {
+    const { pct, sample } = forwardReturn(days, e.symbol, e.index);
+    return { ...e, forwardPct: pct, forwardSample: sample };
   });
-  if (flat) tags.push("five quiet sessions");
-
-  // --- Prior-day direction ---
-  if (last.prevClose && last.close) {
-    const ch = ((last.close - last.prevClose) / last.prevClose) * 100;
-    if (ch >= 2) tags.push("prior day already up");
-    else if (ch <= -2) tags.push("prior day down");
-  }
-
+  const resolved = withForward.filter((e) => e.forwardPct != null);
+  const wins = resolved.filter((e) => e.forwardPct > 0);
+  const sorted = [...withForward].sort((a, b) => (a.date < b.date ? 1 : -1));
   return {
-    tags,
-    context: {
-      rangePct: round(rangePct),
-      avgVolume: avgVol != null ? Math.round(avgVol) : null,
-      volTrend: recentVol != null && priorVol > 0 ? round(recentVol / priorVol) : null,
-      avgDeliveryPct: round(avgDel),
-      sma21: round(sma21),
-    },
+    label,
+    description,
+    occurrences: withForward.length,
+    resolvedOccurrences: resolved.length,
+    winRatePct: resolved.length ? round((wins.length / resolved.length) * 100, 1) : null,
+    medianForwardPct: median(resolved.map((e) => e.forwardPct)),
+    avgForwardPct: resolved.length ? round(resolved.reduce((a, e) => a + e.forwardPct, 0) / resolved.length) : null,
+    events: sorted.slice(0, 200).map((e) => ({
+      symbol: e.symbol,
+      date: e.date,
+      close: e.close,
+      deliveryPct: e.deliveryPct,
+      forwardPct: e.forwardPct,
+      forwardDays: e.forwardSample,
+    })),
+    truncated: withForward.length > 200,
   };
 }
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
-  const threshold = Math.max(1, Number(searchParams.get("threshold")) || MOVE_THRESHOLD);
-  const windowDays = Math.min(MAX_WINDOW, Math.max(5, Number(searchParams.get("window")) || DEFAULT_WINDOW));
+  const windowDays = Math.min(MAX_WINDOW, Math.max(10, Number(searchParams.get("window")) || DEFAULT_WINDOW));
 
-  const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-  const dateParam = searchParams.get("date");
-  let asOfDate = null;
-  if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-    asOfDate = dateParam > todayIST ? todayIST : dateParam;
-  }
-
-  // Enough history for the lookback behind the oldest evaluated day, plus
-  // room after the newest for follow-through.
-  const need = windowDays + LOOKBACK + FOLLOW_DAYS + 5;
+  const need = Math.max(ACCUM_LOOKBACK, STREAK_WINDOW) + windowDays + FOLLOW_DAYS + 10;
 
   try {
-    const all = await getRecentBhavcopies(need, need * 2 + 25);
-    let days = asOfDate ? all.filter((d) => d.date <= asOfDate) : all;
-    if (days.length < LOOKBACK + 5) {
-      return Response.json(
-        { error: `Not enough trading-day data at or before ${asOfDate ?? "today"}.` },
-        { status: 503 }
-      );
+    const days = await getRecentBhavcopies(need, need * 2 + 25);
+    if (days.length < Math.max(ACCUM_LOOKBACK, STREAK_WINDOW) + 5) {
+      return Response.json({ error: "Not enough trading-day data available from NSE yet" }, { status: 503 });
     }
-    days = days.slice(-need);
     const latest = days[days.length - 1];
+    const firstEval = Math.max(Math.max(ACCUM_LOOKBACK, STREAK_WINDOW), days.length - windowDays);
 
-    // Per-symbol series indexed by day position, built once. Recomputing
-    // per evaluation day would be ~40x the work for the same numbers.
-    const seriesBySymbol = new Map();
-    days.forEach((day, idx) => {
-      for (const [symbol, r] of day.bySymbol) {
-        if (r.series !== "EQ" || r.close == null) continue;
-        if (!seriesBySymbol.has(symbol)) seriesBySymbol.set(symbol, []);
-        seriesBySymbol.get(symbol).push({ idx, ...r });
-      }
-    });
-
-    const firstEval = Math.max(LOOKBACK, days.length - windowDays);
-    const patternStats = new Map();
-    const movers = [];
-    let totalObservations = 0;
-    let totalMoves = 0;
-
-    for (const [symbol, series] of seriesBySymbol) {
-      // Position lookup so the lookback slice is contiguous trading days
-      // for THIS symbol, not calendar positions it may not have traded.
-      const byIdx = new Map(series.map((r) => [r.idx, r]));
-
-      for (let i = firstEval; i < days.length; i++) {
-        const cur = byIdx.get(i);
-        if (!cur || !cur.prevClose || !cur.close) continue;
-        if (cur.close < MIN_PRICE) continue;
-
-        const hist = [];
-        for (let k = i - LOOKBACK; k < i; k++) {
-          const h = byIdx.get(k);
-          if (h) hist.push(h);
-        }
-        if (hist.length < LOOKBACK - 3) continue;
-
-        const avgVol = mean(hist.map((h) => h.volume).filter((v) => v > 0));
-        if (!avgVol || avgVol < MIN_AVG_VOLUME) continue;
-
-        const setup = describeSetup(hist);
-        if (!setup) continue;
-
-        const movePct = ((cur.close - cur.prevClose) / cur.prevClose) * 100;
-        const moved = movePct >= threshold;
-
-        totalObservations++;
-        if (moved) totalMoves++;
-
-        // Every occurrence counts toward the denominator, moved or not.
-        for (const tag of setup.tags) {
-          const s = patternStats.get(tag) ?? { tag, occurrences: 0, moves: 0, forward: [] };
-          s.occurrences++;
-          if (moved) s.moves++;
-          patternStats.set(tag, s);
-        }
-
-        if (!moved) continue;
-
-        // Follow-through after the move, so a pattern that produces
-        // one-day spikes which immediately reverse is distinguishable
-        // from one that starts something.
-        const after = [];
-        for (let k = i + 1; k <= i + FOLLOW_DAYS; k++) {
-          const f = byIdx.get(k);
-          if (f?.close != null) after.push(f);
-        }
-        const forwardPct = after.length
-          ? ((after[after.length - 1].close - cur.close) / cur.close) * 100
-          : null;
-        if (forwardPct != null) {
-          for (const tag of setup.tags) patternStats.get(tag).forward.push(forwardPct);
-        }
-
-        movers.push({
-          symbol,
-          date: days[i].date,
-          movePct: round(movePct),
-          close: cur.close,
-          volume: cur.volume,
-          volumeRatio: round(cur.volume / avgVol),
-          deliveryPct: cur.deliveryPct,
-          tags: setup.tags,
-          context: setup.context,
-          forwardPct: round(forwardPct),
-          forwardDays: after.length,
-        });
-      }
+    // Universe: every equity-series symbol (ETFs/REITs/InvITs are
+    // handled by computePeriodMetrics's own classify() where relevant,
+    // but delivery-streak counting here works directly off bhavcopy rows
+    // so it's filtered here too) with a full 30-day baseline of volume —
+    // illiquid names swing too easily on thin volume to mean anything in
+    // a backtest like this.
+    const candidateSymbols = [];
+    for (const [symbol, row] of latest.bySymbol) {
+      if (row.series !== "EQ") continue;
+      const baseline = days
+        .slice(-STREAK_WINDOW)
+        .map((d) => d.bySymbol.get(symbol)?.volume)
+        .filter((v) => v > 0);
+      const avgVol = baseline.length ? baseline.reduce((a, b) => a + b, 0) / baseline.length : 0;
+      if (avgVol >= MIN_AVG_VOLUME) candidateSymbols.push(symbol);
     }
 
-    const baseRate = totalObservations ? totalMoves / totalObservations : 0;
+    const accumulationEvents = findAccumulationOnsets(days, candidateSymbols, firstEval);
+    const streakEvents = findDeliveryStreakOnsets(days, candidateSymbols, firstEval);
 
-    const patterns = [...patternStats.values()]
-      .filter((s) => s.occurrences >= 50) // too rare to say anything about
-      .map((s) => ({
-        tag: s.tag,
-        occurrences: s.occurrences,
-        moves: s.moves,
-        hitRatePct: round((s.moves / s.occurrences) * 100, 1),
-        lift: baseRate > 0 ? round(s.moves / s.occurrences / baseRate) : null,
-        // Of the moves this pattern preceded, how they went over the next
-        // week — "good returns" in the sense of the move sticking.
-        medianForwardPct: median(s.forward),
-        followedThroughCount: s.forward.filter((v) => v > 0).length,
-        forwardSample: s.forward.length,
-      }))
-      .sort((a, b) => (b.lift ?? 0) - (a.lift ?? 0));
+    const scenarioA = summarize(
+      accumulationEvents,
+      days,
+      "Accumulation onset",
+      "The day delivery-based accumulation (delivery % above 50 on 10+ of the last 20 sessions, price held or rose over that window, volume above average) first read Yes."
+    );
+    const scenarioB = summarize(
+      streakEvents,
+      days,
+      "Delivery streak",
+      `The day a stock's trailing ${STREAK_WINDOW}-day count of delivery % above ${STREAK_THRESHOLD}% first exceeded ${STREAK_MIN_DAYS} days.`
+    );
 
-    movers.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.movePct - a.movePct));
-
-    // Sectors for the movers list.
+    // --- (c) Pocket Pivot repeaters ----------------------------------
+    // NOT a historical backtest like (a) and (b) above. "How many times
+    // has this appeared in Pocket Pivot" is only knowable from the
+    // occurrence log lib/screenerMembership.js started keeping once that
+    // tracking shipped — there's no way to reconstruct it for earlier
+    // dates without re-running the Pocket Pivot screen (which needs
+    // per-symbol weekly Yahoo history, market cap, and more) across the
+    // whole ~2000-stock universe for every past trading day, which isn't
+    // practical to do on request.
+    //
+    // So this is a live snapshot instead: today's Pocket Pivot members
+    // (from the last time that tab was loaded — see
+    // lib/screenerMembership.js's recordScreenSnapshot), filtered to the
+    // ones that have appeared more than twice in the last 10 trading days
+    // AND currently have delivery % above 60, each with its performance
+    // since it crossed that appearance threshold. This list — and the
+    // Pocket Pivot tab's own "Appeared (30d)" column — both fill in as
+    // more trading days pass under this tracking.
+    const pocketPivotRepeaters = {
+      label: "Pocket Pivot repeaters",
+      live: true,
+      candidates: 0,
+      asOfMembers: null,
+      results: [],
+      note: null,
+    };
     try {
-      const sectorList = await getResolvedSectorList();
-      const bySymbol = new Map();
-      for (const s of sectorList) {
-        for (const sym of s.symbols) {
-          if (!bySymbol.has(sym)) bySymbol.set(sym, []);
-          bySymbol.get(sym).push({ key: s.key, name: s.name });
+      const current = await getCurrentMembers("pocket-pivot");
+      const members = current?.symbols ?? [];
+      pocketPivotRepeaters.asOfMembers = current?.asOf ?? null;
+      if (members.length === 0) {
+        pocketPivotRepeaters.note =
+          "No current Pocket Pivot members on file — visit Screeners → Pocket Pivot at least once to populate this.";
+      } else {
+        const sinceDate =
+          days.length >= POCKET_PIVOT_WINDOW_DAYS
+            ? days[days.length - POCKET_PIVOT_WINDOW_DAYS].date
+            : days[0].date;
+        const occurrences = await getOccurrenceHistory("pocket-pivot", members, sinceDate);
+        pocketPivotRepeaters.candidates = members.length;
+        if (!occurrences) {
+          pocketPivotRepeaters.note = "Appearance tracking isn't available on this deployment (KV isn't configured).";
+        } else {
+          const results = [];
+          for (const symbol of members) {
+            const occ = occurrences[symbol];
+            if (!occ || occ.count <= POCKET_PIVOT_MIN_APPEARANCES) continue;
+            const metrics = computePeriodMetrics(symbol, days, 1);
+            if (!metrics || metrics.deliveryPct == null || metrics.deliveryPct <= POCKET_PIVOT_DELIVERY_MIN) continue;
+
+            // The date it crossed "more than twice" — the (N+1)th
+            // appearance in the window, where N = POCKET_PIVOT_MIN_APPEARANCES.
+            const crossingDate = occ.dates[POCKET_PIVOT_MIN_APPEARANCES];
+            const crossingDay = days.find((d) => d.date === crossingDate);
+            const crossingClose = crossingDay?.bySymbol.get(symbol)?.close ?? null;
+            const performanceSinceCrossingPct =
+              crossingClose && metrics.close
+                ? round(((metrics.close - crossingClose) / crossingClose) * 100)
+                : null;
+
+            results.push({
+              symbol,
+              appearanceCount: occ.count,
+              appearanceDates: occ.dates,
+              deliveryPct: metrics.deliveryPct,
+              close: metrics.close,
+              crossingDate,
+              performanceSinceCrossingPct,
+            });
+          }
+          results.sort(
+            (x, y) => (y.performanceSinceCrossingPct ?? -Infinity) - (x.performanceSinceCrossingPct ?? -Infinity)
+          );
+          pocketPivotRepeaters.results = results;
+          if (results.length === 0) {
+            pocketPivotRepeaters.note = `None of today's ${members.length} Pocket Pivot members currently meet all three conditions (appeared more than ${POCKET_PIVOT_MIN_APPEARANCES} times in ${POCKET_PIVOT_WINDOW_DAYS} trading days, delivery % above ${POCKET_PIVOT_DELIVERY_MIN}). This fills in as more trading days pass under appearance tracking.`;
+          }
         }
       }
-      for (const m of movers) m.sectors = bySymbol.get(m.symbol) ?? [];
-    } catch {
-      for (const m of movers) m.sectors = null;
+    } catch (err) {
+      console.error("movers: pocket-pivot repeaters section failed:", err?.message || err);
+      pocketPivotRepeaters.note = "Couldn't compute this section.";
     }
 
     return Response.json({
       asOf: latest.date,
-      requestedDate: asOfDate,
-      dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       windowFirstDate: days[firstEval]?.date ?? null,
-      criteria: { threshold, windowDays, lookback: LOOKBACK, followDays: FOLLOW_DAYS, minPrice: MIN_PRICE },
-      totals: {
-        observations: totalObservations,
-        moves: totalMoves,
-        baseRatePct: round(baseRate * 100, 2),
+      criteria: {
+        windowDays,
+        followDays: FOLLOW_DAYS,
+        minPrice: MIN_PRICE,
+        minAvgVolume: MIN_AVG_VOLUME,
+        accumLookback: ACCUM_LOOKBACK,
+        streakWindow: STREAK_WINDOW,
+        streakThreshold: STREAK_THRESHOLD,
+        streakMinDays: STREAK_MIN_DAYS,
+        pocketPivotWindowDays: POCKET_PIVOT_WINDOW_DAYS,
+        pocketPivotMinAppearances: POCKET_PIVOT_MIN_APPEARANCES,
+        pocketPivotDeliveryMin: POCKET_PIVOT_DELIVERY_MIN,
       },
-      patterns,
-      moverCount: movers.length,
-      movers: movers.slice(0, 400),
-      truncated: movers.length > 400,
+      scenarios: {
+        accumulation: scenarioA,
+        deliveryStreak: scenarioB,
+      },
+      pocketPivotRepeaters,
     });
   } catch (err) {
+    console.error("movers: failed to compute scenarios:", err?.message || err);
     return Response.json(
       { error: "Failed to analyse movers", detail: String(err?.message || err) },
       { status: 502 }

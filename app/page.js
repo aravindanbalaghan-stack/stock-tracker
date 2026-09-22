@@ -43,6 +43,7 @@ function PageInner() {
   // approach, same reasoning.
   const [meta, setMeta] = useState(() => loadWatchlistMeta());
   const [quotes, setQuotes] = useState([]);
+  const [accumulation, setAccumulation] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -120,6 +121,31 @@ function PageInner() {
   useEffect(() => {
     saveWatchlistMeta(meta);
   }, [meta]);
+
+  // Accumulation status (see lib/accumulationHistory.js) is derived from
+  // NSE bhavcopy, which only updates once per trading day — unlike quotes,
+  // there's no reason to refetch this on the 12s poll, so it's a separate
+  // effect keyed only on the symbol list.
+  useEffect(() => {
+    if (symbols.length === 0) {
+      setAccumulation({});
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/watchlist-accumulation?symbols=${encodeURIComponent(symbols.join(","))}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setAccumulation(json.results ?? {});
+      } catch {
+        /* accumulation status is a nice-to-have — the rest of the watchlist still works */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols]);
 
   // Pull the signed-in user's list from the server. A browser-local list
   // that predates this is pushed up once, so nobody loses a watchlist they
@@ -215,10 +241,29 @@ function PageInner() {
   }
 
   function handleNotesChange(symbol, notes) {
+    // Bug fix: this used to rebuild the meta entry as just
+    // { addedPrice, notes }, silently dropping addedAt (and source/
+    // sourceLabel). WatchlistTable's "group by date added" buckets purely
+    // on addedAt, so the moment a note was added, the stock's addedAt
+    // became undefined and it fell into the dateless "added before this
+    // was tracked" group at the very end — looking like it had lost its
+    // date entirely. Spreading the existing entry keeps everything else
+    // intact and only changes notes.
     setMeta((prev) => ({
       ...prev,
-      [symbol]: { addedPrice: prev[symbol]?.addedPrice ?? null, notes },
+      [symbol]: { ...prev[symbol], notes },
     }));
+
+    // Also persist to the server-side per-user watchlist (see the PATCH
+    // handler in app/api/watchlist/route.js) — previously notes only ever
+    // lived in local state/localStorage and never reached the server
+    // copy, so they didn't follow you to another device or survive a
+    // browser data clear the way the rest of the watchlist does.
+    fetch("/api/watchlist", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol, notes }),
+    }).catch(() => {});
   }
 
   async function handleLogout() {
@@ -303,6 +348,7 @@ function PageInner() {
                 <WatchlistTable
                   quotes={quotes}
                   meta={meta}
+                  accumulation={accumulation}
                   onRemove={handleRemove}
                   onNotesChange={handleNotesChange}
                   onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}

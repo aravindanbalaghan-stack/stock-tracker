@@ -14,10 +14,15 @@ function qty(n) {
   return n.toLocaleString("en-IN");
 }
 
-// Live resting orders: real exchange data, 5 levels each side.
-function OrderBook({ book }) {
-  const maxQty = Math.max(...[...book.bids, ...book.asks].map((r) => r.quantity), 1);
-  const Side = ({ rows, label, color, dim, align }) => (
+// Extracted to module scope — previously declared INSIDE OrderBook's
+// render body, which meant React created a brand-new component type on
+// every render (React.createElement(Side, ...) pointed at a different
+// function identity each time), forcing every row to remount and lose
+// state each time OrderBook re-rendered. `maxQty` is now a prop instead
+// of a closed-over variable, since Side no longer has access to it via
+// closure.
+function Side({ rows, label, color, dim, align, maxQty }) {
+  return (
     <div className="flex-1 min-w-0">
       <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color }}>
         {label}
@@ -49,12 +54,17 @@ function OrderBook({ book }) {
       </div>
     </div>
   );
+}
+
+// Live resting orders: real exchange data, 5 levels each side.
+function OrderBook({ book }) {
+  const maxQty = Math.max(...[...book.bids, ...book.asks].map((r) => r.quantity), 1);
 
   return (
     <div>
       <div className="flex gap-4">
-        <Side rows={book.bids} label="Buyers (bids)" color="var(--gain)" dim="var(--gain-dim)" align="left" />
-        <Side rows={book.asks} label="Sellers (asks)" color="var(--loss)" dim="var(--loss-dim)" align="right" />
+        <Side rows={book.bids} label="Buyers (bids)" color="var(--gain)" dim="var(--gain-dim)" align="left" maxQty={maxQty} />
+        <Side rows={book.asks} label="Sellers (asks)" color="var(--loss)" dim="var(--loss-dim)" align="right" maxQty={maxQty} />
       </div>
       {(book.totalBuyQuantity || book.totalSellQuantity) && (
         <p className="text-[11px] mt-2" style={{ color: "var(--text-muted)" }}>

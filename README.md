@@ -139,6 +139,11 @@ same underlying KV store.
 
 ### 3. Set a secret so strangers can't trigger SMS sends
 
+**Required** — `/api/check-alerts` refuses to run at all without this set
+(it used to allow unauthenticated calls when the secret was missing,
+which meant anyone with the URL could trigger SMS sends and see every
+alert's phone number in the response; it now fails closed instead).
+
 1. In Vercel: **Settings** → **Environment Variables** → add:
    - `ALERTS_CRON_SECRET` = any random string you make up (e.g. a long
      password — you won't need to remember it, just paste it in both

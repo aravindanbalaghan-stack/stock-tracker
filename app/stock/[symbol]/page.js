@@ -161,6 +161,7 @@ export default function StockInsightPage({ params }) {
               </span>
             )}
             {data?.exchange && <span>{data.exchange}</span>}
+            {L?.asOf && <span>· Price data as of {L.asOf}</span>}
             {data?.asOf && <span>· Delivery data as of {data.asOf}</span>}
           </p>
           {data?.sectors?.length > 0 && (

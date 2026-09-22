@@ -22,7 +22,7 @@ import {
 } from "@/lib/nseLive";
 import { resolveWideUniverse } from "@/lib/nifty500";
 import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
-import { recordScreenSnapshot } from "@/lib/screenerMembership";
+import { recordScreenSnapshot, getOccurrenceHistory } from "@/lib/screenerMembership";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -604,6 +604,28 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
         await recordScreenSnapshot(screen, latest.date, rows.map((r) => r.symbol));
       } catch {
         // Non-fatal — the screen result itself is already built either way.
+      }
+    }
+
+    // Appearance history (Pocket Pivot only) — how many times, and on
+    // which dates, each row has shown up in this screen over the last 30
+    // trading days. Placed AFTER recordScreenSnapshot so today's just-
+    // written entry is included in the count, not one run behind. See
+    // getOccurrenceHistory's own comment for the caveat that this log
+    // only covers days since it started being recorded.
+    if (screen === "pocket-pivot" && rows.length > 0) {
+      const sinceDate = days.length >= 30 ? days[days.length - 30].date : days[0].date;
+      try {
+        const occurrences = await getOccurrenceHistory("pocket-pivot", rows.map((r) => r.symbol), sinceDate);
+        if (occurrences) {
+          rows = rows.map((r) => ({
+            ...r,
+            appearanceCount30d: occurrences[r.symbol]?.count ?? null,
+            appearanceDates30d: occurrences[r.symbol]?.dates ?? [],
+          }));
+        }
+      } catch {
+        // Non-fatal — rows just don't get the appearance columns.
       }
     }
 

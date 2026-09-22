@@ -1,15 +1,11 @@
 import { listAlerts, markTriggered } from "@/lib/alertsStore";
+import { fetchYahooJson } from "@/lib/yahooFinance";
 
 export const dynamic = "force-dynamic";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
-
 async function getPrice(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.NS?interval=1d&range=5d`;
-  const res = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, cache: "no-store" });
-  if (!res.ok) return null;
-  const data = await res.json();
+  const data = await fetchYahooJson(url);
   return data?.chart?.result?.[0]?.meta?.regularMarketPrice ?? null;
 }
 
@@ -46,16 +42,32 @@ async function sendSms(phone, message) {
 // to be called by an external scheduler (e.g. cron-job.org) instead. We
 // still check for a shared secret so randoms on the internet can't trigger
 // SMS sends (and burn your SMS credits) by hitting this URL.
+//
+// Fails CLOSED when ALERTS_CRON_SECRET isn't set — a deployer who skips
+// that setup step (easy to do; it's step 3 of 4 in the README) previously
+// got an endpoint that was wide open AND, since the response below echoed
+// back every alert including its phone number, exposed everyone's phone
+// numbers and price targets to anyone who found the URL. Without the
+// secret configured this route now simply refuses to run — see the README
+// "SMS price alerts" section to enable it.
 function isAuthorized(request) {
   const secret = process.env.ALERTS_CRON_SECRET;
-  if (!secret) return true; // not configured — allow (see README to lock this down)
+  if (!secret) return false;
   const header = request.headers.get("authorization");
   return header === `Bearer ${secret}`;
 }
 
 export async function GET(request) {
   if (!isAuthorized(request)) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    const configured = Boolean(process.env.ALERTS_CRON_SECRET);
+    return Response.json(
+      {
+        error: configured
+          ? "Unauthorized"
+          : "ALERTS_CRON_SECRET isn't set — see README \"SMS price alerts\" to enable this endpoint.",
+      },
+      { status: configured ? 401 : 501 }
+    );
   }
 
   try {
@@ -65,19 +77,26 @@ export async function GET(request) {
       return Response.json({ checked: 0, triggered: 0 });
     }
 
+    // Parallel, matching app/api/quote/route.js's approach — the previous
+    // sequential for-await loop here serialized one Yahoo round-trip per
+    // unique symbol, which scales badly and risks the external scheduler
+    // timing out as the alert list grows.
     const uniqueSymbols = [...new Set(active.map((a) => a.symbol))];
-    const prices = {};
-    for (const symbol of uniqueSymbols) {
-      prices[symbol] = await getPrice(symbol);
-    }
+    const priceEntries = await Promise.all(uniqueSymbols.map(async (symbol) => [symbol, await getPrice(symbol)]));
+    const prices = Object.fromEntries(priceEntries);
 
     let triggeredCount = 0;
     const results = [];
 
     for (const alert of active) {
       const price = prices[alert.symbol];
+      // Never echo phone numbers back in the response — this endpoint's
+      // JSON is visible to whatever external scheduler calls it (e.g.
+      // cron-job.org logs the response body), and a phone number isn't
+      // needed to see what the cron run did.
+      const { phone, ...alertSummary } = alert;
       if (price == null) {
-        results.push({ ...alert, status: "no-price" });
+        results.push({ ...alertSummary, status: "no-price" });
         continue;
       }
 
@@ -94,17 +113,19 @@ export async function GET(request) {
           );
           await markTriggered(alert.id);
           triggeredCount++;
-          results.push({ ...alert, status: "triggered", price });
+          results.push({ ...alertSummary, status: "triggered", price });
         } catch (err) {
-          results.push({ ...alert, status: "sms-failed", detail: String(err?.message || err) });
+          console.error(`check-alerts: SMS send failed for alert ${alert.id} (${alert.symbol}):`, err?.message || err);
+          results.push({ ...alertSummary, status: "sms-failed", detail: String(err?.message || err) });
         }
       } else {
-        results.push({ ...alert, status: "not-yet", price });
+        results.push({ ...alertSummary, status: "not-yet", price });
       }
     }
 
     return Response.json({ checked: active.length, triggered: triggeredCount, results });
   } catch (err) {
+    console.error("check-alerts: failed to check alerts:", err?.message || err);
     return Response.json(
       { error: "Failed to check alerts", detail: String(err?.message || err) },
       { status: 500 }

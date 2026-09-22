@@ -7,8 +7,7 @@ import { fetchDebutBatch, withDebut } from "@/lib/debut";
 // data. It re-scans the whole midcap universe on every request.
 export const dynamic = "force-dynamic";
 
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { BROWSER_UA as UA } from "@/lib/browserUA";
 const CONCURRENCY = 15;
 const AVG_VOLUME_WINDOW = 30; // trading days
 

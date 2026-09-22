@@ -5,8 +5,7 @@ export const dynamic = "force-dynamic";
 // See app/api/quote/route.js for why we use the chart endpoint, and why we
 // compute prevClose from the daily series instead of trusting
 // meta.chartPreviousClose (it's range-relative, not "yesterday").
-const UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+import { BROWSER_UA as UA } from "@/lib/browserUA";
 
 export async function fetchChartQuote(symbol) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(

@@ -298,6 +298,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
 
   const showListedOn = screen === "ipo-base";
   const showMarketCap = screen === "pocket-pivot";
+  const showAppearances = screen === "pocket-pivot";
   const isStage2 = screen === "stage-2";
   const isConfluence = screen === CONFLUENCE_SCREEN;
   const isReclaim = screen === "ma-reclaim";
@@ -728,6 +729,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   )}
                   {showListedOn && <SortableTh label="Listed" sortKey="listedOn" sort={sort} onSort={onSort} />}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
+                  {showAppearances && (
+                    <SortableTh
+                      label="Appeared (30d)"
+                      sortKey="appearanceCount30d"
+                      sort={sort}
+                      onSort={onSort}
+                      title="How many trading days in the last 30 this stock has shown up in Pocket Pivot — hover a row's count for the exact dates. Only counts days since this tracking started; older history isn't available."
+                    />
+                  )}
                   <th className="py-2 pl-2 pr-4"></th>
                 </tr>
               </thead>
@@ -1009,6 +1019,19 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       {showMarketCap && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {fmtCap(r.marketCapCr)}
+                        </td>
+                      )}
+                      {showAppearances && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                          title={
+                            r.appearanceDates30d?.length
+                              ? `Appeared on: ${r.appearanceDates30d.join(", ")}`
+                              : "No recorded appearances yet in this window"
+                          }
+                        >
+                          {r.appearanceCount30d == null ? "—" : r.appearanceCount30d}
                         </td>
                       )}
                       <td className="py-2.5 pl-2 pr-4 text-right">
