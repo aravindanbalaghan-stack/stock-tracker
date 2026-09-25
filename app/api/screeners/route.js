@@ -1,5 +1,6 @@
 import { getRecentBhavcopies, getBhavcopyNear } from "@/lib/nseBhavcopy";
-import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
+import { getSessionCookies } from "@/lib/nseSession";
+import { fetchMarketCapCr } from "@/lib/marketCap";
 import {
   sma,
   wma,
@@ -59,7 +60,6 @@ const YAHOO_CONCURRENCY = 8;
 // NSE's quote endpoint is rate-limited and can't be run across a wide
 // list. See the note in the response payload.
 const MARKET_CAP_CONCURRENCY = 6;
-const MARKET_CAP_TIMEOUT_MS = 4000;
 
 // Stage 2 scans a ~500-stock universe (the NIFTY 500 where NSE's endpoint
 // is reachable, otherwise the top 500 by turnover — see lib/nifty500.js).
@@ -78,29 +78,6 @@ const STAGE_DAILY_CAP = 220;
 // days (simpler, and the difference — a few days at this horizon — doesn't
 // change which stocks qualify).
 const WYCKOFF_RECENT_MS = 60 * 24 * 60 * 60 * 1000; // ~60 calendar days
-
-// Triple Confirmation tab: the volume and RS bars a Stage-2 stock also has
-// to clear. Trend is already required just to reach this point, since
-// analyzeStage2 returns null for anything not currently in Stage 2.
-const TRIPLE_VOLUME_RATIO_MIN = 1.5; // breakout volume vs. prior 50-day average
-const TRIPLE_RS_MIN = 0; // must be beating NIFTY, not just rising with it
-
-async function fetchMarketCapCr(symbol, cookies) {
-  const data = await nseApiFetchWithCookies(
-    `/api/quote-equity?symbol=${encodeURIComponent(symbol)}&section=trade_info`,
-    cookies,
-    MARKET_CAP_TIMEOUT_MS
-  );
-  if (!data) return null;
-  const direct = data?.marketDeptOrderBook?.tradeInfo?.totalMarketCap;
-  if (typeof direct === "number") return direct;
-  const issuedSize = data?.securityInfo?.issuedSize;
-  const lastPrice = data?.priceInfo?.lastPrice;
-  if (typeof issuedSize === "number" && typeof lastPrice === "number") {
-    return (issuedSize * lastPrice) / 1e7; // rupees -> crore
-  }
-  return null;
-}
 
 // --- Shared per-symbol figures shown as columns on every screen ----------
 function baseRow(symbol, series) {
@@ -277,7 +254,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
       });
     }
 
-    if (screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation") {
+    if (screen === "stage-2" || screen === "wyckoff") {
       // Pass 1 — resolve the ~500-stock universe, then run a cheap weekly
       // pre-filter over it to find which stocks are plausibly above a
       // rising 30-week MA. Weekly bars are ~1/5 the payload of daily, so
@@ -368,7 +345,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
 
     const historyRaw = await fetchDailyOHLCVBatch(
       shortlist.map((c) => c.symbol),
-      { concurrency: screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
+      { concurrency: screen === "stage-2" || screen === "wyckoff" ? STAGE_DAILY_CONCURRENCY : YAHOO_CONCURRENCY }
     );
 
     // Truncate every fetched series to the as-of date. Without this, a
@@ -450,7 +427,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
         row.sma200 = Math.round(sma200 * 100) / 100;
       }
 
-      if (screen === "stage-2" || screen === "wyckoff" || screen === "triple-confirmation") {
+      if (screen === "stage-2" || screen === "wyckoff") {
         if (!hist?.bars?.length) continue;
         const stage = analyzeStage2(hist.bars, benchmarkBars);
         if (!stage) continue; // not in Stage 2, or not enough history to say
@@ -524,34 +501,10 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
       rows = withEntry;
     }
 
-    // ---------------- Triple Confirmation: trend + volume + RS ------------
-    // Trend is already satisfied by every row reaching this point (rows are
-    // only built when analyzeStage2 confirms Stage 2). This layer adds the
-    // other two legs on top: the breakout traded on confirming volume, and
-    // the stock has actually been beating the market, not just rising with
-    // it.
-    if (screen === "triple-confirmation") {
-      const withAllThree = [];
-      for (const row of rows) {
-        const volumeOk = row.breakoutVolumeRatio != null && row.breakoutVolumeRatio >= TRIPLE_VOLUME_RATIO_MIN;
-        const rsOk = row.rsVsBenchmark != null && row.rsVsBenchmark > TRIPLE_RS_MIN;
-        if (!volumeOk || !rsOk) continue;
-        withAllThree.push({
-          ...row,
-          tripleReason: `Weinstein Triple Confirmation — Trend: weekly close above a rising 30-week MA (${
-            row.ma30SlopePct >= 0 ? "+" : ""
-          }${row.ma30SlopePct}% slope). Volume: breakout traded at ${row.breakoutVolumeRatio}× the prior 50-day average. Relative strength: ${
-            row.rsVsBenchmark >= 0 ? "+" : ""
-          }${row.rsVsBenchmark}% vs. NIFTY over 26 weeks.`,
-        });
-      }
-      rows = withAllThree;
-    }
-
     // ---------------- Listing debut ----------------
     // Cheap after the first lookup of each symbol — a debut price can
     // never change, so lib/debut.js caches it for 30 days.
-    if (rows.length > 0 && screen !== "wyckoff" && screen !== "triple-confirmation") {
+    if (rows.length > 0 && screen !== "wyckoff") {
       const debuts = await fetchDebutBatch(rows.map((r) => r.symbol), { concurrency: YAHOO_CONCURRENCY });
       rows = rows.map((r) => withDebut(r, debuts.get(r.symbol)));
     }

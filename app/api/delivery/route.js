@@ -1,5 +1,6 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
-import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
+import { getSessionCookies } from "@/lib/nseSession";
+import { fetchMarketCapCr } from "@/lib/marketCap";
 import {
   computePeriodMetrics,
   buildRecentPeriodHistory,
@@ -41,36 +42,6 @@ const MARKET_CAP_LOOKUP_CAP = 60; // NSE's session-based lookup is comparatively
 // behavior as when NSE fails a specific lookup.
 const CONCURRENCY = 10; // NSE's bot protection blocks cloud IPs more aggressively than Yahoo did —
 // kept lower than the old Yahoo concurrency (20) to go easier on the session.
-const MARKET_CAP_TIMEOUT_MS = 4000; // NSE can occasionally stall rather than fail fast — without a hard
-// timeout, a handful of stalled requests can blow past Vercel's function time limit and take the
-// *entire* route down. Aborting slow ones keeps the route reliable even when NSE is flaky.
-
-// Market cap comes from NSE's own quote-equity endpoint (via the
-// cookie-session helper also used by the Research tab) rather than
-// Yahoo's quoteSummary endpoint. Yahoo's quoteSummary is the same family
-// of endpoint that app/api/quote/route.js documents as rejecting
-// unauthenticated cloud-host requests with a 401. NSE returns
-// totalMarketCap already in crores, so no unit conversion is needed.
-async function fetchMarketCapCr(symbol, cookies) {
-  const data = await nseApiFetchWithCookies(
-    `/api/quote-equity?symbol=${encodeURIComponent(symbol)}&section=trade_info`,
-    cookies,
-    MARKET_CAP_TIMEOUT_MS
-  );
-  if (!data) return null;
-
-  const direct = data?.marketDeptOrderBook?.tradeInfo?.totalMarketCap;
-  if (typeof direct === "number") return direct;
-
-  // Fallback: derive from shares issued x last price if NSE's direct
-  // field isn't present for this symbol.
-  const issuedSize = data?.securityInfo?.issuedSize;
-  const lastPrice = data?.priceInfo?.lastPrice;
-  if (typeof issuedSize === "number" && typeof lastPrice === "number") {
-    return (issuedSize * lastPrice) / 1e7; // rupees -> crore
-  }
-  return null;
-}
 
 // Attaches "is this in any Screener tab right now, and since when" to a
 // delivery row. Screener membership is tracked separately (see

@@ -227,8 +227,11 @@ export default function SectorManagerTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [sectorFilter, setSectorFilter] = useState("");
   const [busySymbol, setBusySymbol] = useState(null);
   const [importMsg, setImportMsg] = useState(null);
+  const [marketCaps, setMarketCaps] = useState({});
+  const [marketCapLoading, setMarketCapLoading] = useState(false);
   const fileInputRef = useRef(null);
 
   async function load() {
@@ -252,11 +255,47 @@ export default function SectorManagerTab() {
   const filtered = useMemo(() => {
     const list = data?.classified ?? [];
     const q = search.trim().toUpperCase();
-    if (!q) return list;
-    return list.filter(
-      (row) => row.symbol.includes(q) || row.sectors.some((s) => s.name.toUpperCase().includes(q))
-    );
-  }, [data, search]);
+    return list.filter((row) => {
+      if (sectorFilter && !row.sectors.some((s) => s.key === sectorFilter)) return false;
+      if (q && !row.symbol.includes(q) && !row.sectors.some((s) => s.name.toUpperCase().includes(q))) return false;
+      return true;
+    });
+  }, [data, search, sectorFilter]);
+
+  const visibleRows = filtered.slice(0, 500);
+
+  // Market cap — NSE's rate-limited quote-equity endpoint (see
+  // lib/marketCap.js), so this only fetches when the CURRENT filter
+  // narrows things down to a reasonable batch. Applying a sector filter
+  // is the expected way to see it: the base lists run 20-100 symbols per
+  // sector, comfortably inside the cap; leaving every sector unfiltered
+  // (400+ symbols) would either time out or risk NSE flagging the
+  // session, so that case is skipped with an explanatory note instead.
+  const MARKET_CAP_FETCH_CAP = 150;
+  useEffect(() => {
+    const symbols = visibleRows.map((r) => r.symbol);
+    if (symbols.length === 0 || symbols.length > MARKET_CAP_FETCH_CAP) {
+      setMarketCaps({});
+      return;
+    }
+    let cancelled = false;
+    setMarketCapLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`/api/market-cap?symbols=${encodeURIComponent(symbols.join(","))}`);
+        const json = await res.json();
+        if (!cancelled && res.ok) setMarketCaps(json.results ?? {});
+      } catch {
+        /* market cap is a nice-to-have — the rest of the tab still works */
+      } finally {
+        if (!cancelled) setMarketCapLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRows.map((r) => r.symbol).join(",")]);
 
   async function handleRemove(symbol, sectorKey, viaOverride) {
     setBusySymbol(symbol);
@@ -396,6 +435,20 @@ export default function SectorManagerTab() {
         including on another deployment.
       </p>
 
+      {data.storageAvailable === false && (
+        <p
+          className="text-xs mb-4 px-3 py-2 rounded border"
+          style={{ borderColor: "var(--loss)", color: "var(--loss)" }}
+        >
+          Sector customizations can&apos;t be saved on this deployment — the KV store this needs (the same
+          one the alerts and Watchlist features use) isn&apos;t configured. You can still browse the base
+          lists below, but Add, Remove, and Import won&apos;t work until it&apos;s set up — see the README
+          section &quot;SMS price alerts&quot; step 1 for how (it&apos;s the same database, despite the
+          section name). Unlike Watchlist and Holdings, sector data has no per-browser fallback — it&apos;s
+          shared across the whole app, so it has nothing to silently fall back to.
+        </p>
+      )}
+
       {importMsg && (
         <p className="text-xs mb-4 px-3 py-2 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
           {importMsg}
@@ -404,13 +457,53 @@ export default function SectorManagerTab() {
 
       <AddStockControl allSectors={allSectors} onAdd={handleAddNewStock} />
 
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search by symbol or sector…"
-        className="w-full max-w-sm rounded px-3 py-2 text-sm mb-3 outline-none border"
-        style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
-      />
+      <div className="flex items-end gap-2 flex-wrap mb-3">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+            Sector
+          </label>
+          <select
+            value={sectorFilter}
+            onChange={(e) => setSectorFilter(e.target.value)}
+            className="rounded px-2 py-2 text-sm outline-none border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="">All sectors</option>
+            {allSectors.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.name} ({s.count})
+              </option>
+            ))}
+          </select>
+        </div>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search by symbol or sector…"
+          className="w-full max-w-sm rounded px-3 py-2 text-sm outline-none border"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+        />
+        {(sectorFilter || search) && (
+          <button
+            type="button"
+            onClick={() => {
+              setSectorFilter("");
+              setSearch("");
+            }}
+            className="text-xs px-2.5 py-2 rounded border"
+            style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {visibleRows.length > MARKET_CAP_FETCH_CAP && (
+        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          Market cap isn&apos;t fetched for more than {MARKET_CAP_FETCH_CAP} stocks at once — pick a sector
+          above (or narrow your search) to see it.
+        </p>
+      )}
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
         <table className="w-full border-collapse">
@@ -419,16 +512,30 @@ export default function SectorManagerTab() {
               <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
                 Symbol
               </th>
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
+                Mkt cap (₹ Cr)
+              </th>
               <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
                 Sectors
               </th>
             </tr>
           </thead>
           <tbody>
-            {filtered.slice(0, 500).map((row) => (
+            {visibleRows.map((row) => (
               <tr key={row.symbol} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
                 <td className="py-2 pl-4 pr-2 font-mono text-sm" style={{ color: "var(--text)" }}>
                   {row.symbol}
+                </td>
+                <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                  {visibleRows.length > MARKET_CAP_FETCH_CAP ? (
+                    "—"
+                  ) : marketCapLoading && marketCaps[row.symbol] === undefined ? (
+                    <span style={{ color: "var(--text-faint)" }}>…</span>
+                  ) : marketCaps[row.symbol] == null ? (
+                    "—"
+                  ) : (
+                    marketCaps[row.symbol].toLocaleString("en-IN")
+                  )}
                 </td>
                 <td className="py-2 px-2">
                   <div className="flex flex-wrap items-center gap-1.5">

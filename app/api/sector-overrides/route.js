@@ -8,6 +8,7 @@ import {
   getAllClassifiedSymbols,
   exportSectorCustomizations,
   importSectorCustomizations,
+  isSectorStorageAvailable,
 } from "@/lib/sectorOverrides";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,7 @@ export async function GET(request) {
       // Symbol-centric view — what the Sector Manager tab's main table
       // renders. Only included on request since it's the full classified
       // universe, unlike the per-sector summary above.
-      ...(full ? { classified: await getAllClassifiedSymbols() } : {}),
+      ...(full ? { classified: await getAllClassifiedSymbols(), storageAvailable: await isSectorStorageAvailable() } : {}),
     });
   } catch (err) {
     return Response.json({ error: String(err?.message || err) }, { status: 502 });
