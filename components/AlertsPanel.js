@@ -71,12 +71,14 @@ export default function AlertsPanel({ availableSymbols }) {
     }
   }
 
+  // Alerts aren't configured on this deployment (no KV, most likely) —
+  // previously this showed a standing error banner at the top of the
+  // Watchlist tab every time; removed per request. AlertsPanel simply
+  // renders nothing rather than surfacing that as an error the person
+  // has to look at on every visit. See the README "SMS price alerts"
+  // section if you do want this feature.
   if (error) {
-    return (
-      <div className="mb-6 rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
-        Price alerts aren&apos;t set up yet — {error}. See the README section &quot;SMS price alerts&quot; for setup steps.
-      </div>
-    );
+    return null;
   }
 
   return (

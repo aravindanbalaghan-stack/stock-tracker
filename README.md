@@ -6,6 +6,10 @@ auto-refresh every 12 seconds.
 
 ## How it works
 
+- **Tabs**: Watchlist, Holdings (your actual positions, with P&L), Market,
+  Delivery, Screeners, and Sectors (the master stock↔sector list every
+  sector calculation in the app reads from — see "Managing sectors"
+  below).
 - **Frontend**: Next.js (App Router) + Tailwind, plain React state.
 - **Live data**: two server-side API routes (`/api/quote`, `/api/search`)
   proxy Yahoo Finance's public quote/search endpoints. Doing the fetch on
@@ -52,6 +56,23 @@ Vercel CLI installed.)
 - **BSE instead of NSE for a symbol**: pass the symbol with `.BO` suffix
   (e.g. `RELIANCE.BO`) when adding — the API route respects an explicit
   suffix and defaults to `.NS` otherwise.
+
+## Managing sectors
+
+The **Sectors** tab is the single source of truth every sector-based
+calculation in the app reads from (the Delivery tab's sector view, each
+sector's page, a stock's "Sectors" row, Holdings). The base lists are
+hand-maintained in `lib/sectors.js`; the tab lets you layer corrections on
+top without editing code:
+
+- **Wrong sector** — remove the bad badge (×) and add the right one from
+  the same row.
+- **Stock missing entirely** — use "Add a stock not in this list" at the
+  top, search or type its symbol, and pick a sector.
+- **Export/Import** — Export downloads just your customizations (not the
+  full base lists) as JSON; Import replaces your current customizations
+  with a file's. Useful for backing them up or moving them to another
+  deployment. See `lib/sectorOverrides.js` for exactly what's stored.
 
 ## Upgrading to true real-time (optional, later)
 

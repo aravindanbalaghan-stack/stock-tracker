@@ -11,25 +11,27 @@ import GlobalSearch from "@/components/GlobalSearch";
 import MarketScreen from "@/components/screens/MarketScreen";
 import DeliveryScreen from "@/components/screens/DeliveryScreen";
 import ScreenersScreen from "@/components/screens/ScreenersScreen";
-import NiftyBankTab from "@/components/NiftyBankTab";
+import HoldingsTab from "@/components/HoldingsTab";
+import SectorManagerTab from "@/components/SectorManagerTab";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
 
 const REFRESH_MS = 12000;
 
-// Five tabs, down from nine. Closely-related screens now live together
-// behind sub-navigation (see components/screens/) rather than competing
-// for space in one long row: Market = indices + midcap movers, Delivery =
-// by-stock + by-sector, Screeners = breakouts + 30WMA. The old Research
-// tab is gone — its useful parts are now the stock detail drawer, opened
-// from the header search or any watchlist row.
+// Closely-related screens live together behind sub-navigation (see
+// components/screens/) rather than competing for space in one long row:
+// Market = indices + midcap movers, Delivery = by-stock + by-sector,
+// Screeners = breakouts + 30WMA. The old Research tab is gone — its
+// useful parts are now the stock detail drawer, opened from the header
+// search or any watchlist row.
 const TABS = [
   { id: "watchlist", label: "Watchlist" },
+  { id: "holdings", label: "Holdings" },
   { id: "market", label: "Market" },
   { id: "delivery", label: "Delivery" },
   { id: "screeners", label: "Screeners" },
-  { id: "niftybank", label: "Bank Nifty" },
+  { id: "sectors", label: "Sectors" },
 ];
 
 function PageInner() {
@@ -369,10 +371,12 @@ function PageInner() {
           </>
         )}
 
+        {activeTab === "holdings" && <HoldingsTab />}
         {activeTab === "market" && <MarketScreen />}
         {activeTab === "delivery" && (
           <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
+        {activeTab === "sectors" && <SectorManagerTab />}
         {activeTab === "screeners" && (
           <ScreenersScreen
             onAddToWatchlist={handleAdd}
@@ -380,7 +384,6 @@ function PageInner() {
             onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}
           />
         )}
-        {activeTab === "niftybank" && <NiftyBankTab />}
       </main>
 
     </div>
