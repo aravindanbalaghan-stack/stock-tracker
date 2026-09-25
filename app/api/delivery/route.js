@@ -11,10 +11,12 @@ import {
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
+import { DELIVERY_BUCKETS, matchesBucket, APPEARANCE_WINDOW_TRADING_DAYS, computeThresholdAppearancesBatch, computeThresholdAppearances } from "@/lib/deliveryBuckets";
 import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 import { getMembershipForSymbols } from "@/lib/screenerMembership";
 import { recordAccumulationSnapshot } from "@/lib/accumulationHistory";
+import { ensureScreenerFreshness } from "@/lib/screenerFreshness";
 import { SCREEN_ORDER, SCREENS } from "@/lib/screens";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
@@ -32,7 +34,6 @@ const MAX_ASOF_TRADING_DAYS = 23;
 // lib/deliveryMetrics.js instead.
 export const maxDuration = 60;
 
-const DELIVERY_PCT_MIN = 60; // % — sole criterion for the ranked list (market-cap bucketing removed)
 const WMA_LOOKUP_CAP = 60; // Yahoo's chart endpoint tolerates more volume than NSE's session-based
 // lookup, but there's no reason to fetch it for rows nobody will scroll to — same cap as market cap,
 // and reusing the same capLookupTargets list means both batches cover the same top rows.
@@ -67,10 +68,12 @@ async function withScreenerMembership(rows) {
 }
 
 export async function GET(request) {
-  const { searchParams } = new URL(request.url);
+  const { searchParams, origin } = new URL(request.url);
   const searchSymbol = searchParams.get("symbol");
   const periodParam = searchParams.get("period");
   const dateParam = searchParams.get("date");
+  const bucketParam = searchParams.get("bucket");
+  const bucket = DELIVERY_BUCKETS.some((b) => b.id === bucketParam) ? bucketParam : "60";
   const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
   const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
@@ -86,7 +89,13 @@ export async function GET(request) {
       asOfDate = dateParam > todayIST ? todayIST : dateParam;
     }
 
-    const lookback = lookbackDaysFor(period) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
+    // Wide enough for whichever is bigger: the period's own lookback, or
+    // the 2-month window the threshold-appearance history (see
+    // lib/deliveryBuckets.js) needs — bhavcopy day-files are cached
+    // individually, so asking for the wider of the two costs nothing
+    // extra once both are warm.
+    const lookback =
+      Math.max(lookbackDaysFor(period), APPEARANCE_WINDOW_TRADING_DAYS) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
     // getRecentBhavcopies walks backward one weekday at a time and skips
     // holidays automatically, so it needs a generous calendar-day budget
     // to find `lookback` actual trading days — a plain 1:1 would come up
@@ -101,7 +110,7 @@ export async function GET(request) {
           { status: 503 }
         );
       }
-      days = days.slice(-lookbackDaysFor(period));
+      days = days.slice(-Math.max(lookbackDaysFor(period), APPEARANCE_WINDOW_TRADING_DAYS));
     }
     if (days.length < periodTradingDays + 1) {
       return Response.json(
@@ -110,9 +119,13 @@ export async function GET(request) {
       );
     }
     const latest = days[days.length - 1];
+    // The trailing ~2-month slice used for threshold-appearance counts —
+    // always the most recent APPEARANCE_WINDOW_TRADING_DAYS of `days`,
+    // independent of the period/bucket selected above.
+    const appearanceWindow = days.slice(-APPEARANCE_WINDOW_TRADING_DAYS);
 
     // Single-symbol lookup — used by the search box. Not restricted to
-    // the delivery % threshold, since the point of search is to look up
+    // the delivery % bucket, since the point of search is to look up
     // whatever you ask for.
     if (searchSymbol) {
       const symbol = searchSymbol.trim().toUpperCase();
@@ -144,20 +157,22 @@ export async function GET(request) {
             marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
             wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
             deliveryHistory,
+            thresholdAppearances: isStock ? computeThresholdAppearances(symbol, appearanceWindow) : null,
           },
           debut
         ),
       });
     }
 
-    // Ranked screens: every stock/ETF with delivery % above the threshold,
-    // sorted by delivery % descending. No market-cap segregation anymore —
-    // market cap is now just a displayed column (see loop below).
+    // Ranked screens: every stock/ETF whose delivery % falls in the
+    // selected bucket, sorted by delivery % descending. No market-cap
+    // segregation anymore — market cap is now just a displayed column
+    // (see loop below).
     const candidates = [];
     // Accumulation first-seen bookkeeping (see lib/accumulationHistory.js)
     // rides along on this same full-universe loop — computePeriodMetrics
     // is already being called for every symbol here regardless of the
-    // delivery-% filter below, so recording which ones currently read
+    // delivery-% bucket below, so recording which ones currently read
     // inAccumulation === true costs nothing extra. Only recorded for a
     // real "today, daily period" run — never for a historical `date=`
     // lookup or a non-daily period, so browsing old dates or switching to
@@ -166,7 +181,7 @@ export async function GET(request) {
     const isRealtimeDaily = period === "daily" && !asOfDate;
     for (const symbol of latest.bySymbol.keys()) {
       const metrics = computePeriodMetrics(symbol, days, periodTradingDays);
-      if (metrics && metrics.deliveryPct != null && metrics.deliveryPct > DELIVERY_PCT_MIN) {
+      if (metrics && matchesBucket(metrics.deliveryPct, bucket)) {
         candidates.push(metrics);
       }
       if (isRealtimeDaily && metrics?.inAccumulation) inAccumulationToday.push(symbol);
@@ -222,7 +237,31 @@ export async function GET(request) {
       { concurrency: CONCURRENCY }
     );
 
-    const [marketCaps, wmaMap, debutMap] = await Promise.all([marketCapsPromise, wmaPromise, debutPromise]);
+    // Screener-membership freshness (see lib/screenerFreshness.js) —
+    // only pursued for a real "today" run, same guard as the
+    // accumulation bookkeeping above: browsing a historical date or a
+    // non-daily period shouldn't kick off a same-day screener recompute.
+    // Runs alongside the other three lookups rather than blocking them.
+    const freshnessPromise = isRealtimeDaily
+      ? ensureScreenerFreshness(origin, latest.date).catch(() => null)
+      : Promise.resolve(null);
+
+    const [marketCaps, wmaMap, debutMap, freshness] = await Promise.all([
+      marketCapsPromise,
+      wmaPromise,
+      debutPromise,
+      freshnessPromise,
+    ]);
+
+    // Threshold-appearance history (see lib/deliveryBuckets.js) — how
+    // many of the last ~2 months' trading days each stock cleared each
+    // bucket. Computed for every stock candidate, not just the capped
+    // lookup targets above — it's pure bhavcopy math, no external calls,
+    // so there's no cost reason to cap it the way market cap/WMA are.
+    const appearancesBySymbol = computeThresholdAppearancesBatch(
+      stockCandidates.map((c) => c.symbol),
+      appearanceWindow
+    );
 
     const stocks = await withScreenerMembership(
       stockCandidates.map((c, i) => {
@@ -235,6 +274,7 @@ export async function GET(request) {
             marketCapCr: capCr != null ? Math.round(capCr) : null,
             wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
             deliveryHistory: buildRecentPeriodHistory(c.symbol, days, periodTradingDays, HISTORY_PERIODS),
+            thresholdAppearances: appearancesBySymbol[c.symbol] ?? null,
           },
           debutMap.get(c.symbol)
         );
@@ -249,11 +289,16 @@ export async function GET(request) {
       requestedDate: asOfDate,
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,
+      bucket,
       stocks,
       other,
       tradingDaysUsed: days.length,
+      // Which screens' membership data is/isn't from today — see
+      // lib/screenerFreshness.js. Null when this wasn't a real-time daily
+      // run (historical date, or Weekly/Monthly selected), since
+      // freshness isn't pursued in that case.
+      screenerFreshness: freshness,
       criteria: {
-        deliveryPctMin: DELIVERY_PCT_MIN,
         marketCapLookupCap: MARKET_CAP_LOOKUP_CAP,
         wmaLookupCap: WMA_LOOKUP_CAP,
         historyPeriods: HISTORY_PERIODS,
@@ -261,9 +306,11 @@ export async function GET(request) {
         accumulationWindow: ACCUMULATION_WINDOW,
         accumulationDeliveryThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,
+        appearanceWindowTradingDays: APPEARANCE_WINDOW_TRADING_DAYS,
       },
     });
   } catch (err) {
+    console.error("delivery: failed to compute delivery screen:", err?.message || err);
     return Response.json(
       { error: "Failed to compute delivery screen", detail: String(err?.message || err) },
       { status: 502 }

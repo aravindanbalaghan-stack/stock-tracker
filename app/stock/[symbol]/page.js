@@ -113,15 +113,21 @@ export default function StockInsightPage({ params }) {
   const sym = decodeURIComponent(symbol).toUpperCase();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [accumWindow, setAccumWindow] = useState("1m");
+  const [accumPage, setAccumPage] = useState(0);
+  const ACCUM_ROWS_PER_PAGE = 20;
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stock-insight?symbol=${encodeURIComponent(sym)}`);
+        const res = await fetch(`/api/stock-insight?symbol=${encodeURIComponent(sym)}&window=${accumWindow}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't load this stock");
-        if (!cancelled) setData(json);
+        if (!cancelled) {
+          setData(json);
+          setAccumPage(0); // a new window means a new row count — start back at the most recent page
+        }
       } catch (err) {
         if (!cancelled) setError(err.message);
       }
@@ -129,7 +135,7 @@ export default function StockInsightPage({ params }) {
     return () => {
       cancelled = true;
     };
-  }, [sym]);
+  }, [sym, accumWindow]);
 
   const L = data?.levels;
   const A = data?.accumulation;
@@ -455,17 +461,38 @@ export default function StockInsightPage({ params }) {
 
           {/* ---- Accumulation ---- */}
           <div>
-            <SectionTitle
-              meta={
-                A?.inAccumulation == null
-                  ? undefined
-                  : A.inAccumulation
-                  ? "Currently reads as accumulation"
-                  : "Not currently reading as accumulation"
-              }
-            >
-              Accumulation — last month
-            </SectionTitle>
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+              <SectionTitle
+                meta={
+                  A?.inAccumulation == null
+                    ? undefined
+                    : A.inAccumulation
+                    ? "Currently reads as accumulation"
+                    : "Not currently reading as accumulation"
+                }
+              >
+                Accumulation — last {accumWindow === "3m" ? "3 months" : "month"}
+              </SectionTitle>
+              <div className="inline-flex rounded-md border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                {[
+                  { id: "1m", label: "1 month" },
+                  { id: "3m", label: "3 months" },
+                ].map((w) => (
+                  <button
+                    key={w.id}
+                    type="button"
+                    onClick={() => setAccumWindow(w.id)}
+                    className="px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{
+                      background: accumWindow === w.id ? "var(--accent)" : "transparent",
+                      color: accumWindow === w.id ? "var(--surface)" : "var(--text-muted)",
+                    }}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {!A?.rows?.length ? (
               <Panel>
                 <p className="text-xs" style={{ color: "var(--text-faint)" }}>
@@ -487,6 +514,21 @@ export default function StockInsightPage({ params }) {
                     sub="each day vs its own trailing average"
                   />
                 </div>
+                {A.thresholdAppearances?.counts && (
+                  <div
+                    className="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-b text-xs"
+                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                  >
+                    <span className="uppercase tracking-wider text-[10px]" style={{ color: "var(--text-faint)" }}>
+                      Appeared in delivery buckets ({A.thresholdAppearances.tradedDays ?? "?"} sessions)
+                    </span>
+                    {["90", "80", "70", "60", "50"].map((id) => (
+                      <span key={id} className="font-mono">
+                        {id}%: {A.thresholdAppearances.counts[id] ?? 0}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="table-scroll" style={{ maxHeight: "22rem" }}>
                   <table className="w-full border-collapse table-sticky">
                     <thead>
@@ -508,7 +550,10 @@ export default function StockInsightPage({ params }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {[...A.rows].reverse().map((r) => {
+                      {[...A.rows]
+                        .reverse()
+                        .slice(accumPage * ACCUM_ROWS_PER_PAGE, (accumPage + 1) * ACCUM_ROWS_PER_PAGE)
+                        .map((r) => {
                         const up = (r.changePercent ?? 0) >= 0;
                         const high = r.deliveryPct != null && r.deliveryPct >= A.accumulationThreshold;
                         return (
@@ -550,6 +595,34 @@ export default function StockInsightPage({ params }) {
                     </tbody>
                   </table>
                 </div>
+                {A.rows.length > ACCUM_ROWS_PER_PAGE && (
+                  <div className="px-4 py-2.5 flex items-center justify-between border-t text-xs" style={{ borderColor: "var(--border)" }}>
+                    <span style={{ color: "var(--text-faint)" }}>
+                      Showing {accumPage * ACCUM_ROWS_PER_PAGE + 1}–
+                      {Math.min((accumPage + 1) * ACCUM_ROWS_PER_PAGE, A.rows.length)} of {A.rows.length} days
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={accumPage === 0}
+                        onClick={() => setAccumPage((p) => Math.max(0, p - 1))}
+                        className="px-2.5 py-1 rounded border disabled:opacity-40"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                      >
+                        ← Newer
+                      </button>
+                      <button
+                        type="button"
+                        disabled={(accumPage + 1) * ACCUM_ROWS_PER_PAGE >= A.rows.length}
+                        onClick={() => setAccumPage((p) => p + 1)}
+                        className="px-2.5 py-1 rounded border disabled:opacity-40"
+                        style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                      >
+                        Older →
+                      </button>
+                    </div>
+                  </div>
+                )}
               </Panel>
             )}
           </div>

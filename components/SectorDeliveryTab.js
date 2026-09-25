@@ -5,11 +5,9 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
-import PeriodToggle from "@/components/PeriodToggle";
+import { ErrorState, LoadingState } from "@/components/ui/Chrome";
 import InfoNote from "@/components/InfoNote";
-import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
-import DatePicker from "@/components/DatePicker";
 import SymbolLink from "@/components/SymbolLink";
 import Link from "next/link";
 import { periodCoverageLabel } from "@/lib/periodLabel";
@@ -277,16 +275,12 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
   );
 }
 
-export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
+export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket, period, asOfDate, showStage }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [period, setPeriod] = usePersistentState("sector.period", "daily"); // "daily" | "weekly" | "monthly"
-  const [asOfDate, setAsOfDate] = usePersistentState("sector.date", "");
-  // Filter for "sectors with accumulation above X%", and an optional
-  // stage overlay that's fetched separately because it needs two years of
-  // weekly history per constituent.
+  // Filter for "sectors with accumulation above X%" — local to this
+  // section, doesn't affect the Stocks section below it.
   const [minDelivery, setMinDelivery] = usePersistentState("sector.minDelivery", 0);
-  const [showStage, setShowStage] = usePersistentState("sector.showStage", false);
   const [stageData, setStageData] = useState(null);
   const [stageLoading, setStageLoading] = useState(false);
   const [stageError, setStageError] = useState(null);
@@ -295,10 +289,12 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   useEffect(() => {
     let cancelled = false;
-    setData(null); // show the loading state immediately on period change rather than stale data
+    setData(null); // show the loading state immediately on period/bucket change rather than stale data
     async function load() {
       try {
-        const res = await fetch(`/api/sector-delivery?period=${period}${asOfDate ? `&date=${asOfDate}` : ""}`);
+        const res = await fetch(
+          `/api/sector-delivery?period=${period}&bucket=${bucket}${asOfDate ? `&date=${asOfDate}` : ""}`
+        );
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load sector delivery screen");
         if (!cancelled) setData(json);
@@ -312,7 +308,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
       cancelled = true;
       clearInterval(id);
     };
-  }, [period, asOfDate]);
+  }, [period, asOfDate, bucket]);
 
   // An attempt marker rather than deriving "should I fetch" from the
   // loading flag. Previously stageLoading was both a dependency AND set
@@ -323,6 +319,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   useEffect(() => {
     if (!showStage) return;
+    if (stageData) return; // already have it — the shared toggle in the parent doesn't need to refetch on every re-render
     if (stageAttemptRef.current === stageAttempt) return;
     stageAttemptRef.current = stageAttempt;
 
@@ -351,12 +348,10 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
     return () => {
       cancelled = true;
     };
-  }, [showStage, stageAttempt]);
+  }, [showStage, stageAttempt, stageData]);
 
   if (error) {
-    return (
-      <ErrorState>{error}</ErrorState>
-    );
+    return <ErrorState>{error}</ErrorState>;
   }
 
   if (!data) {
@@ -374,8 +369,8 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
   const periodLabel = PERIOD_LABEL[data.period ?? period] ?? "Day";
   const historyLabel = HISTORY_LABEL[data.period ?? period] ?? "10-day";
   // Merge the stage overlay in by sector key, and apply the "accumulation
-  // above X%" filter. Both are display-side: the API returns every sector,
-  // so toggling the filter never refetches.
+  // above X%" filter. Both are display-side: the API returns every sector
+  // in the bucket, so toggling either never refetches.
   const stageByKey = new Map((stageData?.sectors ?? []).map((s) => [s.key, s]));
   const visibleSectors = (data.sectors ?? [])
     .map((s) => ({ ...s, stageInfo: stageByKey.get(s.key) ?? null }))
@@ -392,53 +387,37 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
 
   return (
     <div>
-      <ScreenHeader
-        title="Sector deliverability"
-        meta={sectorMetaLine}
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <PeriodToggle period={period} onChange={setPeriod} />
-            <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
-              Accum ≥
-              <input
-                type="number"
-                step="5"
-                min="0"
-                max="100"
-                value={minDelivery}
-                onChange={(e) => setMinDelivery(Number(e.target.value) || 0)}
-                className="w-14 rounded-[var(--radius-sm)] px-2 py-1 text-sm border"
-                style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
-                title="Show only sectors whose volume-weighted delivery % is at least this high"
-              />
-              %
-            </label>
-            <button
-              type="button"
-              onClick={() => {
-                setShowStage((v) => {
-                  const next = !v;
-                  if (next && !stageData) setStageAttempt((a) => a + 1);
-                  return next;
-                });
-              }}
-              className="px-2.5 py-1 rounded-[var(--radius-sm)] border text-xs"
-              style={{
-                borderColor: showStage ? "var(--accent)" : "var(--border)",
-                color: showStage ? "var(--accent)" : "var(--text-muted)",
-              }}
-              title="Work out which stage each sector's composite is in — needs two years of weekly history per constituent, so it takes a moment"
-            >
-              {stageLoading ? "Loading stages…" : showStage ? "Stage on" : "Show stage"}
-            </button>
-            <DatePicker value={asOfDate} onChange={setAsOfDate} />
-          </div>
-        }
-      />
-      <p className="text-xs mb-4" style={{ color: "var(--text-faint)" }}>
-        Click a column header to sort (Shift+click to add a tiebreaker) · click a sector row for its {historyLabel} trend and constituent stocks
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+        <h3 className="font-display text-base" style={{ color: "var(--text)" }}>
+          Sectors
+        </h3>
+        <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
+          Accum ≥
+          <input
+            type="number"
+            step="5"
+            min="0"
+            max="100"
+            value={minDelivery}
+            onChange={(e) => setMinDelivery(Number(e.target.value) || 0)}
+            className="w-14 rounded-[var(--radius-sm)] px-2 py-1 text-sm border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+            title="Show only sectors whose volume-weighted delivery % is at least this high"
+          />
+          %
+        </label>
+      </div>
+      <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+        {sectorMetaLine} · click a column header to sort (Shift+click to add a tiebreaker) · click a sector
+        row for its {historyLabel} trend and constituent stocks
       </p>
 
+      {showStage && stageLoading && !stageData && (
+        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          Loading sector stages — reads two years of weekly history per constituent, so this can take a
+          moment…
+        </p>
+      )}
       {stageError && (
         <div
           className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs flex items-start justify-between gap-3"
@@ -456,14 +435,20 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
         </div>
       )}
 
-      <SectorTable
-        rows={visibleSectors}
-        showStage={showStage}
-        onAddToWatchlist={onAddToWatchlist}
-        watchlistSymbols={watchlistSymbols}
-        periodLabel={periodLabel}
-        historyLabel={historyLabel}
-      />
+      {visibleSectors.length === 0 ? (
+        <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
+          No sectors in this bucket right now.
+        </p>
+      ) : (
+        <SectorTable
+          rows={visibleSectors}
+          showStage={showStage}
+          onAddToWatchlist={onAddToWatchlist}
+          watchlistSymbols={watchlistSymbols}
+          periodLabel={periodLabel}
+          historyLabel={historyLabel}
+        />
+      )}
 
       <div className="mt-3">
         <InfoNote label="How sector delivery % and the sector list work">
@@ -475,11 +460,8 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols }
           numbers, not always its daily ones.{" "}
           Delivery % is volume-weighted — total shares delivered across the sector&apos;s
           stocks, divided by total shares traded — not a plain average of individual stock delivery %s, so one
-          illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. Sectors are a
-          hand-maintained mapping covering {data.sectors?.length ?? "36"} sectors (Banking, NBFC, Insurance,
-          IT, Pharma, Chemicals, Footwear, Sugar, Defence, and more) — broader than the handful of official
-          NSE sectoral indices, but not NSE&apos;s full official classification, so treat it as a good working
-          set rather than an authoritative one. A stock genuinely belonging to more than one sector (e.g. a
+          illiquid name can&apos;t swing the number as much as the sector&apos;s most-traded stock. A stock
+          genuinely belonging to more than one sector (e.g. a
           bank counted in both &quot;Banking&quot; and &quot;PSU Banks&quot;) is intentionally included in both
           and contributes to both sectors&apos; numbers. Monthly&apos;s deeper history means the first load
           after switching to it can take noticeably longer.

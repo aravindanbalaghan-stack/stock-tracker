@@ -5,12 +5,10 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
-import PeriodToggle from "@/components/PeriodToggle";
+import { ErrorState, LoadingState } from "@/components/ui/Chrome";
 import InfoNote from "@/components/InfoNote";
-import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
-import DatePicker from "@/components/DatePicker";
 import NumericFilters from "@/components/NumericFilters";
 import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } from "@/lib/rowFilters";
 import SymbolLink from "@/components/SymbolLink";
@@ -104,9 +102,39 @@ function ExpandedRowDetail({ row }) {
   );
 }
 
-function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
+function formatAppearances(thresholdAppearances) {
+  if (!thresholdAppearances?.counts) return { compact: "—", title: null };
+  const order = ["90", "80", "70", "60", "50"];
+  const parts = order.map((id) => `${id}%: ${thresholdAppearances.counts[id] ?? 0}`);
+  const nonZero = order.filter((id) => (thresholdAppearances.counts[id] ?? 0) > 0);
+  const compact = nonZero.length === 0 ? "—" : nonZero.map((id) => `${id}%×${thresholdAppearances.counts[id]}`).join(", ");
+  const title = `Trading days clearing each bucket in the last ${thresholdAppearances.tradedDays ?? "?"} sessions (${
+    thresholdAppearances.windowStart ?? "?"
+  } – ${thresholdAppearances.windowEnd ?? "?"}): ${parts.join(" · ")}`;
+  return { compact, title };
+}
+
+function StageBadge({ info }) {
+  if (!info) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>—</span>;
+  if (!info.available) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>n/a</span>;
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+      style={{
+        borderColor: info.stage === 2 ? "var(--gain)" : info.stage === 4 ? "var(--loss)" : "var(--border)",
+        color: info.stage === 2 ? "var(--gain)" : info.stage === 4 ? "var(--loss)" : "var(--text-muted)",
+      }}
+      title={`30-week MA slope ${info.ma30SlopePct >= 0 ? "+" : ""}${info.ma30SlopePct}%`}
+    >
+      {info.stageLabel}
+    </span>
+  );
+}
+
+function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
+  const colCount = (showCap ? 15 : 13) + 1 + (showStage ? 1 : 0); // +1 for the appearance-history column
 
   if (!rows || rows.length === 0) {
     return (
@@ -132,6 +160,22 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <DebutHeaderCells sort={sort} onSort={onSort} />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
+            <th
+              className="py-2 px-2 text-xs font-medium uppercase tracking-wider"
+              style={{ color: "var(--text-faint)" }}
+              title="How many of the last ~2 months' trading days cleared each delivery-% bucket (see the tab bar above)"
+            >
+              Appeared (2mo)
+            </th>
+            {showStage && (
+              <th
+                className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-left"
+                style={{ color: "var(--text-faint)" }}
+                title="Weinstein stage from 30-week MA slope, same classification the Screeners Weinstein tab uses"
+              >
+                Stage
+              </th>
+            )}
             <th
               className="py-2 px-2 text-xs font-medium uppercase tracking-wider"
               style={{ color: "var(--text-faint)" }}
@@ -194,6 +238,16 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {r.daysOfAccumulation}/{r.accumulationWindowDays}
                   </td>
+                  <td className="py-2.5 px-2 text-right text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    <span title={formatAppearances(r.thresholdAppearances).title}>
+                      {formatAppearances(r.thresholdAppearances).compact}
+                    </span>
+                  </td>
+                  {showStage && (
+                    <td className="py-2.5 px-2 text-left">
+                      <StageBadge info={stageMap?.[r.symbol]} />
+                    </td>
+                  )}
                   <td className="py-2.5 px-2 text-left max-w-[220px]">
                     {r.screenerScreens === undefined ? (
                       <span className="text-xs" style={{ color: "var(--text-faint)" }}>—</span>
@@ -238,7 +292,7 @@ function ResultTable({ rows, showCap, onAddToWatchlist, watchlistSymbols, period
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={showCap ? 15 : 13} className="p-0">
+                    <td colSpan={colCount} className="p-0">
                       <ExpandedRowDetail row={r} />
                     </td>
                   </tr>
@@ -307,6 +361,16 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Days accum. (20d)</span>
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
             {result.daysOfAccumulation}/{result.accumulationWindowDays}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Appeared (2mo)</span>
+          <span
+            className="font-mono text-sm"
+            style={{ color: "var(--text)" }}
+            title={formatAppearances(result.thresholdAppearances).title}
+          >
+            {formatAppearances(result.thresholdAppearances).compact}
           </span>
         </div>
         <div className="flex flex-col">
@@ -478,12 +542,10 @@ function DeliverySearchBox({ onPick, query, setQuery }) {
   );
 }
 
-export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
+export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket, bucketLabel, period, asOfDate, showStage }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [category, setCategory] = usePersistentState("delivery.category", "stocks"); // "stocks" | "other"
-  const [period, setPeriod] = usePersistentState("delivery.period", "daily"); // "daily" | "weekly" | "monthly"
-  const [asOfDate, setAsOfDate] = usePersistentState("delivery.date", ""); // "" means the latest session
   const [numeric, setNumeric] = usePersistentState("delivery.numeric", EMPTY_NUMERIC_FILTERS);
 
   const [query, setQuery] = useState("");
@@ -491,12 +553,16 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const [searchError, setSearchError] = useState(null);
   const [searching, setSearching] = useState(false);
 
+  const [stageMap, setStageMap] = useState({});
+  const [stageLoading, setStageLoading] = useState(false);
+  const [stageError, setStageError] = useState(null);
+
   useEffect(() => {
     let cancelled = false;
-    setData(null); // show the loading state immediately on period change rather than stale data
+    setData(null); // show the loading state immediately on period/bucket change rather than stale data
     async function load() {
       try {
-        const res = await fetch(`/api/delivery?period=${period}${asOfDate ? `&date=${asOfDate}` : ""}`);
+        const res = await fetch(`/api/delivery?period=${period}&bucket=${bucket}${asOfDate ? `&date=${asOfDate}` : ""}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load delivery screen");
         if (!cancelled) setData(json);
@@ -510,7 +576,40 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [period, asOfDate]);
+  }, [period, asOfDate, bucket]);
+
+  // Stage classification (see app/api/stock-stage/route.js) for every
+  // stock this bucket currently shows — fetched once data loads, only
+  // when the shared "Show stage" toggle (owned by the parent
+  // DeliveryScreen, same switch the Sectors section reacts to) is on.
+  // Keyed off the full stocks list, not the numeric-filtered view, so
+  // adjusting a numeric filter doesn't retrigger the fetch.
+  useEffect(() => {
+    if (!showStage || !data?.stocks?.length) return;
+    const symbols = data.stocks.map((r) => r.symbol);
+    const missing = symbols.filter((s) => !(s in stageMap));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    setStageLoading(true);
+    setStageError(null);
+    (async () => {
+      try {
+        const res = await fetch(`/api/stock-stage?symbols=${encodeURIComponent(missing.join(","))}`);
+        const json = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
+        setStageMap((prev) => ({ ...prev, ...json.results }));
+      } catch (err) {
+        if (!cancelled) setStageError(err?.message || "Couldn't compute stock stages.");
+      } finally {
+        if (!cancelled) setStageLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showStage, data]);
 
   async function runSearch(symbol) {
     const clean = symbol.trim().toUpperCase();
@@ -568,23 +667,44 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
   const metaLine =
     coverage.full + (data.dateAdjusted ? " · " + data.requestedDate + " wasn\u2019t a trading day" : "") + filterNote;
 
+  const freshness = data.screenerFreshness;
+
   return (
     <div>
-      <ScreenHeader
-        title="Delivery leaders"
-        meta={metaLine}
-        actions={
-          <div className="flex items-center gap-2 flex-wrap">
-            <PeriodToggle period={period} onChange={setPeriod} />
-            <DatePicker value={asOfDate} onChange={setAsOfDate} />
-          </div>
-        }
-      >
+      <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+        <h3 className="font-display text-base" style={{ color: "var(--text)" }}>
+          Stocks
+        </h3>
         <div className="flex items-center gap-2">
           <DeliverySearchBox onPick={runSearch} query={query} setQuery={setQuery} />
           {searching && <span className="text-xs" style={{ color: "var(--text-faint)" }}>Searching…</span>}
         </div>
-      </ScreenHeader>
+      </div>
+      <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+        {metaLine}
+      </p>
+
+      {freshness?.stillStale?.length > 0 && (
+        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          {freshness.timedOut ? "Still catching up" : "Refreshing in the background"} — screener membership
+          for {freshness.stillStale.length} screen{freshness.stillStale.length === 1 ? "" : "s"} isn&apos;t
+          from today yet; reload in a bit and it should be current.
+        </p>
+      )}
+
+      {stageError && (
+        <div
+          className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs"
+          style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text-muted)" }}
+        >
+          {stageError}
+        </div>
+      )}
+      {showStage && stageLoading && (
+        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+          Loading stock stages…
+        </p>
+      )}
 
       {searchError && (
         <div className="mb-4 rounded-md border px-4 py-3 text-sm" style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text)" }}>
@@ -642,9 +762,25 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
       </div>
 
       {category === "stocks" ? (
-        <ResultTable rows={visibleStocks} showCap onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
+        <ResultTable
+          rows={visibleStocks}
+          showCap
+          showStage={showStage}
+          stageMap={stageMap}
+          onAddToWatchlist={onAddToWatchlist}
+          watchlistSymbols={watchlistSymbols}
+          periodLabel={periodLabel}
+        />
       ) : (
-        <ResultTable rows={visibleOther} showCap={false} onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} periodLabel={periodLabel} />
+        <ResultTable
+          rows={visibleOther}
+          showCap={false}
+          showStage={false}
+          stageMap={stageMap}
+          onAddToWatchlist={onAddToWatchlist}
+          watchlistSymbols={watchlistSymbols}
+          periodLabel={periodLabel}
+        />
       )}
 
       <div className="mt-3">
@@ -656,9 +792,12 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols }) {
           {periodLabel === "Day" ? "Daily" : periodLabel + "ly"} selected, that&apos;s the last{" "}
           {data.criteria?.historyPeriods ?? 10} {periodLabel === "Day" ? "days" : periodLabel.toLowerCase() + "s"};
           Monthly&apos;s deeper history means the first load after switching to it can take noticeably longer.{" "}
-          Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} with delivery % above{" "}
-          {data.criteria?.deliveryPctMin ?? 60}%, sorted by delivery % descending by default — click any
-          column header to re-sort.
+          Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} in the{" "}
+          {bucketLabel ?? "selected"} bucket (see the tabs above), sorted by delivery % descending by
+          default — click any column header to re-sort. &quot;Appeared (2mo)&quot; counts, independently of
+          the bucket currently selected, how many of the last {data.criteria?.appearanceWindowTradingDays ?? 44}{" "}
+          trading days each stock cleared each of the five delivery-% buckets — see the Stock Insight page
+          for the full daily breakdown.
           &quot;In accumulation&quot; is always evaluated on the standard daily 20-day window regardless of the
           period selected above: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at
           least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20}{" "}

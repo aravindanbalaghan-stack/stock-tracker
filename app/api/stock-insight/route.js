@@ -9,19 +9,21 @@ import {
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
+import { APPEARANCE_WINDOW_TRADING_DAYS, computeThresholdAppearances } from "@/lib/deliveryBuckets";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
 const NSE_TIMEOUT_MS = 6000;
-const MONTH_TRADING_DAYS = 22;
+// The accumulation table's window — "1m" (the original, default) or "3m".
+// Selectable via ?window= on the request; anything else falls back to 1m.
+const WINDOW_TRADING_DAYS = { "1m": 22, "3m": 66 };
 // Every row in the accumulation table shows volume against ITS OWN
 // trailing 30-day average, so the oldest displayed day still needs 30
-// sessions behind it: 22 + 30, plus slack for holidays. The per-date
-// bhavcopy files are cached for a week, so the wider window is mostly a
-// first-load cost.
+// sessions behind it: the window + 30, plus slack for holidays. The
+// per-date bhavcopy files are cached for a week, so the wider window is
+// mostly a first-load cost.
 const VOLUME_AVG_DAYS = 30;
-const BHAV_WINDOW = MONTH_TRADING_DAYS + VOLUME_AVG_DAYS + 5;
 // A day counts as a volume spike when it trades this many times its own
 // trailing 30-day average.
 const VOLUME_SPIKE_MULTIPLE = 2;
@@ -66,9 +68,18 @@ export async function GET(request) {
   const symbol = (searchParams.get("symbol") || "").trim().toUpperCase();
   if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
 
+  const windowParam = searchParams.get("window");
+  const windowId = WINDOW_TRADING_DAYS[windowParam] ? windowParam : "1m";
+  const windowTradingDays = WINDOW_TRADING_DAYS[windowId];
+  // Wide enough for both the accumulation table's own window AND the
+  // 2-month threshold-appearance history (see lib/deliveryBuckets.js) —
+  // bhavcopy day-files are cached individually, so asking for the wider
+  // of the two costs nothing extra once both are warm.
+  const bhavWindow = Math.max(windowTradingDays, APPEARANCE_WINDOW_TRADING_DAYS) + VOLUME_AVG_DAYS + 5;
+
   try {
     const [days, hist, sectors] = await Promise.all([
-      getRecentBhavcopies(BHAV_WINDOW, BHAV_WINDOW * 2 + 20).catch(() => []),
+      getRecentBhavcopies(bhavWindow, bhavWindow * 2 + 20).catch(() => []),
       fetchDailyOHLCV(symbol, "2y").catch(() => null),
       // Every sector this stock belongs to — a stock can genuinely sit in
       // several, so all of them are returned rather than just the first.
@@ -173,7 +184,7 @@ export async function GET(request) {
     let accumulation = null;
     if (days.length > 0) {
       const rows = [];
-      const firstShown = Math.max(0, days.length - MONTH_TRADING_DAYS);
+      const firstShown = Math.max(0, days.length - windowTradingDays);
       for (let i = firstShown; i < days.length; i++) {
         const day = days[i];
         const r = day.bySymbol.get(symbol);
@@ -208,7 +219,7 @@ export async function GET(request) {
       // Volume spikes over the same window, each measured against that
       // day's own trailing 30-day average rather than a single fixed one.
       const spikes = [];
-      for (let i = days.length - MONTH_TRADING_DAYS; i < days.length; i++) {
+      for (let i = days.length - windowTradingDays; i < days.length; i++) {
         if (i < 1) continue;
         const day = days[i];
         const r = day.bySymbol.get(symbol);
@@ -236,6 +247,8 @@ export async function GET(request) {
       const metrics = computeMetrics(symbol, days);
       const withDelivery = rows.filter((r) => r.deliveryPct != null);
       accumulation = {
+        windowId,
+        windowTradingDays,
         rows,
         spikes,
         avgDeliveryPct: withDelivery.length
@@ -246,6 +259,12 @@ export async function GET(request) {
         accumulationThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,
         inAccumulation: metrics?.inAccumulation ?? null,
+        // How many of the last ~2 months' trading days cleared each
+        // delivery-% bucket (see lib/deliveryBuckets.js) — independent of
+        // which window (1M/3M) is selected above, always the trailing
+        // APPEARANCE_WINDOW_TRADING_DAYS of `days`. Same computation the
+        // Delivery tab shows per row, surfaced here too (point 6).
+        thresholdAppearances: computeThresholdAppearances(symbol, days.slice(-APPEARANCE_WINDOW_TRADING_DAYS)),
       };
     }
 

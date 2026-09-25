@@ -9,6 +9,7 @@ import {
 } from "@/lib/deliveryMetrics";
 import { getResolvedSectorList } from "@/lib/sectorOverrides";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
+import { DELIVERY_BUCKETS, matchesBucket } from "@/lib/deliveryBuckets";
 
 // Same bhavcopy data source as Delivery Leaders/Breakouts — no external
 // lookups beyond NSE's own daily file, so this stays fast and reliable.
@@ -101,6 +102,8 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const periodParam = searchParams.get("period");
   const dateParam = searchParams.get("date");
+  const bucketParam = searchParams.get("bucket");
+  const bucket = DELIVERY_BUCKETS.some((b) => b.id === bucketParam) ? bucketParam : null;
   const period = PERIOD_TRADING_DAYS[periodParam] ? periodParam : "daily";
   const periodTradingDays = PERIOD_TRADING_DAYS[period];
 
@@ -218,6 +221,14 @@ export async function GET(request) {
 
     sectors.sort((a, b) => (b.deliveryPct ?? 0) - (a.deliveryPct ?? 0));
 
+    // Bucket filter (see lib/deliveryBuckets.js) — applied to the
+    // sector's own aggregate delivery %, the same cumulative-threshold
+    // reasoning as the per-stock Delivery tab. Applied AFTER sorting so
+    // "descending by delivery %" ordering is preserved within whichever
+    // bucket is selected. No filter (bucket === null) returns every
+    // sector, for any caller that still wants the unfiltered list.
+    const filteredSectors = bucket ? sectors.filter((s) => matchesBucket(s.deliveryPct, bucket)) : sectors;
+
     return Response.json({
       asOf: latest.date,
       // First session actually included, so the UI can state the exact
@@ -226,7 +237,8 @@ export async function GET(request) {
       requestedDate: asOfDate,
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,
-      sectors,
+      bucket,
+      sectors: filteredSectors,
       tradingDaysUsed: days.length,
       criteria: { periodTradingDays, historyPeriods: HISTORY_PERIODS },
     });
