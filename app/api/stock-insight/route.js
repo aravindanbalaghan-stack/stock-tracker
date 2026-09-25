@@ -9,7 +9,7 @@ import {
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
-import { APPEARANCE_WINDOW_TRADING_DAYS, computeThresholdAppearances } from "@/lib/deliveryBuckets";
+import { APPEARANCE_WINDOW_TRADING_DAYS, matchesBucket } from "@/lib/deliveryBuckets";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -27,6 +27,47 @@ const VOLUME_AVG_DAYS = 30;
 // A day counts as a volume spike when it trades this many times its own
 // trailing 30-day average.
 const VOLUME_SPIKE_MULTIPLE = 2;
+
+/**
+ * One day's full accumulation-table row for `symbol`: close, change %,
+ * delivery %, volume, and that day's volume against its own trailing
+ * 30-day average — everything the accumulation table's columns need.
+ * Shared between the accumulation rows themselves and the threshold-
+ * appearance detail below, so a "which bucket did it land in, and what
+ * did that day actually look like" question can be answered with the
+ * exact same numbers, not a lighter recomputation. Returns null if the
+ * symbol didn't trade that day.
+ */
+function buildDayRow(days, i, symbol) {
+  const day = days[i];
+  const r = day.bySymbol.get(symbol);
+  if (!r) return null;
+
+  // Trailing average of the 30 sessions BEFORE this one — each day is
+  // measured against the norm as it stood at the time, not against a
+  // single average taken from the end of the window.
+  const priorVols = days
+    .slice(Math.max(0, i - VOLUME_AVG_DAYS), i)
+    .map((d) => d.bySymbol.get(symbol)?.volume)
+    .filter((v) => v > 0);
+  const avgVol = priorVols.length ? priorVols.reduce((a, b) => a + b, 0) / priorVols.length : null;
+
+  return {
+    date: day.date,
+    close: r.close,
+    changePercent:
+      r.prevClose && r.close ? Math.round(((r.close - r.prevClose) / r.prevClose) * 10000) / 100 : null,
+    deliveryPct: r.deliveryPct,
+    volume: r.volume,
+    avgVolume: avgVol != null ? Math.round(avgVol) : null,
+    // How many times its own recent norm the day traded. Null rather
+    // than 0 when there isn't enough history to judge.
+    volumeRatio: avgVol && avgVol > 0 ? Math.round((r.volume / avgVol) * 100) / 100 : null,
+    // Days with too few prior sessions are flagged so the UI doesn't
+    // present a thin average as if it were a full one.
+    avgVolumeDays: priorVols.length,
+  };
+}
 
 /**
  * Recent block deals for this symbol. NSE's block-deal endpoint only
@@ -186,34 +227,8 @@ export async function GET(request) {
       const rows = [];
       const firstShown = Math.max(0, days.length - windowTradingDays);
       for (let i = firstShown; i < days.length; i++) {
-        const day = days[i];
-        const r = day.bySymbol.get(symbol);
-        if (!r) continue;
-
-        // Trailing average of the 30 sessions BEFORE this one — each day is
-        // measured against the norm as it stood at the time, not against a
-        // single average taken from the end of the window.
-        const priorVols = days
-          .slice(Math.max(0, i - VOLUME_AVG_DAYS), i)
-          .map((d) => d.bySymbol.get(symbol)?.volume)
-          .filter((v) => v > 0);
-        const avgVol = priorVols.length ? priorVols.reduce((a, b) => a + b, 0) / priorVols.length : null;
-
-        rows.push({
-          date: day.date,
-          close: r.close,
-          changePercent:
-            r.prevClose && r.close ? Math.round(((r.close - r.prevClose) / r.prevClose) * 10000) / 100 : null,
-          deliveryPct: r.deliveryPct,
-          volume: r.volume,
-          avgVolume: avgVol != null ? Math.round(avgVol) : null,
-          // How many times its own recent norm the day traded. Null rather
-          // than 0 when there isn't enough history to judge.
-          volumeRatio: avgVol && avgVol > 0 ? Math.round((r.volume / avgVol) * 100) / 100 : null,
-          // Days with too few prior sessions are flagged so the UI doesn't
-          // present a thin average as if it were a full one.
-          avgVolumeDays: priorVols.length,
-        });
+        const row = buildDayRow(days, i, symbol);
+        if (row) rows.push(row);
       }
 
       // Volume spikes over the same window, each measured against that
@@ -259,12 +274,40 @@ export async function GET(request) {
         accumulationThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,
         inAccumulation: metrics?.inAccumulation ?? null,
-        // How many of the last ~2 months' trading days cleared each
-        // delivery-% bucket (see lib/deliveryBuckets.js) — independent of
-        // which window (1M/3M) is selected above, always the trailing
-        // APPEARANCE_WINDOW_TRADING_DAYS of `days`. Same computation the
-        // Delivery tab shows per row, surfaced here too (point 6).
-        thresholdAppearances: computeThresholdAppearances(symbol, days.slice(-APPEARANCE_WINDOW_TRADING_DAYS)),
+        // How many of the last ~2 months' trading days fell in each
+        // delivery-% bucket (see lib/deliveryBuckets.js), AND the full
+        // detail behind each one (date, close, chg%, delivery%, volume,
+        // vol×) — the same columns the accumulation table above uses —
+        // so clicking a count can show exactly which days and what they
+        // looked like, not just a number. Always the trailing
+        // APPEARANCE_WINDOW_TRADING_DAYS of `days`, independent of
+        // whichever window (1M/3M) is selected for the table above.
+        thresholdAppearances: (() => {
+          const bucketIds = ["90", "80", "70", "60", "50"];
+          const counts = Object.fromEntries(bucketIds.map((id) => [id, 0]));
+          const daysDetail = Object.fromEntries(bucketIds.map((id) => [id, []]));
+          const start = Math.max(0, days.length - APPEARANCE_WINDOW_TRADING_DAYS);
+          let tradedDays = 0;
+          for (let i = start; i < days.length; i++) {
+            const row = buildDayRow(days, i, symbol);
+            if (!row || row.deliveryPct == null) continue;
+            tradedDays++;
+            for (const id of bucketIds) {
+              if (matchesBucket(row.deliveryPct, id)) {
+                counts[id]++;
+                daysDetail[id].push(row);
+              }
+            }
+          }
+          for (const id of bucketIds) daysDetail[id].reverse(); // most recent first
+          return {
+            counts,
+            daysDetail,
+            tradedDays,
+            windowStart: days[start]?.date ?? null,
+            windowEnd: days[days.length - 1]?.date ?? null,
+          };
+        })(),
       };
     }
 

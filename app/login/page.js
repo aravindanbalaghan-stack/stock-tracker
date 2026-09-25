@@ -63,7 +63,7 @@ function LoginForm() {
           </button>
         </form>
         <p className="text-xs mt-4" style={{ color: "var(--text-faint)" }}>
-          This just labels who&apos;s who (e.g. on price alerts) — there&apos;s no password and nothing is
+          This just labels who&apos;s who across Watchlist, Holdings, and Sectors — there&apos;s no password and nothing is
           verified.
         </p>
       </div>

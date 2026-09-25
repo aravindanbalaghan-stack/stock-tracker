@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -16,6 +16,112 @@ function vol(n) {
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
   if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
   return n.toLocaleString("en-IN");
+}
+
+// One delivery-% bucket's count, e.g. "90%: 3" — clickable (opens the
+// detail popover and keeps it open until you click elsewhere) and
+// hoverable (previews it without needing a click) at the same time.
+// The popover itself uses the exact same columns as the accumulation
+// table above it (Date, Close, Chg %, Delivery %, Volume, Vol ×), built
+// from the same buildDayRow() data server-side — so a day shown here
+// looks identical to that same day in the accumulation table.
+function AppearanceBucketCount({ id, count, detail, bucketLabel }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const hasDetail = count > 0 && detail?.length > 0;
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        disabled={!hasDetail}
+        onClick={() => hasDetail && setOpen((v) => !v)}
+        onMouseEnter={() => hasDetail && setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        className="font-mono disabled:cursor-default"
+        style={{ color: hasDetail ? "var(--accent)" : "var(--text-muted)", textDecoration: hasDetail ? "underline" : "none" }}
+      >
+        {id}%: {count}
+      </button>
+      {open && hasDetail && (
+        <div
+          className="absolute z-30 mt-1 left-0 rounded-[var(--radius-sm)] border shadow-xl overflow-hidden"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border-strong)", minWidth: "26rem" }}
+          onMouseEnter={() => setOpen(true)}
+          onMouseLeave={() => setOpen(false)}
+        >
+          <div className="flex items-center justify-between px-3 py-1.5 border-b" style={{ borderColor: "var(--border)" }}>
+            <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+              {bucketLabel} — {count} day{count === 1 ? "" : "s"}
+            </span>
+            <button type="button" onClick={() => setOpen(false)} style={{ color: "var(--text-muted)" }}>
+              ×
+            </button>
+          </div>
+          <div className="table-scroll" style={{ maxHeight: "16rem" }}>
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+                  {["Date", "Close", "Chg %", "Delivery %", "Volume", `Vol \u00d7`].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`py-1.5 text-[10px] font-medium uppercase tracking-wider ${i === 0 ? "pl-3" : "px-2 text-right"}`}
+                      style={{ color: "var(--text-faint)" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {detail.map((r) => {
+                  const up = (r.changePercent ?? 0) >= 0;
+                  return (
+                    <tr key={r.date} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                      <td className="py-1.5 pl-3 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                        {r.date}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
+                        ₹{fmt(r.close)}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-xs" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
+                        {r.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(r.changePercent)}%`}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-xs" style={{ color: "var(--gain)" }}>
+                        {r.deliveryPct == null ? "—" : `${fmt(r.deliveryPct)}%`}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                        {vol(r.volume)}
+                      </td>
+                      <td className="py-1.5 px-2 text-right font-mono text-xs">
+                        {r.volumeRatio == null ? (
+                          <span style={{ color: "var(--text-faint)" }}>—</span>
+                        ) : (
+                          <span style={{ color: r.volumeRatio >= 2 ? "var(--accent)" : "var(--text-muted)" }}>
+                            {r.volumeRatio.toFixed(2)}×
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function Stat({ label, value, sub, tone }) {
@@ -523,9 +629,15 @@ export default function StockInsightPage({ params }) {
                       Appeared in delivery buckets ({A.thresholdAppearances.tradedDays ?? "?"} sessions)
                     </span>
                     {["90", "80", "70", "60", "50"].map((id) => (
-                      <span key={id} className="font-mono">
-                        {id}%: {A.thresholdAppearances.counts[id] ?? 0}
-                      </span>
+                      <AppearanceBucketCount
+                        key={id}
+                        id={id}
+                        count={A.thresholdAppearances.counts[id] ?? 0}
+                        detail={A.thresholdAppearances.daysDetail?.[id]}
+                        bucketLabel={
+                          id === "90" ? "Above 90%" : `${id}\u2013${Number(id) + 10}%`
+                        }
+                      />
                     ))}
                   </div>
                 )}

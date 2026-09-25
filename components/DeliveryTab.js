@@ -7,7 +7,6 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import DeliveryHistoryPanel from "@/components/DeliveryHistoryPanel";
 import { ErrorState, LoadingState } from "@/components/ui/Chrome";
 import InfoNote from "@/components/InfoNote";
-import StockDepthPanel from "@/components/StockDepthPanel";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import NumericFilters from "@/components/NumericFilters";
 import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } from "@/lib/rowFilters";
@@ -65,13 +64,71 @@ function DeliveryPctBadge({ pct }) {
 // Sector Deliverability tab).
 
 // Expanded delivery row: the delivery-history strip it always had, plus
-// the order book / volume-at-price view. Depth is lazy — it only fetches
-// when you actually switch to it, since it hits NSE per symbol.
+// which delivery-% buckets it's fallen into over the last ~2 months and
+// on which specific days (with that day's volume) — the detail behind
+// the compact "Appeared (2mo)" column.
+function AppearancesPanel({ thresholdAppearances }) {
+  if (!thresholdAppearances?.daysDetail) {
+    return (
+      <p className="px-4 py-3 text-xs" style={{ color: "var(--text-faint)" }}>
+        No appearance data available for this symbol.
+      </p>
+    );
+  }
+  const order = ["90", "80", "70", "60", "50"];
+  const bucketLabels = { 90: "Above 90%", 80: "80–90%", 70: "70–80%", 60: "60–70%", 50: "50–60%" };
+  const hasAny = order.some((id) => (thresholdAppearances.daysDetail[id]?.length ?? 0) > 0);
+
+  if (!hasAny) {
+    return (
+      <p className="px-4 py-3 text-xs" style={{ color: "var(--text-faint)" }}>
+        Hasn&apos;t fallen into any of the tracked delivery-% buckets in the last{" "}
+        {thresholdAppearances.tradedDays ?? "?"} trading sessions ({thresholdAppearances.windowStart} –{" "}
+        {thresholdAppearances.windowEnd}).
+      </p>
+    );
+  }
+
+  return (
+    <div className="px-4 py-3">
+      <p className="text-[11px] mb-2" style={{ color: "var(--text-faint)" }}>
+        Days in the last {thresholdAppearances.tradedDays ?? "?"} trading sessions ({thresholdAppearances.windowStart}{" "}
+        – {thresholdAppearances.windowEnd}) that fell in each bucket, with that day&apos;s volume.
+      </p>
+      <div className="flex flex-col gap-3">
+        {order.map((id) => {
+          const detail = thresholdAppearances.daysDetail[id] ?? [];
+          if (detail.length === 0) return null;
+          return (
+            <div key={id}>
+              <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-faint)" }}>
+                {bucketLabels[id]} — {detail.length} time{detail.length === 1 ? "" : "s"}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {detail.map((d) => (
+                  <span
+                    key={d.date}
+                    className="text-[11px] font-mono px-2 py-1 rounded border whitespace-nowrap"
+                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+                    title={`Delivery ${fmt(d.deliveryPct)}% · Volume ${d.volume.toLocaleString("en-IN")}`}
+                  >
+                    {d.date} · {fmtVolume(d.volume)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ExpandedRowDetail({ row }) {
   const [view, setView] = useState("history");
   const TABS = [
     { id: "history", label: "Delivery history" },
-    { id: "depth", label: "Order book & volume at price" },
+    { id: "appearances", label: "Appearances" },
   ];
   return (
     <div>
@@ -96,7 +153,7 @@ function ExpandedRowDetail({ row }) {
       </div>
       <div onClick={(e) => e.stopPropagation()}>
         {view === "history" && <DeliveryHistoryPanel history={row.deliveryHistory} />}
-        {view === "depth" && <StockDepthPanel symbol={row.symbol} />}
+        {view === "appearances" && <AppearancesPanel thresholdAppearances={row.thresholdAppearances} />}
       </div>
     </div>
   );

@@ -4,7 +4,6 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import TickerTape from "@/components/TickerTape";
 import AddStock from "@/components/AddStock";
 import WatchlistTable from "@/components/WatchlistTable";
-import AlertsPanel from "@/components/AlertsPanel";
 import TabBar from "@/components/TabBar";
 import { useRouter, useSearchParams } from "next/navigation";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -346,7 +345,6 @@ function PageInner() {
               <LoadingState>Loading live prices…</LoadingState>
             ) : (
               <>
-                <AlertsPanel availableSymbols={symbols} />
                 <WatchlistTable
                   quotes={quotes}
                   meta={meta}

@@ -19,7 +19,7 @@ function storageError(err) {
   return Response.json(
     {
       error: isStorage
-        ? "Couldn't save — the KV store this uses (the same one the alerts feature needs) doesn't look configured for this deployment."
+        ? "Couldn't save — the KV store this uses (the same one Watchlist and Holdings need) doesn't look configured for this deployment."
         : msg,
     },
     { status: isStorage ? 503 : 400 }

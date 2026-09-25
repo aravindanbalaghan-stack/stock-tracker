@@ -95,9 +95,8 @@ entering your email or name at `/login`. **This is not real
 authentication** — nothing is verified, there's no password, and anyone
 with your deployed URL can type any email or name and get in. It exists
 so that if you share this with friends, everyone identifies themselves
-(mainly so SMS price alerts belong to the person who created them,
-rather than one shared pool everyone can see and delete — see "SMS price
-alerts" below for how that's scoped).
+(mainly so each person's Watchlist and Holdings belong to them, rather
+than one shared pool everyone can see and edit).
 
 If you actually want to restrict who can get in — not just ask visitors
 to identify themselves — you'd need to add an allowlist check in
@@ -112,8 +111,8 @@ older `middleware.js` convention — this Next.js version renamed it (see
 ### Checking who's logged in
 
 Every submission to `/login` is recorded (identity + timestamp) in Vercel
-KV — the same database used for SMS alerts, so you need that set up too
-(see below). To view the log:
+KV — the same database Watchlist and Holdings use, so you need that set
+up too (see below). To view the log:
 
 1. In your Vercel project → **Settings** → **Environment Variables**, add
    `ADMIN_KEY` set to any secret string of your choosing. Redeploy.
@@ -125,18 +124,13 @@ that cookie can be set to literally anything by anyone, it can't be what
 decides who gets to see everyone else's login history. Without `ADMIN_KEY` set, `/admin/logins` just shows an error and nothing
 recorded is ever exposed.
 
-## SMS price alerts — setup
+## Add a database (Vercel KV)
 
-This needs three things: a small database to remember your alerts, an SMS
-account to actually send texts, and something to check prices on a
-schedule (since nothing runs while your browser is closed). Here's each
-step.
-
-Alerts are scoped per person by the identity cookie above — everyone only
-sees and can delete their own alerts, even though they all live in the
-same underlying KV store.
-
-### 1. Add a database (Vercel KV)
+Watchlist, Holdings, Sectors, accumulation history, and screener-
+membership tracking all need a small server-side database to persist
+anything beyond a single browser — without it, the app still runs, but
+each of those quietly falls back to local-only behavior (or, for Sectors,
+refuses to save at all — see "Managing sectors" above).
 
 1. In your Vercel dashboard, open your project → **Storage** tab.
 2. **Create Database** → choose **KV** (built on Upstash Redis, free tier
@@ -146,58 +140,6 @@ same underlying KV store.
    (`KV_REST_API_URL`, `KV_REST_API_TOKEN`, etc.) — you don't need to
    copy/paste anything.
 4. Redeploy (Vercel usually prompts you to).
-
-### 2. Get an SMS provider account (Fast2SMS)
-
-1. Sign up at **fast2sms.com** (free trial credit included).
-2. Go to **Dev API** in their dashboard → copy your **API key**.
-3. In Vercel: Project → **Settings** → **Environment Variables** → add:
-   - `FAST2SMS_API_KEY` = your API key
-4. This app uses Fast2SMS's "Quick SMS" route, which doesn't require
-   DLT sender-ID registration — fine for personal alerts to your own
-   number. If you want a custom sender ID / template-based SMS instead,
-   that's a small change in `app/api/check-alerts/route.js`.
-
-### 3. Set a secret so strangers can't trigger SMS sends
-
-**Required** — `/api/check-alerts` refuses to run at all without this set
-(it used to allow unauthenticated calls when the secret was missing,
-which meant anyone with the URL could trigger SMS sends and see every
-alert's phone number in the response; it now fails closed instead).
-
-1. In Vercel: **Settings** → **Environment Variables** → add:
-   - `ALERTS_CRON_SECRET` = any random string you make up (e.g. a long
-     password — you won't need to remember it, just paste it in both
-     places below).
-
-### 4. Schedule the price check
-
-Vercel's free Hobby plan only allows cron jobs to run **once a day**,
-which isn't often enough to catch a price move during market hours. The
-practical fix is a free external scheduler that calls your app's check
-endpoint every few minutes:
-
-1. Go to **cron-job.org** (free) and create an account.
-2. Create a new cron job:
-   - **URL**: `https://your-app.vercel.app/api/check-alerts`
-   - **Schedule**: every 5–15 minutes, restricted to roughly 9:00–15:30
-     IST on weekdays (market hours) if you want to save on invocations.
-   - **Request headers**: add `Authorization: Bearer YOUR_SECRET` (the
-     same string you set as `ALERTS_CRON_SECRET`).
-3. Save it — that's it, it'll now hit your app on schedule.
-
-(There's also a `vercel.json` cron included that runs this same route
-twice daily on Vercel's own scheduler as a backup — but for real
-intraday alerting, the external scheduler above is what does the work.)
-
-### Using it
-
-Go to the Watchlist tab → **Price alerts** panel → **+ New alert**. Pick a
-stock, a target price, a direction (reaches/crosses above, or drops to/below),
-and your phone number with country code (e.g. `+91XXXXXXXXXX`). Once the
-target is hit, you'll get a text and the alert marks itself "Sent" (it
-won't keep re-texting you for the same alert — remove it and create a new
-one if you want to re-arm it).
 
 
 

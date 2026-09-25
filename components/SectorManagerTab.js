@@ -441,11 +441,11 @@ export default function SectorManagerTab() {
           style={{ borderColor: "var(--loss)", color: "var(--loss)" }}
         >
           Sector customizations can&apos;t be saved on this deployment — the KV store this needs (the same
-          one the alerts and Watchlist features use) isn&apos;t configured. You can still browse the base
+          one Watchlist and Holdings use) isn&apos;t configured. You can still browse the base
           lists below, but Add, Remove, and Import won&apos;t work until it&apos;s set up — see the README
-          section &quot;SMS price alerts&quot; step 1 for how (it&apos;s the same database, despite the
-          section name). Unlike Watchlist and Holdings, sector data has no per-browser fallback — it&apos;s
-          shared across the whole app, so it has nothing to silently fall back to.
+          section &quot;Add a database (Vercel KV)&quot; for how. Unlike Watchlist and Holdings, sector data
+          has no per-browser fallback — it&apos;s shared across the whole app, so it has nothing to
+          silently fall back to.
         </p>
       )}
 
