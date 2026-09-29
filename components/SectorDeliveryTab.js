@@ -293,7 +293,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
     async function load() {
       try {
         const res = await fetch(
-          `/api/sector-delivery?period=${period}&bucket=${bucket}${asOfDate ? `&date=${asOfDate}` : ""}`
+          `/api/sector-delivery?period=${period}${bucket ? `&bucket=${bucket}` : ""}${asOfDate ? `&date=${asOfDate}` : ""}`
         );
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load sector delivery screen");
@@ -437,7 +437,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
 
       {visibleSectors.length === 0 ? (
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-          No sectors in this bucket right now.
+          {bucket ? "No sectors in this bucket right now." : "No sectors match the current filter."}
         </p>
       ) : (
         <SectorTable

@@ -11,7 +11,7 @@ import {
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
-import { DELIVERY_BUCKETS, matchesBucket, APPEARANCE_WINDOW_TRADING_DAYS, computeThresholdAppearancesBatch, computeThresholdAppearances } from "@/lib/deliveryBuckets";
+import { DELIVERY_BUCKETS, matchesBucket, APPEARANCE_WINDOW_TRADING_DAYS, APPEARANCE_LOOKBACK_TRADING_DAYS, computeThresholdAppearancesBatch, computeThresholdAppearances } from "@/lib/deliveryBuckets";
 import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 import { getMembershipForSymbols } from "@/lib/screenerMembership";
@@ -90,12 +90,14 @@ export async function GET(request) {
     }
 
     // Wide enough for whichever is bigger: the period's own lookback, or
-    // the 2-month window the threshold-appearance history (see
-    // lib/deliveryBuckets.js) needs — bhavcopy day-files are cached
+    // APPEARANCE_LOOKBACK_TRADING_DAYS — the 2-month appearance window
+    // itself PLUS the extra 30 trading days its own oldest day needs for
+    // a real (not thin) trailing volume average (see
+    // lib/deliveryBuckets.js). Bhavcopy day-files are cached
     // individually, so asking for the wider of the two costs nothing
     // extra once both are warm.
     const lookback =
-      Math.max(lookbackDaysFor(period), APPEARANCE_WINDOW_TRADING_DAYS) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
+      Math.max(lookbackDaysFor(period), APPEARANCE_LOOKBACK_TRADING_DAYS) + (asOfDate ? MAX_ASOF_TRADING_DAYS : 0);
     // getRecentBhavcopies walks backward one weekday at a time and skips
     // holidays automatically, so it needs a generous calendar-day budget
     // to find `lookback` actual trading days — a plain 1:1 would come up
@@ -110,7 +112,7 @@ export async function GET(request) {
           { status: 503 }
         );
       }
-      days = days.slice(-Math.max(lookbackDaysFor(period), APPEARANCE_WINDOW_TRADING_DAYS));
+      days = days.slice(-Math.max(lookbackDaysFor(period), APPEARANCE_LOOKBACK_TRADING_DAYS));
     }
     if (days.length < periodTradingDays + 1) {
       return Response.json(
@@ -119,10 +121,6 @@ export async function GET(request) {
       );
     }
     const latest = days[days.length - 1];
-    // The trailing ~2-month slice used for threshold-appearance counts —
-    // always the most recent APPEARANCE_WINDOW_TRADING_DAYS of `days`,
-    // independent of the period/bucket selected above.
-    const appearanceWindow = days.slice(-APPEARANCE_WINDOW_TRADING_DAYS);
 
     // Single-symbol lookup — used by the search box. Not restricted to
     // the delivery % bucket, since the point of search is to look up
@@ -157,7 +155,7 @@ export async function GET(request) {
             marketCapCr: marketCapCr != null ? Math.round(marketCapCr) : null,
             wma30: wma30 != null ? Math.round(wma30 * 100) / 100 : null,
             deliveryHistory,
-            thresholdAppearances: isStock ? computeThresholdAppearances(symbol, appearanceWindow) : null,
+            thresholdAppearances: isStock ? computeThresholdAppearances(symbol, days) : null,
           },
           debut
         ),
@@ -260,7 +258,7 @@ export async function GET(request) {
     // so there's no cost reason to cap it the way market cap/WMA are.
     const appearancesBySymbol = computeThresholdAppearancesBatch(
       stockCandidates.map((c) => c.symbol),
-      appearanceWindow
+      days
     );
 
     const stocks = await withScreenerMembership(

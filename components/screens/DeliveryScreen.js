@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import DeliveryTab from "@/components/DeliveryTab";
 import SectorDeliveryTab from "@/components/SectorDeliveryTab";
 import PeriodToggle from "@/components/PeriodToggle";
@@ -9,21 +8,26 @@ import { ScreenHeader } from "@/components/ui/Chrome";
 import { DELIVERY_BUCKETS } from "@/lib/deliveryBuckets";
 import { usePersistentState } from "@/lib/usePersistentState";
 
-// One tab per delivery-% bucket (see lib/deliveryBuckets.js) rather than
-// the old "By stock" / "By sector" split — each bucket tab now shows
-// BOTH, stacked (sectors above, stocks below), since the two answer the
-// same question ("where is delivery-based accumulation happening right
-// now") at different granularities and belong together at a given
-// threshold, not split across separate tabs. Period, as-of date, and the
-// stage toggle are owned here and shared by both sections below.
+// A "Sectors" tab (the full, unfiltered sector list — same as before the
+// bucket tabs existed) sits alongside one tab per delivery-% bucket (see
+// lib/deliveryBuckets.js). Each bucket tab shows stocks only now — the
+// two used to be stacked together on every bucket tab, but a sector's
+// own delivery % doesn't naturally belong to just one stock-level bucket
+// the way a stock does, so splitting them back out reads more clearly:
+// Sectors for the overview, a bucket tab when you want to drill into
+// stocks at a specific delivery-% range. Period, as-of date, and the
+// stage toggle are owned here and shared by both views.
+const SECTORS_TAB = { id: "sectors", label: "Sectors" };
+const TABS = [SECTORS_TAB, ...DELIVERY_BUCKETS];
 
 export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
-  const [bucket, setBucket] = usePersistentState("delivery.bucket", "60");
+  const [view, setView] = usePersistentState("delivery.view", "60");
   const [period, setPeriod] = usePersistentState("delivery.period", "daily");
   const [asOfDate, setAsOfDate] = usePersistentState("delivery.date", "");
   const [showStage, setShowStage] = usePersistentState("delivery.showStage", false);
 
-  const activeBucket = DELIVERY_BUCKETS.find((b) => b.id === bucket) ?? DELIVERY_BUCKETS[3];
+  const isSectors = view === "sectors";
+  const activeBucket = DELIVERY_BUCKETS.find((b) => b.id === view) ?? DELIVERY_BUCKETS[3];
 
   return (
     <div>
@@ -50,43 +54,40 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
       />
 
       <div className="flex gap-1 mb-5 border-b overflow-x-auto" style={{ borderColor: "var(--border)" }}>
-        {DELIVERY_BUCKETS.map((b) => (
+        {TABS.map((t) => (
           <button
-            key={b.id}
-            onClick={() => setBucket(b.id)}
+            key={t.id}
+            onClick={() => setView(t.id)}
             className="px-3 py-2 text-sm border-b-2 whitespace-nowrap"
             style={{
-              borderColor: bucket === b.id ? "var(--accent)" : "transparent",
-              color: bucket === b.id ? "var(--text)" : "var(--text-muted)",
+              borderColor: view === t.id ? "var(--accent)" : "transparent",
+              color: view === t.id ? "var(--text)" : "var(--text-muted)",
             }}
           >
-            {b.label}
+            {t.label}
           </button>
         ))}
       </div>
 
-      <div className="mb-8">
+      {isSectors ? (
         <SectorDeliveryTab
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
-          bucket={bucket}
           period={period}
           asOfDate={asOfDate}
           showStage={showStage}
         />
-      </div>
-
-      <div>
+      ) : (
         <DeliveryTab
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
-          bucket={bucket}
+          bucket={view}
           bucketLabel={activeBucket.label}
           period={period}
           asOfDate={asOfDate}
           showStage={showStage}
         />
-      </div>
+      )}
     </div>
   );
 }

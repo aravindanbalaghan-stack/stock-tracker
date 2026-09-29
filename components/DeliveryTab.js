@@ -64,9 +64,11 @@ function DeliveryPctBadge({ pct }) {
 // Sector Deliverability tab).
 
 // Expanded delivery row: the delivery-history strip it always had, plus
-// which delivery-% buckets it's fallen into over the last ~2 months and
-// on which specific days (with that day's volume) — the detail behind
-// the compact "Appeared (2mo)" column.
+// which delivery-% buckets it's fallen into over the last ~2 months, on
+// which specific days, with that day's volume, vs-average volume,
+// delivery %, and price move — the detail behind each bucket, shown as
+// a table (same shape as the Accumulation table on the Stock Insight
+// page) rather than a bare count.
 function AppearancesPanel({ thresholdAppearances }) {
   if (!thresholdAppearances?.daysDetail) {
     return (
@@ -93,9 +95,9 @@ function AppearancesPanel({ thresholdAppearances }) {
     <div className="px-4 py-3">
       <p className="text-[11px] mb-2" style={{ color: "var(--text-faint)" }}>
         Days in the last {thresholdAppearances.tradedDays ?? "?"} trading sessions ({thresholdAppearances.windowStart}{" "}
-        – {thresholdAppearances.windowEnd}) that fell in each bucket, with that day&apos;s volume.
+        – {thresholdAppearances.windowEnd}) that fell in each bucket.
       </p>
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {order.map((id) => {
           const detail = thresholdAppearances.daysDetail[id] ?? [];
           if (detail.length === 0) return null;
@@ -104,17 +106,52 @@ function AppearancesPanel({ thresholdAppearances }) {
               <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--text-faint)" }}>
                 {bucketLabels[id]} — {detail.length} time{detail.length === 1 ? "" : "s"}
               </p>
-              <div className="flex flex-wrap gap-1.5">
-                {detail.map((d) => (
-                  <span
-                    key={d.date}
-                    className="text-[11px] font-mono px-2 py-1 rounded border whitespace-nowrap"
-                    style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
-                    title={`Delivery ${fmt(d.deliveryPct)}% · Volume ${d.volume.toLocaleString("en-IN")}`}
-                  >
-                    {d.date} · {fmtVolume(d.volume)}
-                  </span>
-                ))}
+              <div className="overflow-x-auto">
+                <table className="border-collapse">
+                  <thead>
+                    <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+                      {["Date", "Chg %", "Delivery %", "Volume", "Vs avg vol"].map((h, i) => (
+                        <th
+                          key={h}
+                          className={`py-1 text-[10px] font-medium uppercase tracking-wider whitespace-nowrap ${i === 0 ? "pr-3" : "px-3 text-right"}`}
+                          style={{ color: "var(--text-faint)" }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.map((d) => {
+                      const up = (d.changePercent ?? 0) >= 0;
+                      return (
+                        <tr key={d.date} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                          <td className="py-1 pr-3 font-mono text-[11px] whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                            {d.date}
+                          </td>
+                          <td className="py-1 px-3 text-right font-mono text-[11px]" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
+                            {d.changePercent == null ? "—" : `${up ? "+" : ""}${fmt(d.changePercent)}%`}
+                          </td>
+                          <td className="py-1 px-3 text-right font-mono text-[11px]" style={{ color: "var(--gain)" }}>
+                            {fmt(d.deliveryPct)}%
+                          </td>
+                          <td className="py-1 px-3 text-right font-mono text-[11px]" style={{ color: "var(--text-muted)" }}>
+                            {fmtVolume(d.volume)}
+                          </td>
+                          <td className="py-1 px-3 text-right font-mono text-[11px]">
+                            {d.volumeRatio == null ? (
+                              <span style={{ color: "var(--text-faint)" }}>—</span>
+                            ) : (
+                              <span style={{ color: d.volumeRatio >= 2 ? "var(--accent)" : "var(--text-muted)" }}>
+                                {d.volumeRatio.toFixed(2)}×
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           );
@@ -159,18 +196,6 @@ function ExpandedRowDetail({ row }) {
   );
 }
 
-function formatAppearances(thresholdAppearances) {
-  if (!thresholdAppearances?.counts) return { compact: "—", title: null };
-  const order = ["90", "80", "70", "60", "50"];
-  const parts = order.map((id) => `${id}%: ${thresholdAppearances.counts[id] ?? 0}`);
-  const nonZero = order.filter((id) => (thresholdAppearances.counts[id] ?? 0) > 0);
-  const compact = nonZero.length === 0 ? "—" : nonZero.map((id) => `${id}%×${thresholdAppearances.counts[id]}`).join(", ");
-  const title = `Trading days clearing each bucket in the last ${thresholdAppearances.tradedDays ?? "?"} sessions (${
-    thresholdAppearances.windowStart ?? "?"
-  } – ${thresholdAppearances.windowEnd ?? "?"}): ${parts.join(" · ")}`;
-  return { compact, title };
-}
-
 function StageBadge({ info }) {
   if (!info) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>—</span>;
   if (!info.available) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>n/a</span>;
@@ -191,7 +216,7 @@ function StageBadge({ info }) {
 function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
-  const colCount = (showCap ? 15 : 13) + 1 + (showStage ? 1 : 0); // +1 for the appearance-history column
+  const colCount = (showCap ? 15 : 13) + (showStage ? 1 : 0);
 
   if (!rows || rows.length === 0) {
     return (
@@ -217,13 +242,6 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <DebutHeaderCells sort={sort} onSort={onSort} />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
-            <th
-              className="py-2 px-2 text-xs font-medium uppercase tracking-wider"
-              style={{ color: "var(--text-faint)" }}
-              title="How many of the last ~2 months' trading days cleared each delivery-% bucket (see the tab bar above)"
-            >
-              Appeared (2mo)
-            </th>
             {showStage && (
               <th
                 className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-left"
@@ -294,11 +312,6 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
                   <DebutCells row={r} />
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {r.daysOfAccumulation}/{r.accumulationWindowDays}
-                  </td>
-                  <td className="py-2.5 px-2 text-right text-[11px]" style={{ color: "var(--text-muted)" }}>
-                    <span title={formatAppearances(r.thresholdAppearances).title}>
-                      {formatAppearances(r.thresholdAppearances).compact}
-                    </span>
                   </td>
                   {showStage && (
                     <td className="py-2.5 px-2 text-left">
@@ -418,16 +431,6 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Days accum. (20d)</span>
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
             {result.daysOfAccumulation}/{result.accumulationWindowDays}
-          </span>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Appeared (2mo)</span>
-          <span
-            className="font-mono text-sm"
-            style={{ color: "var(--text)" }}
-            title={formatAppearances(result.thresholdAppearances).title}
-          >
-            {formatAppearances(result.thresholdAppearances).compact}
           </span>
         </div>
         <div className="flex flex-col">
@@ -638,7 +641,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
   // Stage classification (see app/api/stock-stage/route.js) for every
   // stock this bucket currently shows — fetched once data loads, only
   // when the shared "Show stage" toggle (owned by the parent
-  // DeliveryScreen, same switch the Sectors section reacts to) is on.
+  // DeliveryScreen, same switch the Sectors tab reacts to) is on.
   // Keyed off the full stocks list, not the numeric-filtered view, so
   // adjusting a numeric filter doesn't retrigger the fetch.
   useEffect(() => {
@@ -851,10 +854,11 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
           Monthly&apos;s deeper history means the first load after switching to it can take noticeably longer.{" "}
           Showing every {category === "stocks" ? "stock" : "ETF/REIT/InvIT"} in the{" "}
           {bucketLabel ?? "selected"} bucket (see the tabs above), sorted by delivery % descending by
-          default — click any column header to re-sort. &quot;Appeared (2mo)&quot; counts, independently of
-          the bucket currently selected, how many of the last {data.criteria?.appearanceWindowTradingDays ?? 44}{" "}
-          trading days each stock cleared each of the five delivery-% buckets — see the Stock Insight page
-          for the full daily breakdown.
+          default — click any column header to re-sort. Expanding a row&apos;s &quot;Appearances&quot; tab
+          shows which of the last {data.criteria?.appearanceWindowTradingDays ?? 44} trading days it fell
+          into each delivery-% bucket, with that day&apos;s volume, delivery %, vs-average volume, and
+          price move — see the Stock Insight page for the same breakdown alongside 1/3-month accumulation
+          history.
           &quot;In accumulation&quot; is always evaluated on the standard daily 20-day window regardless of the
           period selected above: delivery % above {data.criteria?.accumulationDeliveryThreshold ?? 50}% on at
           least {data.criteria?.accumulationMinDays ?? 10} of the last {data.criteria?.accumulationWindow ?? 20}{" "}
