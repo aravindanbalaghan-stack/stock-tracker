@@ -216,7 +216,7 @@ function StageBadge({ info }) {
 function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
-  const colCount = (showCap ? 15 : 13) + (showStage ? 1 : 0);
+  const colCount = (showCap ? 16 : 14) + (showStage ? 1 : 0);
 
   if (!rows || rows.length === 0) {
     return (
@@ -239,6 +239,7 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
             {showCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
             {showCap && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
             <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
+            <SortableTh label={`Turnover (${periodLabel})`} sortKey="turnoverCr" sort={sort} onSort={onSort} title="Traded value over the period (price × volume, summed across every traded day), from NSE's own bhavcopy figure" />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <DebutHeaderCells sort={sort} onSort={onSort} />
             <SortableTh label="Days accum. (20d)" sortKey="daysOfAccumulation" sort={sort} onSort={onSort} />
@@ -305,6 +306,9 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
                   )}
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                     {fmtVolume(r.volume)}
+                  </td>
+                  <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                    {fmtCap(r.turnoverCr)}
                   </td>
                   <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                     {r.volumeRatio ? `${r.volumeRatio.toFixed(1)}×` : "—"}
@@ -420,6 +424,10 @@ function SearchResult({ result, onClear, onAddToWatchlist, watchlistSymbols, per
         <div className="flex flex-col">
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Volume ({periodLabel})</span>
           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{fmtVolume(result.volume)}</span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>Turnover ({periodLabel})</span>
+          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>{fmtCap(result.turnoverCr)}</span>
         </div>
         <div className="flex flex-col">
           <span className="text-[10px] uppercase" style={{ color: "var(--text-faint)" }}>vs Avg Volume</span>

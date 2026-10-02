@@ -220,6 +220,7 @@ export default function StockInsightPage({ params }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [accumWindow, setAccumWindow] = useState("1m");
+  const [accumGranularity, setAccumGranularity] = useState("daily");
   const [accumPage, setAccumPage] = useState(0);
   const ACCUM_ROWS_PER_PAGE = 20;
 
@@ -227,12 +228,14 @@ export default function StockInsightPage({ params }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/stock-insight?symbol=${encodeURIComponent(sym)}&window=${accumWindow}`);
+        const res = await fetch(
+          `/api/stock-insight?symbol=${encodeURIComponent(sym)}&window=${accumWindow}&granularity=${accumGranularity}`
+        );
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't load this stock");
         if (!cancelled) {
           setData(json);
-          setAccumPage(0); // a new window means a new row count — start back at the most recent page
+          setAccumPage(0); // a new window/granularity means a new row count — start back at the most recent page
         }
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -241,7 +244,7 @@ export default function StockInsightPage({ params }) {
     return () => {
       cancelled = true;
     };
-  }, [sym, accumWindow]);
+  }, [sym, accumWindow, accumGranularity]);
 
   const L = data?.levels;
   const A = data?.accumulation;
@@ -599,6 +602,28 @@ export default function StockInsightPage({ params }) {
                 ))}
               </div>
             </div>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xs" style={{ color: "var(--text-faint)" }}>View:</span>
+              <div className="inline-flex rounded-md border overflow-hidden" style={{ borderColor: "var(--border)" }}>
+                {[
+                  { id: "daily", label: "Daily" },
+                  { id: "weekly", label: "Weekly" },
+                ].map((g) => (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => setAccumGranularity(g.id)}
+                    className="px-3 py-1 text-xs font-medium transition-colors"
+                    style={{
+                      background: accumGranularity === g.id ? "var(--accent)" : "transparent",
+                      color: accumGranularity === g.id ? "var(--surface)" : "var(--text-muted)",
+                    }}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             {!A?.rows?.length ? (
               <Panel>
                 <p className="text-xs" style={{ color: "var(--text-faint)" }}>
@@ -610,9 +635,14 @@ export default function StockInsightPage({ params }) {
                 <div className="px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 border-b" style={{ borderColor: "var(--border)" }}>
                   <Stat label="Avg delivery %" value={A.avgDeliveryPct == null ? "—" : `${fmt(A.avgDeliveryPct)}%`} />
                   <Stat
+                    label="Avg volume (30d)"
+                    value={vol(A.avgVolume30d)}
+                    sub="trailing 30 sessions"
+                  />
+                  <Stat
                     label={`Days above ${A.accumulationThreshold}%`}
                     value={`${A.daysAboveThreshold ?? "—"}/${A.accumulationWindow}`}
-                    sub={`${A.accumulationMinDays}+ needed`}
+                    sub={accumWindow === "3m" ? "last 3 months" : "last month"}
                   />
                   <Stat
                     label="Vol × basis"
@@ -645,7 +675,7 @@ export default function StockInsightPage({ params }) {
                   <table className="w-full border-collapse table-sticky">
                     <thead>
                       <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-                        {["Date", "Close", "Chg %", "Delivery %", "Volume", `Vol \u00d7`].map((h, i) => (
+                        {[accumGranularity === "weekly" ? "Week" : "Date", "Close", "Chg %", "Delivery %", "Volume", "Turnover", `Vol \u00d7`].map((h, i) => (
                           <th
                             key={h}
                             className={`py-2 text-xs font-medium uppercase tracking-wider ${i === 0 ? "pl-4" : "px-2 text-right"}`}
@@ -671,7 +701,9 @@ export default function StockInsightPage({ params }) {
                         return (
                           <tr key={r.date} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
                             <td className="py-2 pl-4 font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                              {r.date}
+                              {r.startDate && r.endDate && r.startDate !== r.endDate
+                                ? `${r.startDate} → ${r.endDate}`
+                                : r.date}
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
                               ₹{fmt(r.close)}
@@ -684,6 +716,9 @@ export default function StockInsightPage({ params }) {
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                               {vol(r.volume)}
+                            </td>
+                            <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                              {r.turnoverCr == null ? "—" : `₹${fmt(r.turnoverCr)}Cr`}
                             </td>
                             <td className="py-2 px-2 text-right font-mono text-xs">
                               {r.volumeRatio == null ? (
@@ -711,7 +746,8 @@ export default function StockInsightPage({ params }) {
                   <div className="px-4 py-2.5 flex items-center justify-between border-t text-xs" style={{ borderColor: "var(--border)" }}>
                     <span style={{ color: "var(--text-faint)" }}>
                       Showing {accumPage * ACCUM_ROWS_PER_PAGE + 1}–
-                      {Math.min((accumPage + 1) * ACCUM_ROWS_PER_PAGE, A.rows.length)} of {A.rows.length} days
+                      {Math.min((accumPage + 1) * ACCUM_ROWS_PER_PAGE, A.rows.length)} of {A.rows.length}{" "}
+                      {accumGranularity === "weekly" ? "weeks" : "days"}
                     </span>
                     <div className="flex items-center gap-2">
                       <button

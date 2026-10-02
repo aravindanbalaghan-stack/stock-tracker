@@ -5,7 +5,6 @@ import { getSectorsForSymbol } from "@/lib/sectorOverrides";
 import { analyzeStage2, classifyStageTransition, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
 import {
   computeMetrics,
-  ACCUMULATION_WINDOW,
   ACCUMULATION_DELIVERY_THRESHOLD,
   ACCUMULATION_MIN_DAYS,
 } from "@/lib/deliveryMetrics";
@@ -27,6 +26,10 @@ const VOLUME_AVG_DAYS = 30;
 // A day counts as a volume spike when it trades this many times its own
 // trailing 30-day average.
 const VOLUME_SPIKE_MULTIPLE = 2;
+// How many trading days make up one "week" when the accumulation table is
+// viewed as Weekly rather than Daily — a trading week, same convention
+// PERIOD_TRADING_DAYS.weekly uses elsewhere in the app (lib/deliveryMetrics.js).
+const WEEKLY_TRADING_DAYS = 5;
 
 /**
  * One day's full accumulation-table row for `symbol`: close, change %,
@@ -54,11 +57,20 @@ function buildDayRow(days, i, symbol) {
 
   return {
     date: day.date,
+    // Same as `date` for a single day — these only diverge once a row
+    // represents an aggregated period (see buildWeeklyRows below), but
+    // carrying them here too means the frontend can treat every row the
+    // same way regardless of which granularity built it.
+    startDate: day.date,
+    endDate: day.date,
     close: r.close,
     changePercent:
       r.prevClose && r.close ? Math.round(((r.close - r.prevClose) / r.prevClose) * 10000) / 100 : null,
     deliveryPct: r.deliveryPct,
     volume: r.volume,
+    // Traded value for the day, in ₹ Crores (NSE reports it in Lakhs;
+    // 1 Cr = 100 Lakhs).
+    turnoverCr: r.turnoverLacs != null ? Math.round((r.turnoverLacs / 100) * 100) / 100 : null,
     avgVolume: avgVol != null ? Math.round(avgVol) : null,
     // How many times its own recent norm the day traded. Null rather
     // than 0 when there isn't enough history to judge.
@@ -67,6 +79,86 @@ function buildDayRow(days, i, symbol) {
     // present a thin average as if it were a full one.
     avgVolumeDays: priorVols.length,
   };
+}
+
+/**
+ * Aggregates the daily rows for `symbol` from index `startIdx` onward in
+ * `days` into weekly buckets (trading weeks, not calendar weeks — see
+ * WEEKLY_TRADING_DAYS), for the accumulation table's Weekly view. Chunks
+ * from the END backward so only the OLDEST bucket can be a short week —
+ * the most recent week shown is always a full one.
+ *
+ * Delivery % is volume-weighted across the week (summed delivered shares
+ * ÷ summed traded shares), the same math buildRecentPeriodHistory uses,
+ * rather than averaging each day's already-rounded percentage — a week
+ * with one huge low-delivery day and four quiet high-delivery days should
+ * read as what it actually was, not get smoothed away by a simple mean.
+ * Each week's volume ratio is judged against the trailing 30-trading-day
+ * average daily volume AS OF that week's first day, scaled up by however
+ * many days actually traded that week — the same basis computePeriodMetrics
+ * uses for Weekly in the Delivery tab, so a "2.1×" here and a "2.1×" there
+ * mean the same thing.
+ */
+function buildWeeklyRows(days, startIdx, symbol) {
+  const indices = [];
+  for (let i = startIdx; i < days.length; i++) indices.push(i);
+
+  const chunks = [];
+  let end = indices.length;
+  while (end > 0) {
+    const start = Math.max(0, end - WEEKLY_TRADING_DAYS);
+    chunks.unshift(indices.slice(start, end));
+    end = start;
+  }
+
+  return chunks
+    .map((idxGroup) => {
+      let volume = 0;
+      let deliveryQty = 0;
+      let turnoverLacs = 0;
+      let firstPrevClose = null;
+      let lastClose = null;
+      let tradedDays = 0;
+      for (const i of idxGroup) {
+        const row = days[i].bySymbol.get(symbol);
+        if (!row || !row.volume) continue;
+        volume += row.volume;
+        deliveryQty += row.deliveryQty || 0;
+        turnoverLacs += row.turnoverLacs || 0;
+        if (firstPrevClose == null) firstPrevClose = row.prevClose ?? row.close;
+        lastClose = row.close;
+        tradedDays++;
+      }
+      if (tradedDays === 0) return null;
+
+      const firstIdx = idxGroup[0];
+      const priorVols = days
+        .slice(Math.max(0, firstIdx - VOLUME_AVG_DAYS), firstIdx)
+        .map((d) => d.bySymbol.get(symbol)?.volume)
+        .filter((v) => v > 0);
+      const avgDailyVol = priorVols.length ? priorVols.reduce((a, b) => a + b, 0) / priorVols.length : null;
+      const expectedVolume = avgDailyVol != null ? avgDailyVol * tradedDays : null;
+
+      return {
+        date: days[idxGroup[idxGroup.length - 1]].date,
+        startDate: days[idxGroup[0]].date,
+        endDate: days[idxGroup[idxGroup.length - 1]].date,
+        close: lastClose,
+        changePercent:
+          firstPrevClose && lastClose
+            ? Math.round(((lastClose - firstPrevClose) / firstPrevClose) * 10000) / 100
+            : null,
+        deliveryPct: volume > 0 ? Math.round((deliveryQty / volume) * 10000) / 100 : null,
+        volume: volume || null,
+        turnoverCr: turnoverLacs > 0 ? Math.round((turnoverLacs / 100) * 100) / 100 : null,
+        avgVolume: avgDailyVol != null ? Math.round(avgDailyVol) : null,
+        volumeRatio:
+          expectedVolume && expectedVolume > 0 ? Math.round((volume / expectedVolume) * 100) / 100 : null,
+        avgVolumeDays: priorVols.length,
+        tradedDays,
+      };
+    })
+    .filter(Boolean);
 }
 
 /**
@@ -112,6 +204,12 @@ export async function GET(request) {
   const windowParam = searchParams.get("window");
   const windowId = WINDOW_TRADING_DAYS[windowParam] ? windowParam : "1m";
   const windowTradingDays = WINDOW_TRADING_DAYS[windowId];
+  // Accumulation table granularity — "daily" (every trading day, the
+  // original behavior and the default) or "weekly" (trading weeks, see
+  // buildWeeklyRows). Independent of windowId: either granularity can be
+  // viewed across either the 1-month or 3-month window.
+  const granularityParam = searchParams.get("granularity");
+  const granularity = granularityParam === "weekly" ? "weekly" : "daily";
   // Wide enough for both the accumulation table's own window AND the
   // 2-month threshold-appearance history (see lib/deliveryBuckets.js) —
   // bhavcopy day-files are cached individually, so asking for the wider
@@ -259,18 +357,36 @@ export async function GET(request) {
         }
       }
 
+      // The app-wide "is this currently accumulating" read — always the
+      // standard fixed 20-trading-day heuristic (see lib/deliveryMetrics.js),
+      // independent of whichever window is selected above, since that's a
+      // single ongoing judgment call, not something that makes sense to ask
+      // "for the last 3 months" separately. Shown as the section's "reads
+      // as accumulation" badge, not tied to the stats row below.
       const metrics = computeMetrics(symbol, days);
       const withDelivery = rows.filter((r) => r.deliveryPct != null);
+      // "Days above X%" and the average delivery % above it should describe
+      // the SAME population — both scoped to whichever window (1M/3M) is
+      // currently selected — so they never disagree the way a fixed
+      // 20-day count sitting next to a 1M/3M-scoped average could.
+      const daysAboveThresholdInWindow = withDelivery.filter(
+        (r) => r.deliveryPct > ACCUMULATION_DELIVERY_THRESHOLD
+      ).length;
       accumulation = {
         windowId,
         windowTradingDays,
-        rows,
+        granularity,
+        rows: granularity === "weekly" ? buildWeeklyRows(days, firstShown, symbol) : rows,
         spikes,
         avgDeliveryPct: withDelivery.length
           ? Math.round((withDelivery.reduce((a, r) => a + r.deliveryPct, 0) / withDelivery.length) * 100) / 100
           : null,
-        daysAboveThreshold: metrics?.daysOfAccumulation ?? null,
-        accumulationWindow: ACCUMULATION_WINDOW,
+        // Trailing 30-trading-day average volume as of the latest session —
+        // a fixed basis regardless of the window/granularity selectors
+        // above, matching VOLUME_AVG_DAYS used for the Vol× column.
+        avgVolume30d: rows.length ? rows[rows.length - 1].avgVolume : null,
+        daysAboveThreshold: daysAboveThresholdInWindow,
+        accumulationWindow: windowTradingDays,
         accumulationThreshold: ACCUMULATION_DELIVERY_THRESHOLD,
         accumulationMinDays: ACCUMULATION_MIN_DAYS,
         inAccumulation: metrics?.inAccumulation ?? null,
