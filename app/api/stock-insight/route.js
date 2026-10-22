@@ -324,8 +324,7 @@ export async function GET(request) {
             // dated sequence of phases that led here.
             current: stage2.wyckoffCurrent,
             phaseHistory: stage2.wyckoffPhaseHistory,
-            // Same stage journey the Stage 2 screen shows, anchored to the
-            // breakout so it covers exactly the "days in Stage 2".
+            // Same stage journey the Stage 2 screen shows.
             journey: stage2.journey,
             dailyClosesBelowMa: stage2.dailyClosesBelowMa,
           }

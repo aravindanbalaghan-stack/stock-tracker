@@ -194,7 +194,13 @@ function StageEntriesPanel({ row }) {
           </p>
           <StageJourneyPanel
             journey={row.journey}
-            anchorNote={row.stage2EntryDate ? `counted from the ${row.stage2EntryDate} breakout` : undefined}
+            anchorNote={
+              row.stage2EntryDate && row.journey.episode.breakoutInsideEpisode
+                ? `the screen's Days in St.2 restarted at the ${row.stage2EntryDate} breakout after a weekly close under the MA`
+                : row.stage2EntryDate
+                ? `breakout on ${row.stage2EntryDate}`
+                : undefined
+            }
             extra={
               row.dailyClosesBelowMa && (
                 <p className="text-xs" style={{ color: "var(--text-faint)" }}>
@@ -202,8 +208,8 @@ function StageEntriesPanel({ row }) {
                   <span style={{ color: row.dailyClosesBelowMa.count ? "var(--tier-mid)" : "var(--text-muted)" }}>
                     {row.dailyClosesBelowMa.count}
                   </span>
-                  {row.dailyClosesBelowMa.lastDate ? ` (last on ${row.dailyClosesBelowMa.lastDate})` : ""} — intraweek
-                  dips that didn&apos;t change the weekly stage.
+                  {row.dailyClosesBelowMa.lastDate ? ` (last on ${row.dailyClosesBelowMa.lastDate})` : ""}
+                  {" — intraweek dips that didn't change the weekly stage."}
                 </p>
               )
             }
