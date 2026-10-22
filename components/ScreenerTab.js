@@ -308,6 +308,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // other's differently-shaped values ("Aggressive" vs "2").
   const [wyckoffPhaseFilter, setWyckoffPhaseFilter] = usePersistentState("screener.wyckoffPhaseFilter", "all");
   const [weinsteinStageFilter, setWeinsteinStageFilter] = usePersistentState("screener.weinsteinStageFilter", "all");
+  // Personal learning: whether condition 3 (a bullish pattern) is required.
+  const [plPatternFilter, setPlPatternFilter] = usePersistentState("screener.plPatternFilter", "required");
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -365,6 +367,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isWyckoff = screen === "wyckoff";
   const isWeinstein = screen === "weinstein";
   const isTriple = screen === "triple-confirmation";
+  const isPersonal = screen === "personal-learning";
   // All three of the new tabs show their own "Reason added" / "Entry"
   // columns instead of the generic 30WMA + debut columns, per the
   // requested column set.
@@ -380,6 +383,12 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       ? filteredRows?.filter((r) => r.wyckoffStance === wyckoffPhaseFilter)
       : isWeinstein && weinsteinStageFilter !== "all"
       ? filteredRows?.filter((r) => String(r.weinsteinStage) === weinsteinStageFilter)
+      : isPersonal && plPatternFilter === "required"
+      ? filteredRows?.filter((r) => r.hasPattern)
+      : isPersonal && plPatternFilter === "completed"
+      ? filteredRows?.filter((r) => r.patterns?.some((p) => !p.provisional))
+      : isPersonal && plPatternFilter === "fresh-rs"
+      ? filteredRows?.filter((r) => r.hasPattern && r.freshRsCross)
       : filteredRows;
   const { sorted, sort, onSort } = useSortableRows(phaseFilteredRows, "volumeRatio", "desc");
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
@@ -470,7 +479,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     );
   }
 
-  const hasPhaseFilter = (isWyckoff && wyckoffPhaseFilter !== "all") || (isWeinstein && weinsteinStageFilter !== "all");
+  const hasPhaseFilter =
+    (isWyckoff && wyckoffPhaseFilter !== "all") ||
+    (isWeinstein && weinsteinStageFilter !== "all") ||
+    (isPersonal && plPatternFilter !== "any");
 
   return (
     <div>
@@ -501,6 +513,29 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             <option value="Aggressive">Aggressive — Phase C (Spring)</option>
             <option value="Conservative">Conservative — Phase D (LPS)</option>
           </select>
+        </div>
+      )}
+
+      {isPersonal && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }} htmlFor="pl-pattern">
+            Pattern
+          </label>
+          <select
+            id="pl-pattern"
+            value={plPatternFilter}
+            onChange={(e) => setPlPatternFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="required">Bullish pattern required (all 4 conditions)</option>
+            <option value="completed">Pattern on a completed weekly candle only</option>
+            <option value="fresh-rs">Pattern + RS crossed 0 in the last 8 weeks</option>
+            <option value="any">Ignore pattern (conditions 1, 2 and 4)</option>
+          </select>
+          <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
+            {data.withPatternCount ?? 0} of {data.resultCount} with a pattern
+          </span>
         </div>
       )}
 
@@ -626,7 +661,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       {data.rows.length > 0 && phaseFilteredRows.length === 0 ? (
         <EmptyState>
           {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall within
-          the {hasPhaseFilter ? "phase/stage or " : ""}price and volume bounds set above.
+          the {hasPhaseFilter ? (isPersonal ? "pattern filter or " : "phase/stage or ") : ""}price and volume bounds set above.
         </EmptyState>
       ) : data.rows.length === 0 ? (
         <EmptyState>
@@ -638,6 +673,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             ? `No stock entered a new Weinstein stage in the last few weeks, as of ${data.asOf}.`
             : isTriple
             ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
+            : isPersonal
+            ? `No stock had weekly RSI above 50, a close above the 30-week MA and RS above 0 together, as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
         </EmptyState>
       ) : (
@@ -662,7 +699,35 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                     title="Today's volume against the trailing 30-day average"
                   />
                   {!hideGenericCols && <SortableTh label="30WMA" sortKey="wma30" sort={sort} onSort={onSort} />}
-                  {!hideGenericCols && <DebutHeaderCells sort={sort} onSort={onSort} />}
+                  {!hideGenericCols && !isPersonal && <DebutHeaderCells sort={sort} onSort={onSort} />}
+                  {isPersonal && (
+                    <SortableTh
+                      label="RSI (w)"
+                      sortKey="rsiWeekly"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Weekly RSI(14), Wilder's smoothing"
+                    />
+                  )}
+                  {isPersonal && (
+                    <SortableTh
+                      label="RS vs N500"
+                      sortKey="rsWeekly"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Relative Strength vs the NIFTY 500 over 52 weeks: (stock ÷ stock 52w ago) ÷ (NIFTY 500 ÷ NIFTY 500 52w ago) − 1. Above 0 = outperforming the broad market"
+                    />
+                  )}
+                  {isPersonal && (
+                    <SortableTh
+                      label="Pattern"
+                      sortKey="patternCount"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Bullish weekly candlestick patterns on this week's or last week's candle"
+                    />
+                  )}
                   {isWyckoff && (
                     <SortableTh
                       label="Phase"
@@ -902,9 +967,55 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       {!hideGenericCols && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {r.wma30 == null ? "—" : `₹${fmt(r.wma30)}`}
+                          {isPersonal && r.pctAboveWma != null && (
+                            <span className="block text-[10px]" style={{ color: "var(--gain)" }}>
+                              +{fmt(r.pctAboveWma, 1)}% above
+                            </span>
+                          )}
                         </td>
                       )}
-                      {!hideGenericCols && <DebutCells row={r} />}
+                      {!hideGenericCols && !isPersonal && <DebutCells row={r} />}
+                      {isPersonal && (
+                        <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: r.rsiWeekly >= 70 ? "var(--tier-mid)" : "var(--text)" }} title={r.rsiWeekly >= 70 ? "Above 70 — overbought territory" : undefined}>
+                          {fmt(r.rsiWeekly, 1)}
+                        </td>
+                      )}
+                      {isPersonal && (
+                        <td className="py-2.5 px-2 text-right">
+                          <span className="font-mono text-sm" style={{ color: "var(--gain)" }}>
+                            +{fmt(r.rsWeekly, 3)}
+                          </span>
+                          {r.freshRsCross && (
+                            <span
+                              className="block text-[10px] mt-0.5 whitespace-nowrap"
+                              style={{ color: "var(--accent)" }}
+                              title="RS was at or below 0 before this crossing"
+                            >
+                              crossed 0 {r.rsCrossedWeeksAgo === 0 ? "this week" : `${r.rsCrossedWeeksAgo}w ago`}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {isPersonal && (
+                        <td className="py-2.5 px-2 text-left max-w-[260px]">
+                          {r.patterns?.length ? (
+                            <ul className="flex flex-col gap-0.5">
+                              {r.patterns.map((p) => (
+                                <li key={p.name} className="text-[11px] leading-snug">
+                                  <span style={{ color: "var(--text)" }}>{p.name}</span>
+                                  <span className="ml-1" style={{ color: p.provisional ? "var(--tier-mid)" : "var(--text-faint)" }}>
+                                    · {p.when.toLowerCase()}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
+                              None this week or last
+                            </span>
+                          )}
+                        </td>
+                      )}
                       {isWyckoff && (
                         <td className="py-2.5 px-2 text-left">
                           <span

@@ -31,6 +31,7 @@ import {
 import { resolveWideUniverse } from "@/lib/nifty500";
 import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
 import { recordScreenSnapshot, getOccurrenceHistory } from "@/lib/screenerMembership";
+import { analyzePersonalLearning, PL } from "@/lib/personalLearning";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -782,6 +783,107 @@ async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMe
   };
 }
 
+/**
+ * Personal learning tab — weekly RSI > 50, above the 30-week MA, and
+ * Relative Strength vs NIFTY 500 above 0, with bullish weekly candlestick
+ * patterns attached (see lib/personalLearning.js). Weekly bars only, from
+ * the same cached fetch the Weinstein and Stage 2 screens use.
+ */
+async function runPersonalLearningScreen({ days, universe, asOfCutoff, isLive, recordMembership = false }) {
+  const latest = days[days.length - 1];
+  const resolved = await resolveWideUniverse(universe);
+  const bySymbol = new Map(universe.map((u) => [u.symbol, u]));
+  const inUniverse = resolved.symbols.map((s) => bySymbol.get(s)).filter(Boolean);
+
+  const [weekly, benchmark] = await Promise.all([
+    fetchWeeklyOHLCVBatch(
+      inUniverse.map((u) => u.symbol),
+      { concurrency: STAGE_WEEKLY_CONCURRENCY }
+    ),
+    fetchIndexOHLCV(PL.benchmark.symbol).catch(() => null),
+  ]);
+  // No silent fallback to NIFTY 50: an RS figure against a different
+  // index would quietly change which stocks pass. Better to say so.
+  if (!benchmark?.bars?.length) {
+    throw new Error(`Couldn't load ${PL.benchmark.label} history from Yahoo for Relative Strength — try again shortly`);
+  }
+  const benchByKey = new Map(
+    toWeeklyBars(benchmark.bars.filter((b) => b.t <= asOfCutoff)).map((w) => [w.key, w.c])
+  );
+
+  const rows = [];
+  let withPattern = 0;
+  for (const { symbol, series } of inUniverse) {
+    const bars = weekly.get(symbol);
+    const truncated = bars ? bars.filter((b) => b.t <= asOfCutoff) : null;
+    const a = analyzePersonalLearning(truncated, benchByKey, { asOfEpoch: asOfCutoff });
+    if (!a || !a.passes) continue;
+    if (a.patternCount) withPattern++;
+
+    const row = baseRow(symbol, series);
+    Object.assign(row, {
+      rsiWeekly: a.rsiWeekly,
+      wma30: a.wma30,
+      pctAboveWma: a.pctAboveWma,
+      rsWeekly: a.rsWeekly,
+      rsCrossedWeeksAgo: a.rsCrossedWeeksAgo,
+      freshRsCross: a.rsCrossedWeeksAgo != null,
+      patterns: a.patterns,
+      patternCount: a.patternCount,
+      hasPattern: a.patternCount > 0,
+      weekInProgress: a.weekInProgress,
+    });
+    const rsTxt =
+      a.rsCrossedWeeksAgo != null
+        ? `RS crossed above 0 ${a.rsCrossedWeeksAgo === 0 ? "this week" : `${a.rsCrossedWeeksAgo} week${a.rsCrossedWeeksAgo === 1 ? "" : "s"} ago`}`
+        : `RS ${a.rsWeekly > 0 ? "+" : ""}${a.rsWeekly}`;
+    row.reason = `Weekly RSI ${a.rsiWeekly}, ${a.pctAboveWma}% above the 30-week MA (₹${a.wma30}), ${rsTxt}${
+      a.patternCount ? `; ${a.patterns.map((p) => `${p.name} (${p.when.toLowerCase()})`).join(", ")}` : "; no bullish pattern this week or last"
+    }.`;
+    rows.push(row);
+  }
+
+  if (isLive) {
+    const progress = sessionProgress();
+    for (const row of rows) {
+      row.isLive = true;
+      row.deliveryIsPreviousSession = true;
+      row.projectedVolume = progress > 0.05 && row.volume != null ? Math.round(row.volume / progress) : null;
+    }
+  }
+
+  rows.sort(
+    (a, b) =>
+      Number(b.hasPattern) - Number(a.hasPattern) ||
+      Number(b.freshRsCross) - Number(a.freshRsCross) ||
+      (b.rsWeekly ?? 0) - (a.rsWeekly ?? 0)
+  );
+
+  if (recordMembership) {
+    try {
+      await recordScreenSnapshot("personal-learning", latest.date, rows.filter((r) => r.hasPattern).map((r) => r.symbol));
+    } catch {
+      // Non-fatal.
+    }
+  }
+
+  return {
+    screen: "personal-learning",
+    label: SCREENS["personal-learning"].label,
+    description: SCREENS["personal-learning"].description,
+    asOf: latest.date,
+    windowFirstDate: days[0]?.date ?? null,
+    universeSize: universe.length,
+    stageUniverseSource: resolved.source,
+    stageWeeklyScanned: inUniverse.length,
+    resultCount: rows.length,
+    withPatternCount: withPattern,
+    params: PL,
+    notes: [resolved.sourceLabel],
+    rows,
+  };
+}
+
 function fmt2(n) {
   return n == null ? "—" : Math.round(n * 100) / 100;
 }
@@ -820,6 +922,11 @@ export async function GET(request) {
     // Only record membership when this reflects TODAY's screen state, not
     // a historical `date=` lookup someone is browsing.
     const recordMembership = !dateParam;
+
+    if (screen === "personal-learning") {
+      const result = await runPersonalLearningScreen({ days, universe, asOfCutoff, isLive, recordMembership });
+      return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
+    }
 
     if (screen === "weinstein") {
       const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMembership });
