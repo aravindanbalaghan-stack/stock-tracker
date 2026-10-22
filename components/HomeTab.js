@@ -9,6 +9,7 @@ import InfoNote from "@/components/InfoNote";
 import { StageTag, InvalidationCell } from "@/components/StageJourney";
 import { useSortableRows } from "@/lib/useSortableRows";
 import { formatDayLabel } from "@/lib/periodLabel";
+import PicksSection from "@/components/PicksSection";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -342,8 +343,9 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
 export default function HomeTab({ onAddToWatchlist, watchlistSymbols }) {
   return (
     <div>
-      <ScreenHeader title="Home" meta="Today's standout volume, and fresh Stage 2 breakouts built on accumulation" />
+      <ScreenHeader title="Home" meta="Ranked ideas by horizon, today's standout volume, and fresh Stage 2 breakouts built on accumulation" />
       <div className="flex flex-col gap-8">
+        <PicksSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <SurgeSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <Stage2Section onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       </div>

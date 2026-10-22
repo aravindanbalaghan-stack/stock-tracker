@@ -1,4 +1,5 @@
 import { volumeDeliverySurge, enteringStage2WithAccumulation } from "@/lib/homeScans";
+import { getPicks } from "@/lib/picks";
 
 export const dynamic = "force-dynamic";
 // The Stage 2 section runs the same wide weekly + daily scan as the
@@ -12,7 +13,8 @@ export async function GET(request) {
     let result;
     if (section === "surge") result = await volumeDeliverySurge();
     else if (section === "stage2") result = await enteringStage2WithAccumulation();
-    else return Response.json({ error: "Expected ?section=surge or ?section=stage2" }, { status: 400 });
+    else if (section === "picks") result = await getPicks();
+    else return Response.json({ error: "Expected ?section=surge, stage2 or picks" }, { status: 400 });
 
     if (result.error) return Response.json(result, { status: 503 });
     return Response.json(result);
