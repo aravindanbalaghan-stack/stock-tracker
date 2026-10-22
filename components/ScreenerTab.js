@@ -13,6 +13,7 @@ import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { PrevStageCell, StageChangesCell, InvalidationCell, StageJourneyPanel } from "@/components/StageJourney";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -140,6 +141,26 @@ function StageEntriesPanel({ row }) {
         )}
       </div>
 
+      {row.wyckoffPhaseHistory?.length > 0 && (
+        <div className="flex items-center flex-wrap gap-1.5 mb-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <span style={{ color: "var(--text-faint)" }}>Wyckoff phases:</span>
+          {row.wyckoffPhaseHistory.map((p, i) => (
+            <span key={i} className="inline-flex items-center gap-1.5">
+              {i > 0 && <span style={{ color: "var(--text-faint)" }}>→</span>}
+              <span
+                className="px-1.5 py-0.5 rounded border"
+                style={{
+                  borderColor: i === row.wyckoffPhaseHistory.length - 1 ? "var(--accent)" : "var(--border)",
+                  color: i === row.wyckoffPhaseHistory.length - 1 ? "var(--accent)" : "var(--text-muted)",
+                }}
+              >
+                {p.label} <span style={{ color: "var(--text-faint)" }}>{p.since}</span>
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col gap-2.5">
         {row.entries.map((e, i) => (
           <div key={i} className="flex items-start gap-3">
@@ -156,10 +177,39 @@ function StageEntriesPanel({ row }) {
               </p>
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{e.method}</p>
               <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>{e.rationale}</p>
+              {e.invalidation?.rule && (
+                <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--loss)" }}>
+                  Invalid on: {e.invalidation.rule}
+                </p>
+              )}
             </div>
           </div>
         ))}
       </div>
+
+      {row.journey && (
+        <div className="mt-4 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+          <p className="text-xs font-medium mb-2" style={{ color: "var(--text-muted)" }}>
+            Stage journey
+          </p>
+          <StageJourneyPanel
+            journey={row.journey}
+            anchorNote={row.stage2EntryDate ? `counted from the ${row.stage2EntryDate} breakout` : undefined}
+            extra={
+              row.dailyClosesBelowMa && (
+                <p className="text-xs" style={{ color: "var(--text-faint)" }}>
+                  Daily closes under the 30-week MA since the breakout:{" "}
+                  <span style={{ color: row.dailyClosesBelowMa.count ? "var(--tier-mid)" : "var(--text-muted)" }}>
+                    {row.dailyClosesBelowMa.count}
+                  </span>
+                  {row.dailyClosesBelowMa.lastDate ? ` (last on ${row.dailyClosesBelowMa.lastDate})` : ""} — intraweek
+                  dips that didn&apos;t change the weekly stage.
+                </p>
+              )
+            }
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -309,6 +359,10 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // columns instead of the generic 30WMA + debut columns, per the
   // requested column set.
   const hideGenericCols = isWyckoff || isWeinstein || isTriple;
+  // Screens whose rows carry a stage journey — previous stage, changes
+  // inside the stage, and the invalidation level.
+  const showJourney = isStage2 || isWyckoff || isWeinstein;
+  const expandable = isStage2 || isWyckoff || isTriple || isWeinstein;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
   const phaseFilteredRows =
@@ -727,6 +781,35 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   {isStage2 && (
                     <SortableTh label="RS vs NIFTY" sortKey="rsVsBenchmark" sort={sort} onSort={onSort} title="26-week relative strength against the NIFTY" />
                   )}
+                  {showJourney && (
+                    <SortableTh
+                      label="Prev. stage"
+                      sortKey="prevStage"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="The stage the stock was in before entering its current one"
+                    />
+                  )}
+                  {showJourney && (
+                    <SortableTh
+                      label="Stage changes"
+                      sortKey="stageChangeCount"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Weeks since entering the current stage when it dipped into a different stage and came back. Hover for the dates."
+                    />
+                  )}
+                  {showJourney && (
+                    <SortableTh
+                      label="Invalid at"
+                      sortKey="invalidationPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="The weekly close that would end the current stage. Hover for which stage it would become."
+                    />
+                  )}
                   {showListedOn && <SortableTh label="Listed" sortKey="listedOn" sort={sort} onSort={onSort} />}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
                   {showAppearances && (
@@ -748,10 +831,16 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   return (
                     <Fragment key={r.symbol}>
                     <tr
-                      className={`border-b last:border-b-0 ${isStage2 || isWyckoff || isTriple ? "cursor-pointer hover:bg-white/5" : ""}`}
+                      className={`border-b last:border-b-0 ${expandable ? "cursor-pointer hover:bg-white/5" : ""}`}
                       style={{ borderColor: "var(--border)" }}
-                      onClick={isStage2 || isWyckoff || isTriple ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
-                      title={isStage2 || isWyckoff || isTriple ? "Click for every entry point both methods give" : undefined}
+                      onClick={expandable ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
+                      title={
+                        isWeinstein
+                          ? "Click for the full stage journey"
+                          : expandable
+                          ? "Click for every entry point both methods give, and the stage journey"
+                          : undefined
+                      }
                     >
                       <td className="py-2.5 pl-4 pr-2">
                         <div className="flex items-center gap-2">
@@ -817,9 +906,19 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           >
                             {r.wyckoffStance}
                           </span>
-                          <span className="block text-[10px] mt-0.5" style={{ color: "var(--text-faint)" }}>
+                          <span className="block text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>
                             {r.wyckoffPhase}
                           </span>
+                          {r.wyckoffPhaseSince && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              since {r.wyckoffPhaseSince}
+                              {r.wyckoffPhaseSessions != null
+                                ? r.wyckoffPhaseSessions === 0
+                                  ? " · today"
+                                  : ` · ${r.wyckoffPhaseSessions} session${r.wyckoffPhaseSessions === 1 ? "" : "s"} ago`
+                                : ""}
+                            </span>
+                          )}
                         </td>
                       )}
                       {isWyckoff && (
@@ -840,6 +939,11 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
                             {r.wyckoffEntryDate}
                           </span>
+                          {r.wyckoffSignalDate && r.wyckoffSignalDate !== r.wyckoffEntryDate && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              low made {r.wyckoffSignalDate}
+                            </span>
+                          )}
                         </td>
                       )}
                       {isWeinstein && (
@@ -877,7 +981,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
                             ₹{fmt(r.entryPrice)}
                           </span>
-                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }} title={r.entryWeekOf ? `Week of ${r.entryWeekOf}` : undefined}>
                             {r.entryDate}
                           </span>
                         </td>
@@ -1011,6 +1115,30 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           {r.rsVsBenchmark == null ? "—" : `${r.rsVsBenchmark >= 0 ? "+" : ""}${fmt(r.rsVsBenchmark)}%`}
                         </td>
                       )}
+                      {showJourney && (
+                        <td className="py-2.5 px-2 text-left">
+                          <PrevStageCell journey={r.journey} />
+                        </td>
+                      )}
+                      {showJourney && (
+                        <td className="py-2.5 px-2 text-left">
+                          <StageChangesCell journey={r.journey} />
+                        </td>
+                      )}
+                      {showJourney && (
+                        <td className="py-2.5 px-2 text-right">
+                          <InvalidationCell invalidation={r.journey?.invalidation} />
+                          {isWyckoff && r.wyckoffInvalidation?.price != null && (
+                            <span
+                              className="block text-[10px] mt-0.5 whitespace-nowrap"
+                              style={{ color: "var(--text-faint)" }}
+                              title={r.wyckoffInvalidation.rule}
+                            >
+                              setup fails &lt; ₹{fmt(r.wyckoffInvalidation.price)}
+                            </span>
+                          )}
+                        </td>
+                      )}
                       {showListedOn && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {r.listedOn ?? "—"}
@@ -1045,8 +1173,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                     </tr>
                     {(isStage2 || isWyckoff || isTriple) && isOpen && (
                       <tr style={{ background: "var(--surface-2)" }}>
-                        <td colSpan={20} className="p-0">
+                        <td colSpan={30} className="p-0">
                           <StageEntriesPanel row={r} />
+                        </td>
+                      </tr>
+                    )}
+                    {isWeinstein && isOpen && (
+                      <tr style={{ background: "var(--surface-2)" }}>
+                        <td colSpan={30} className="px-4 py-3">
+                          <StageJourneyPanel journey={r.journey} />
                         </td>
                       </tr>
                     )}

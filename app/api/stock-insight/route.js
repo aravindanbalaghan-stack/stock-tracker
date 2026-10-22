@@ -2,7 +2,7 @@ import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import { fetchDailyOHLCV, fetchIndexOHLCV, sma, ema, toWeeklyBars } from "@/lib/screenerIndicators";
 import { getSectorsForSymbol } from "@/lib/sectorOverrides";
-import { analyzeStage2, classifyStageTransition, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
+import { analyzeStage2, classifyStageTransition, stageJourney, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
 import {
   computeMetrics,
   ACCUMULATION_DELIVERY_THRESHOLD,
@@ -277,6 +277,7 @@ export async function GET(request) {
 
       // ---- Weinstein stage (weekly bars only) --------------------------
       const transition = classifyStageTransition(weekly);
+      const journey = transition ? stageJourney(weekly) : null;
       if (transition) {
         const info = WEINSTEIN_STAGE_INFO[transition.stage];
         weinstein = {
@@ -286,7 +287,10 @@ export async function GET(request) {
           weeksInStage: transition.weeksInStage,
           isEntering: transition.isEntering,
           transitionWeekKey: transition.transitionWeekKey,
+          // The session whose weekly close confirmed the change.
+          transitionDate: journey?.streak.enteredOn ?? transition.transitionWeekKey,
           transitionPrice: round(transition.transitionPrice),
+          journey,
           ma30: round(transition.ma30),
           ma30SlopePct: round(transition.slopePct),
         };
@@ -303,7 +307,7 @@ export async function GET(request) {
       } catch {
         // RS column just won't be available — not worth failing the page.
       }
-      const stage2 = analyzeStage2(bars, benchmarkBars);
+      const stage2 = analyzeStage2(bars, benchmarkBars, { asOfEpoch: Math.floor(Date.now() / 1000) });
       wyckoff = stage2
         ? {
             inStage2: true,
@@ -315,6 +319,15 @@ export async function GET(request) {
             breakoutVolumeRatio: stage2.breakoutVolumeRatio,
             rsVsBenchmark: stage2.rsVsBenchmark,
             entries: stage2.entries,
+            stage2EntryDate: stage2.stage2EntryDate,
+            // Current Wyckoff phase and the session it began, plus the
+            // dated sequence of phases that led here.
+            current: stage2.wyckoffCurrent,
+            phaseHistory: stage2.wyckoffPhaseHistory,
+            // Same stage journey the Stage 2 screen shows, anchored to the
+            // breakout so it covers exactly the "days in Stage 2".
+            journey: stage2.journey,
+            dailyClosesBelowMa: stage2.dailyClosesBelowMa,
           }
         : { inStage2: false, entries: [] };
     }

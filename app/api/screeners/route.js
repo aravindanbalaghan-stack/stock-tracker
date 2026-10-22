@@ -12,7 +12,14 @@ import {
 } from "@/lib/screenerIndicators";
 import { SCREENS } from "@/lib/screens";
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
-import { analyzeStage2, mightBeStage2, classifyStageTransition, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
+import {
+  analyzeStage2,
+  mightBeStage2,
+  classifyStageTransition,
+  stageJourney,
+  journeyFlatFields,
+  WEINSTEIN_STAGE_INFO,
+} from "@/lib/stageAnalysis";
 import { analyzeReclaim, mightReclaim } from "@/lib/reclaim";
 import {
   fetchLiveSnapshot,
@@ -429,7 +436,7 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
 
       if (screen === "stage-2" || screen === "wyckoff") {
         if (!hist?.bars?.length) continue;
-        const stage = analyzeStage2(hist.bars, benchmarkBars);
+        const stage = analyzeStage2(hist.bars, benchmarkBars, { asOfEpoch: asOfCutoff });
         if (!stage) continue; // not in Stage 2, or not enough history to say
         Object.assign(row, stage);
       }
@@ -479,23 +486,27 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
             nowMs - new Date(`${e.date}T00:00:00Z`).getTime() <= WYCKOFF_RECENT_MS
         );
         if (!qualifying.length) continue;
-        // If both an Aggressive Spring and a Conservative LPS are recent,
-        // the Spring is reported as the headline entry — it's the earlier
-        // of the two and the one a reader would act on first. The LPS is
-        // still visible in the expandable entries panel either way.
-        const chosen =
-          qualifying.find((e) => e.stance === "Aggressive") ??
-          qualifying.sort((a, b) => (a.date < b.date ? 1 : -1))[0];
-        const wyckoffPhase =
-          chosen.stance === "Aggressive" ? "Phase C — Spring / Shakeout" : "Phase D — Last Point of Support";
+        // The headline is the MOST RECENT qualifying entry. This used to
+        // prefer the Spring whenever one was recent, which meant a stock
+        // that had already broken out and printed an LPS kept showing the
+        // older Phase C — a phase it had left behind. The full list stays
+        // in the expandable entries panel either way.
+        const chosen = [...qualifying].sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+        const current = row.wyckoffCurrent;
         withEntry.push({
           ...row,
           wyckoffStance: chosen.stance,
-          wyckoffPhase,
+          // Where the stock is in Wyckoff's schedule NOW, dated to the
+          // session that put it there.
+          wyckoffPhase: current?.label ?? (chosen.stance === "Aggressive" ? "Phase C — Spring / Shakeout" : "Phase D — Last Point of Support"),
+          wyckoffPhaseSince: current?.since ?? chosen.date,
+          wyckoffPhaseSessions: current?.sessionsSince ?? null,
           wyckoffMethod: chosen.method,
           wyckoffRationale: chosen.rationale,
           wyckoffEntryPrice: chosen.price,
           wyckoffEntryDate: chosen.date,
+          wyckoffSignalDate: chosen.signalDate ?? null,
+          wyckoffInvalidation: chosen.invalidation ?? null,
         });
       }
       rows = withEntry;
@@ -716,11 +727,20 @@ async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMe
     row.weinsteinTone = info.tone;
     row.weeksInStage = transition.weeksInStage;
     row.entryPrice = transition.transitionPrice;
-    row.entryDate = transition.transitionWeekKey;
+    // The stage journey — previous stage, any dips out of this stage and
+    // back, and the weekly close that would end it.
+    const journey = stageJourney(truncated, { asOfEpoch: asOfCutoff });
+    row.journey = journey;
+    Object.assign(row, journeyFlatFields(journey));
+    // Dated to the weekly CLOSE that confirmed the change (the Friday, or
+    // the as-of day for a week still in progress), not the Monday the
+    // week is keyed on — that Monday is before the stage actually changed.
+    row.entryDate = journey?.streak.enteredOn ?? transition.transitionWeekKey;
+    row.entryWeekOf = transition.transitionWeekKey;
     row.wma30 = Math.round(transition.ma30 * 100) / 100;
     row.ma30SlopePct = Math.round(transition.slopePct * 100) / 100;
     const trend = transition.rising ? "30-week MA rising" : transition.falling ? "30-week MA falling" : "30-week MA roughly flat";
-    row.reason = `Weinstein — ${info.name}. Crossed into this stage the week of ${transition.transitionWeekKey}, ${transition.weeksInStage} week${
+    row.reason = `Weinstein — ${info.name}. Crossed into this stage on the weekly close of ${row.entryDate}, ${transition.weeksInStage} week${
       transition.weeksInStage === 1 ? "" : "s"
     } ago, ${trend} at ₹${fmt2(transition.ma30)}.`;
     rows.push(row);

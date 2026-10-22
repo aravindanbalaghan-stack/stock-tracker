@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import GlobalSearch from "@/components/GlobalSearch";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
+import { StageJourneyPanel } from "@/components/StageJourney";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -428,13 +429,18 @@ export default function StockInsightPage({ params }) {
                         <span className="text-xs" style={{ color: "var(--text-faint)" }}>
                           {data.weinstein.weeksInStage} week{data.weinstein.weeksInStage === 1 ? "" : "s"} in this
                           stage
-                          {data.weinstein.transitionWeekKey ? ` · since the week of ${data.weinstein.transitionWeekKey}` : ""}
+                          {data.weinstein.transitionDate ? ` · confirmed on the weekly close of ${data.weinstein.transitionDate}` : ""}
                         </span>
                       </div>
                       <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
                         30-week MA ₹{fmt(data.weinstein.ma30)}, {data.weinstein.ma30SlopePct >= 0 ? "+" : ""}
                         {fmt(data.weinstein.ma30SlopePct)}% over 4 weeks
                       </p>
+                      {data.weinstein.journey && (
+                        <div className="mt-3">
+                          <StageJourneyPanel journey={data.weinstein.journey} />
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -444,6 +450,34 @@ export default function StockInsightPage({ params }) {
                         Wyckoff — {data.wyckoff.stagePhase} · base ₹{fmt(data.wyckoff.baseSupport)}–₹
                         {fmt(data.wyckoff.baseResistance)} over {data.wyckoff.baseWeeks}w
                       </p>
+                      {data.wyckoff.current && (
+                        <div className="mb-3">
+                          <p className="text-sm" style={{ color: "var(--text)" }}>
+                            Now in{" "}
+                            <span style={{ color: "var(--accent)" }}>{data.wyckoff.current.label}</span>
+                            <span className="text-xs ml-2" style={{ color: "var(--text-faint)" }}>
+                              since {data.wyckoff.current.since}
+                              {data.wyckoff.current.sessionsSince === 0
+                                ? " (today)"
+                                : ` (${data.wyckoff.current.sessionsSince} session${data.wyckoff.current.sessionsSince === 1 ? "" : "s"} ago)`}
+                            </span>
+                          </p>
+                          {data.wyckoff.phaseHistory?.length > 1 && (
+                            <p className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
+                              {data.wyckoff.phaseHistory.map((p) => `${p.label} ${p.since}`).join(" → ")}
+                            </p>
+                          )}
+                          {data.wyckoff.dailyClosesBelowMa && (
+                            <p className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
+                              Daily closes under the 30-week MA since the {data.wyckoff.stage2EntryDate} breakout:{" "}
+                              {data.wyckoff.dailyClosesBelowMa.count}
+                              {data.wyckoff.dailyClosesBelowMa.lastDate
+                                ? ` (last on ${data.wyckoff.dailyClosesBelowMa.lastDate})`
+                                : ""}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <div className="flex flex-col gap-2.5">
                         {data.wyckoff.entries.map((e, i) => (
                           <div key={i} className="flex items-start gap-3">
@@ -479,6 +513,11 @@ export default function StockInsightPage({ params }) {
                               <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>
                                 {e.rationale}
                               </p>
+                              {e.invalidation?.rule && (
+                                <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--loss)" }}>
+                                  Invalid on: {e.invalidation.rule}
+                                </p>
+                              )}
                             </div>
                           </div>
                         ))}
