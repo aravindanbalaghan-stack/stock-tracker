@@ -323,6 +323,7 @@ export async function GET(request) {
             // Current Wyckoff phase and the session it began, plus the
             // dated sequence of phases that led here.
             current: stage2.wyckoffCurrent,
+            activeInvalidation: stage2.wyckoffActiveInvalidation,
             phaseHistory: stage2.wyckoffPhaseHistory,
             // Same stage journey the Stage 2 screen shows.
             journey: stage2.journey,

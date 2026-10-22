@@ -467,6 +467,15 @@ export default function StockInsightPage({ params }) {
                               {data.wyckoff.phaseHistory.map((p) => `${p.label} ${p.since}`).join(" → ")}
                             </p>
                           )}
+                          {data.wyckoff.activeInvalidation && (
+                            <p className="text-xs mt-1" style={{ color: "var(--loss)" }}>
+                              Structure fails on a daily close below ₹{fmt(data.wyckoff.activeInvalidation.price)}
+                              <span style={{ color: "var(--text-faint)" }}>
+                                {" "}
+                                (live since {data.wyckoff.activeInvalidation.since})
+                              </span>
+                            </p>
+                          )}
                           {data.wyckoff.dailyClosesBelowMa && (
                             <p className="text-xs mt-1" style={{ color: "var(--text-faint)" }}>
                               Daily closes under the 30-week MA since the {data.wyckoff.stage2EntryDate} breakout:{" "}
@@ -514,8 +523,12 @@ export default function StockInsightPage({ params }) {
                                 {e.rationale}
                               </p>
                               {e.invalidation?.rule && (
-                                <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--loss)" }}>
-                                  Invalid on: {e.invalidation.rule}
+                                <p
+                                  className="text-xs mt-0.5 leading-snug"
+                                  style={{ color: e.invalidation.status === "superseded" ? "var(--text-faint)" : "var(--loss)" }}
+                                >
+                                  {e.invalidation.status === "superseded" ? "Stop superseded: " : "Invalid on: "}
+                                  {e.invalidation.rule}
                                 </p>
                               )}
                             </div>

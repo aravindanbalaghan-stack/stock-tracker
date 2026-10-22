@@ -506,7 +506,9 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
           wyckoffEntryPrice: chosen.price,
           wyckoffEntryDate: chosen.date,
           wyckoffSignalDate: chosen.signalDate ?? null,
-          wyckoffInvalidation: chosen.invalidation ?? null,
+          // The structure's live level, not necessarily the headline
+          // entry's own stop (a recent spring is superseded once it breaks out).
+          wyckoffInvalidation: row.wyckoffActiveInvalidation ?? chosen.invalidation ?? null,
         });
       }
       rows = withEntry;

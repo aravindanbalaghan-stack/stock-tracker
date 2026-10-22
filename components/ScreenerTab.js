@@ -178,8 +178,12 @@ function StageEntriesPanel({ row }) {
               <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{e.method}</p>
               <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--text-faint)" }}>{e.rationale}</p>
               {e.invalidation?.rule && (
-                <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--loss)" }}>
-                  Invalid on: {e.invalidation.rule}
+                <p
+                  className="text-xs mt-0.5 leading-snug"
+                  style={{ color: e.invalidation.status === "superseded" ? "var(--text-faint)" : "var(--loss)" }}
+                >
+                  {e.invalidation.status === "superseded" ? "Stop superseded: " : "Invalid on: "}
+                  {e.invalidation.rule}
                 </p>
               )}
             </div>

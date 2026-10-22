@@ -12,6 +12,7 @@ import DeliveryScreen from "@/components/screens/DeliveryScreen";
 import ScreenersScreen from "@/components/screens/ScreenersScreen";
 import HoldingsTab from "@/components/HoldingsTab";
 import SectorManagerTab from "@/components/SectorManagerTab";
+import HomeTab from "@/components/HomeTab";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
@@ -25,6 +26,7 @@ const REFRESH_MS = 12000;
 // useful parts are now the stock detail drawer, opened from the header
 // search or any watchlist row.
 const TABS = [
+  { id: "home", label: "Home" },
   { id: "watchlist", label: "Watchlist" },
   { id: "holdings", label: "Holdings" },
   { id: "market", label: "Market" },
@@ -34,7 +36,7 @@ const TABS = [
 ];
 
 function PageInner() {
-  const [activeTab, setActiveTab] = useState("watchlist");
+  const [activeTab, setActiveTab] = useState("home");
   // Lazy initializer instead of DEFAULT_WATCHLIST + a mount effect — reads
   // localStorage during the initial render (loadWatchlist() already guards
   // for the server/no-window case), so there's no longer an extra render
@@ -58,14 +60,15 @@ function PageInner() {
   // Watchlist — the browser simply returns to the previous URL.
   useEffect(() => {
     const tab = searchParams.get("tab");
-    if (tab && TABS.some((t) => t.id === tab)) setActiveTab(tab);
+    // No ?tab= means the bare "/" — Home.
+    setActiveTab(tab && TABS.some((t) => t.id === tab) ? tab : "home");
   }, [searchParams]);
 
   function changeTab(id) {
     setActiveTab(id);
     // replace, not push: switching tabs shouldn't fill the back stack with
     // every tab you glanced at on the way somewhere.
-    router.replace(id === "watchlist" ? "/" : `/?tab=${encodeURIComponent(id)}`, { scroll: false });
+    router.replace(id === "home" ? "/" : `/?tab=${encodeURIComponent(id)}`, { scroll: false });
   }
   const pollRef = useRef(null);
 
@@ -369,6 +372,7 @@ function PageInner() {
           </>
         )}
 
+        {activeTab === "home" && <HomeTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
         {activeTab === "holdings" && <HoldingsTab />}
         {activeTab === "market" && <MarketScreen />}
         {activeTab === "delivery" && (
