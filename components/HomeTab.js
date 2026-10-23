@@ -340,12 +340,221 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
   );
 }
 
+// ---------------------------------------------------------------------
+// Section — 52-week high: near it, or broken above it
+// ---------------------------------------------------------------------
+
+const HIGH_STATUS = {
+  "breakout-today": { label: "Broke out today", color: "var(--gain)" },
+  recent: { label: "Recent breakout", color: "var(--gain)" },
+  extending: { label: "Making new highs", color: "var(--accent)" },
+  near: { label: "Near the high", color: "var(--tier-mid)" },
+};
+const NEAR_CHOICES = [3, 5, 10];
+
+function HighsSection({ onAddToWatchlist, watchlistSymbols }) {
+  const { data, error } = useSection("highs");
+  const [filter, setFilter] = useState("all");
+  const [nearPct, setNearPct] = useState(5);
+
+  const inNear = (r) => r.status !== "near" || r.pctFromHigh >= -nearPct;
+  const visible = data?.rows?.filter((r) => inNear(r) && (filter === "all" || r.status === filter));
+  const { sorted, sort, onSort } = useSortableRows(visible, "statusRank", "desc");
+  const nearCount = data?.rows?.filter((r) => r.status === "near" && r.pctFromHigh >= -nearPct).length ?? 0;
+  const chips = data
+    ? [
+        { id: "all", label: "All", n: data.rows.filter(inNear).length },
+        { id: "breakout-today", label: "Broke out today", n: data.counts["breakout-today"] },
+        { id: "recent", label: `Broke out in last ${data.criteria.recentSessions} sessions`, n: data.counts.recent },
+        { id: "extending", label: "Making new highs", n: data.counts.extending },
+        { id: "near", label: `Within ${nearPct}% of the high`, n: nearCount },
+      ]
+    : [];
+
+  return (
+    <section>
+      <SectionTitle meta={data ? `${data.counts["breakout-today"]} broke out today · as of ${data.asOf}` : undefined}>
+        52-week high — near it or broken above
+      </SectionTitle>
+
+      {error ? (
+        <ErrorState>{error}</ErrorState>
+      ) : !data ? (
+        <LoadingState>Checking ~500 stocks against their 52-week highs…</LoadingState>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 flex-wrap mb-2">
+            {chips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setFilter(c.id)}
+                aria-pressed={filter === c.id}
+                className="px-2 py-1 rounded-[var(--radius-sm)] border text-xs"
+                style={{
+                  borderColor: filter === c.id ? "var(--accent)" : "var(--border)",
+                  color: filter === c.id ? "var(--accent)" : "var(--text-muted)",
+                  background: filter === c.id ? "var(--accent-wash)" : "transparent",
+                }}
+              >
+                {c.label}
+                <span className="ml-1.5 font-mono" style={{ color: "var(--text-faint)" }}>
+                  {c.n}
+                </span>
+              </button>
+            ))}
+            <label className="flex items-center gap-1.5 text-xs ml-1" style={{ color: "var(--text-faint)" }}>
+              Near means within
+              <select
+                value={nearPct}
+                onChange={(e) => setNearPct(Number(e.target.value))}
+                className="rounded-[var(--radius-sm)] px-1.5 py-0.5 text-xs border"
+                style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+              >
+                {NEAR_CHOICES.map((n) => (
+                  <option key={n} value={n}>
+                    {n}%
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mb-3">
+            <InfoNote label="How this is judged">
+              A stock&apos;s 52-week high is the highest price it traded at in the 52 weeks before the day being
+              checked — never including that day — so &ldquo;broke out&rdquo; means it closed above the high that
+              stood going into the session. &ldquo;Broke out today&rdquo; is a fresh breakout (it wasn&apos;t at a new
+              high yesterday). &ldquo;Recent breakout&rdquo; closed above its high within the last{" "}
+              {data.criteria.recentSessions} sessions and is still above the level it broke. One that has fallen back
+              below isn&apos;t counted as a breakout — if it&apos;s still near the high it appears as Near, marked
+              &ldquo;failed breakout&rdquo;. &ldquo;Making new highs&rdquo; has closed at a new high on consecutive days.
+              Breakouts are judged on the closing price, not an intraday poke above the high. Volume and delivery for
+              a breakout are from the breakout day. Only stocks above ₹{data.criteria.minPrice} averaging ₹
+              {data.criteria.minTurnoverCr} Cr a day are included. Stocks listed less than a year ago are tagged — their
+              &ldquo;52-week high&rdquo; is the high since listing. {data.universeSource}
+            </InfoNote>
+          </div>
+
+          {!sorted.length ? (
+            <EmptyState>No stock matches this filter as of {data.asOf}.</EmptyState>
+          ) : (
+            <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+              <div className="table-scroll">
+                <table className="w-full border-collapse table-sticky">
+                  <thead>
+                    <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
+                      <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+                      <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
+                      <SortableTh label="Status" sortKey="statusRank" sort={sort} onSort={onSort} align="left" />
+                      <SortableTh label="52W high" sortKey="high52" sort={sort} onSort={onSort} title="Highest price in the last 52 weeks, and when" />
+                      <SortableTh label="Distance" sortKey="pctFromHigh" sort={sort} onSort={onSort} title="Near: how far below the 52-week high. Breakouts: how far above the level broken" />
+                      <SortableTh label="Volume ×" sortKey="breakoutVolumeRatio" sort={sort} onSort={onSort} title="Breakout day's volume against its prior 30-day average (today's, for stocks near the high)" />
+                      <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} title="Breakout day's delivery % (today's, for stocks near the high)" />
+                      <SortableTh label="Turnover" sortKey="avgTurnoverCr" sort={sort} onSort={onSort} title="Average daily turnover, last 20 sessions" />
+                      <th className="py-2 pl-2 pr-4"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sorted.map((r) => {
+                      const st = HIGH_STATUS[r.status];
+                      const isBreak = r.status !== "near";
+                      const vol = isBreak ? r.breakoutVolumeRatio : r.volumeRatio;
+                      const deliv = isBreak ? r.breakoutDeliveryPct : r.deliveryPct;
+                      return (
+                        <tr key={r.symbol} className="border-b last:border-b-0 align-top" style={{ borderColor: "var(--border)" }}>
+                          <td className={`${td} pl-4`}>
+                            <SymbolLink symbol={r.symbol} className="text-sm" />
+                            <span className="flex items-center gap-1 mt-1 flex-wrap">
+                              {r.stage != null && <StageTag stage={r.stage} />}
+                              {r.shortHistory && (
+                                <span className="text-[10px] px-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }} title="Listed less than a year ago — the high is the high since listing">
+                                  &lt; 1 yr listed
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                          <td className={`${td} text-right font-mono text-sm`} style={{ color: "var(--text)" }}>
+                            ₹{fmt(r.close)}
+                            <span className="block text-[11px]">
+                              <Pct v={r.changePercent} />
+                            </span>
+                          </td>
+                          <td className={`${td} text-left`}>
+                            <span className="text-xs font-medium whitespace-nowrap" style={{ color: st.color }}>
+                              {st.label}
+                            </span>
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              {r.status === "recent"
+                                ? `${r.breakoutDate} · ${r.sessionsSinceBreakout} session${r.sessionsSinceBreakout === 1 ? "" : "s"} ago`
+                                : r.status === "extending"
+                                ? `${r.streak} straight session${r.streak === 1 ? "" : "s"}${r.streak > 5 ? "+" : ""} at new highs`
+                                : r.status === "breakout-today"
+                                ? `closed above ₹${fmt(r.breakoutLevel)}`
+                                : `needs +${fmt(-r.pctFromHigh, 1)}% to the high`}
+                            </span>
+                            {r.failedBreakout && (
+                              <span
+                                className="block text-[10px] mt-0.5"
+                                style={{ color: "var(--loss)" }}
+                                title={`Closed above ₹${fmt(r.failedBreakout.level)} on ${r.failedBreakout.date}, then fell back below it`}
+                              >
+                                failed breakout {r.failedBreakout.sessionsAgo}d ago — back below ₹{fmt(r.failedBreakout.level)}
+                              </span>
+                            )}
+                          </td>
+                          <td className={`${td} text-right`}>
+                            <span className="font-mono text-sm" style={{ color: "var(--text)" }}>₹{fmt(r.high52)}</span>
+                            <span className="block text-[10px] whitespace-nowrap" style={{ color: "var(--text-faint)" }}>
+                              {r.high52Date === data.asOf ? "set today" : r.high52Date}
+                            </span>
+                          </td>
+                          <td className={`${td} text-right font-mono text-sm`}>
+                            {isBreak ? (
+                              <span style={{ color: "var(--gain)" }} title={`Above the ₹${fmt(r.breakoutLevel)} level it broke`}>
+                                +{fmt(r.pctAboveBreakout, 1)}%
+                              </span>
+                            ) : (
+                              <span style={{ color: "var(--text-muted)" }}>{fmt(r.pctFromHigh, 1)}%</span>
+                            )}
+                          </td>
+                          <td className={`${td} text-right font-mono text-sm`} style={{ color: vol >= 2 ? "var(--accent)" : "var(--text-muted)" }}>
+                            {vol == null ? "—" : `${fmt(vol)}×`}
+                          </td>
+                          <td className={`${td} text-right font-mono text-sm`} style={{ color: "var(--text-muted)" }}>
+                            {deliv == null ? "—" : `${fmt(deliv, 1)}%`}
+                          </td>
+                          <td className={`${td} text-right font-mono text-xs`} style={{ color: "var(--text-muted)" }}>
+                            ₹{fmt(r.avgTurnoverCr, 1)} Cr
+                          </td>
+                          <td className="py-2.5 pl-2 pr-4 text-right">
+                            <WatchlistAddButton
+                              symbol={r.symbol}
+                              inWatchlist={watchlistSymbols?.includes(r.symbol)}
+                              onAdd={onAddToWatchlist}
+                              source="Home · 52-week high"
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function HomeTab({ onAddToWatchlist, watchlistSymbols }) {
   return (
     <div>
-      <ScreenHeader title="Home" meta="Ranked ideas by horizon, today's standout volume, and fresh Stage 2 breakouts built on accumulation" />
+      <ScreenHeader title="Home" meta="Ranked ideas by horizon, 52-week highs, today's standout volume, and fresh Stage 2 breakouts built on accumulation" />
       <div className="flex flex-col gap-8">
         <PicksSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
+        <HighsSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <SurgeSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <Stage2Section onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       </div>
