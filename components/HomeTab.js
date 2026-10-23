@@ -196,14 +196,25 @@ function Check({ ok, children, title }) {
 function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
   const { data, error } = useSection("stage2");
   const [showAll, setShowAll] = useState(false);
-  const rows = data?.rows?.filter((r) => showAll || r.grade === "Strong");
+  const [showFailed, setShowFailed] = useState(false);
+  const rows = data?.rows?.filter((r) => (showAll || r.grade === "Strong") && (showFailed || !r.isFailed));
   const { sorted, sort, onSort } = useSortableRows(rows, "gradeRank", "desc");
   const c = data?.criteria;
-  const strongCount = data?.rows?.filter((r) => r.grade === "Strong").length ?? 0;
+  // "Strong" means strong base AND a breakout that's still holding.
+  const strongCount = data?.rows?.filter((r) => r.grade === "Strong" && !r.isFailed).length ?? 0;
+  const failedCount = data?.rows?.filter((r) => r.isFailed).length ?? 0;
 
   return (
     <section>
-      <SectionTitle meta={data ? `${strongCount} strong · ${data.rows.length} entering from a Stage 1/3 base` : undefined}>
+      <SectionTitle
+        meta={
+          data
+            ? `${strongCount} strong · ${data.rows.length} entering from a Stage 1/3 base${
+                failedCount ? ` · ${failedCount} failed breakout${failedCount === 1 ? "" : "s"}` : ""
+              }`
+            : undefined
+        }
+      >
         Entering Stage 2 with accumulation in the base
       </SectionTitle>
 
@@ -221,6 +232,10 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
               <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
               Also show moderate and weak accumulation
             </label>
+            <label className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              <input type="checkbox" checked={showFailed} onChange={(e) => setShowFailed(e.target.checked)} />
+              Show failed breakouts ({failedCount})
+            </label>
           </div>
           <div className="mb-3">
             <InfoNote label="What this looks for">
@@ -230,7 +245,9 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
               graded Strong when: up-day volume is at least {c.upDownVolumeMin}× down-day volume; on-balance volume
               finished the base higher than it started; and, where bhavcopy covers at least{" "}
               {c.deliveryMinCoverageDays} base sessions, the base&apos;s volume-weighted delivery was at least{" "}
-              {c.deliveryPctMin}%. Delivery data reaches back to {data.bhavcopyFrom}, so for a long base it describes
+              {c.deliveryPctMin}%. A stock that has since closed back below the top of its base is a failed
+              breakout: it&apos;s hidden by default and flagged in red when shown, whatever its base grade. Delivery
+              data reaches back to {data.bhavcopyFrom}, so for a long base it describes
               the later part — the “n days” under each figure says how much was covered. {data.universeSource}{" "}
               {data.plausible} passed the weekly pre-filter
               {data.capped ? `; the ${data.checked} most liquid were checked in full` : ""}.
@@ -240,7 +257,7 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
           {!sorted.length ? (
             <EmptyState>
               {data.rows.length
-                ? `${data.rows.length} stock${data.rows.length === 1 ? " is" : "s are"} entering Stage 2 from a base, but none graded Strong — tick the box above to see them.`
+                ? `${data.rows.length} stock${data.rows.length === 1 ? " is" : "s are"} entering Stage 2 from a base, but none is both graded Strong and still above its breakout level — tick the boxes above to see them.`
                 : `No stock entered Stage 2 from a Stage 1 or 3 base in the last ~25 sessions, as of ${data.asOf}.`}
             </EmptyState>
           ) : (
@@ -264,10 +281,23 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
                   </thead>
                   <tbody>
                     {sorted.map((r) => (
-                      <tr key={r.symbol} className="border-b last:border-b-0 align-top" style={{ borderColor: "var(--border)" }}>
+                      <tr
+                        key={r.symbol}
+                        className="border-b last:border-b-0 align-top"
+                        style={{ borderColor: "var(--border)", background: r.isFailed ? "var(--loss-dim)" : undefined }}
+                      >
                         <td className={`${td} pl-4`}>
                           <SymbolLink symbol={r.symbol} className="text-sm" />
-                          {r.wyckoffPhase && (
+                          {r.isFailed && (
+                            <span
+                              className="block w-fit text-[10px] font-medium px-1.5 py-0.5 mt-1 rounded border"
+                              style={{ borderColor: "var(--loss)", color: "var(--loss)" }}
+                              title={`Closed back below the ₹${fmt(r.failedBreakout.level)} base resistance on ${r.failedBreakout.failedOn}`}
+                            >
+                              Failed breakout
+                            </span>
+                          )}
+                          {r.wyckoffPhase && !r.isFailed && (
                             <span className="block text-[10px] mt-0.5" style={{ color: "var(--text-faint)" }}>
                               {r.wyckoffPhase}
                             </span>
@@ -284,6 +314,12 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
                           </span>
                           {r.breakoutVolumeRatio != null && (
                             <span className="block text-[10px]" style={{ color: "var(--accent)" }}>{r.breakoutVolumeRatio}× vol</span>
+                          )}
+                          {r.isFailed && (
+                            <span className="block text-[10px] mt-0.5 whitespace-nowrap" style={{ color: "var(--loss)" }}>
+                              back below ₹{fmt(r.failedBreakout.level)} since {r.failedBreakout.failedOn} (
+                              {fmt(r.failedBreakout.pctBelowLevel, 1)}%)
+                            </span>
                           )}
                         </td>
                         <td className={`${td} text-left`}>

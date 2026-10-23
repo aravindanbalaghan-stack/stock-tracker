@@ -135,6 +135,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [horizon, setHorizon] = usePersistentState("home.picksHorizon", "mid");
+  const [showEvidence, setShowEvidence] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,8 +211,23 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
             {h.idea}
           </p>
 
+          {/* Backtest details are collapsed to keep the Home page light; the
+              verdict stays visible on each horizon tab above. */}
           <div className="mb-3">
-            <Evidence h={h} method={data.method} />
+            <button
+              type="button"
+              onClick={() => setShowEvidence((v) => !v)}
+              aria-expanded={showEvidence}
+              className="text-xs"
+              style={{ color: "var(--text-faint)" }}
+            >
+              {showEvidence ? "▾ Hide backtest details" : "▸ Backtest details"}
+            </button>
+            {showEvidence && (
+              <div className="mt-2">
+                <Evidence h={h} method={data.method} />
+              </div>
+            )}
           </div>
 
           <div className="mb-3">
