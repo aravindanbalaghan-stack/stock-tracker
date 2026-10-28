@@ -3,10 +3,8 @@ import { getSessionCookies } from "@/lib/nseSession";
 import { fetchMarketCapCr } from "@/lib/marketCap";
 import {
   sma,
-  wma,
   ema,
   toWeeklyBars,
-  weeklyExtremes,
   fetchDailyOHLCVBatch,
   symbolSeries,
 } from "@/lib/screenerIndicators";
@@ -32,6 +30,9 @@ import { resolveWideUniverse } from "@/lib/nifty500";
 import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
 import { recordScreenSnapshot, getOccurrenceHistory } from "@/lib/screenerMembership";
 import { analyzePersonalLearning, PL } from "@/lib/personalLearning";
+import { pocketPivotStage1, pocketPivotStage2 } from "@/lib/pocketPivot";
+import { analyzeIpoBase, IPO_STATUS } from "@/lib/ipoBase";
+import { getIssuePrices } from "@/lib/ipoIssuePrices";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -146,6 +147,8 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
     let stageUniverseSource = null;
     let stageWeeklyScanned = null;
     let stagePlausible = null;
+    // Pocket Pivot stage-1 figures, carried into the Yahoo pass.
+    const ppStage1 = new Map();
 
     // ---------------- Cheap bhavcopy-only filters ----------------
     if (screen === "ipo-base") {
@@ -177,53 +180,12 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
     }
 
     if (screen === "pocket-pivot") {
-      candidates = universe.filter(({ series }) => {
-        if (series.length < 12) return false;
-        const today = series[series.length - 1];
-        if (today.close == null || today.close < 20) return false;
-        if (today.prevClose == null || today.close < today.prevClose) return false;
-
-        // prior[0] = 1 day ago, prior[1] = 2 days ago, ...
-        const prior = series.slice(0, -1).reverse();
-        if (prior.length < 11) return false;
-
-        // Branch A — today's volume beats the largest DOWN-day (close <
-        // open) volume of the last 10 sessions.
-        let maxDownDayVolume = 0;
-        for (let i = 0; i < 10; i++) {
-          const d = prior[i];
-          if (d.open != null && d.close != null && d.close < d.open) {
-            maxDownDayVolume = Math.max(maxDownDayVolume, d.volume);
-          }
-        }
-        const branchA = today.volume > maxDownDayVolume;
-
-        // Branch B — the explicit day-by-day form: each of the last 10
-        // sessions either closed up on its own previous day, or closed
-        // down on lighter volume than today.
-        let branchB = true;
-        for (let i = 0; i < 10; i++) {
-          const cur = prior[i];
-          const before = prior[i + 1];
-          if (!cur || !before) {
-            branchB = false;
-            break;
-          }
-          const up = cur.close > before.close;
-          const downOnLighterVolume = cur.close < before.close && cur.volume < today.volume;
-          if (!up && !downOnLighterVolume) {
-            branchB = false;
-            break;
-          }
-        }
-
-        if (!branchA && !branchB) return false;
-
-        // Today's low pulled back into the 10-day weighted average.
-        const closes10 = series.slice(-10).map((d) => d.close);
-        const wma10 = wma(closes10, 10);
-        if (wma10 == null || today.low == null || today.low > wma10) return false;
-
+      // Rules 1–3 (up day, volume signature, not extended from the 10 DMA)
+      // need only the bhavcopy window — see lib/pocketPivot.js.
+      candidates = universe.filter(({ symbol, series }) => {
+        const sig = pocketPivotStage1(series);
+        if (!sig) return false;
+        ppStage1.set(symbol, sig);
         return true;
       });
     }
@@ -379,6 +341,21 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
       benchmarkBars = nifty?.bars ? nifty.bars.filter((b) => b.t <= asOfCutoff) : null;
     }
 
+    // IPO issue prices (NSE Past Issues, cached in KV) — one lookup for the
+    // whole shortlist.
+    let issuePrices = null;
+    if (screen === "ipo-base" && shortlist.length > 0) {
+      const got = await getIssuePrices();
+      issuePrices = got.prices;
+      if (got.status === "unavailable") {
+        extraNotes.push(
+          "NSE's Past Issues feed couldn't be reached, so IPO prices are missing and Status uses the listing-day high only. Add prices by hand in lib/ipoIssuePrices.js if this persists."
+        );
+      } else if (got.status === "stale") {
+        extraNotes.push("NSE's Past Issues feed didn't respond; IPO prices are from the last successful fetch.");
+      }
+    }
+
     let rows = [];
     for (const { symbol, series } of shortlist) {
       const hist = history.get(symbol);
@@ -413,26 +390,36 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
         // obviously wasn't listed yet — exclude it.
         if (firstDate.getTime() / 1000 > asOfCutoff) continue;
         row.listedOn = firstDate.toISOString().slice(0, 10);
+
+        const ipo = analyzeIpoBase({
+          bars: hist.bars,
+          today,
+          todayDate: latest.date,
+          firstTradeDate: first,
+          issue: issuePrices?.get(symbol) ?? null,
+        });
+        if (!ipo) continue;
+        // Only stocks above, or within 5% of, the IPO price or the
+        // listing-day high — the ones crossing or about to.
+        if (ipo.ipoStatusRank === IPO_STATUS.BELOW.rank) continue;
+        Object.assign(row, ipo);
       }
 
       if (screen === "pocket-pivot") {
-        if (!closes || closes.length < 200 || !weekly) continue;
-        const sma50 = sma(closes, 50);
-        const sma200 = sma(closes, 200);
-        const avgVol50 = sma(volumes, 50);
-        const { high: high52, low: low52 } = weeklyExtremes(weekly, 52);
+        if (!closes || !weekly) continue;
+        // Rule 4 (above the 50 and 200 DMA) plus Type / Grade context.
+        const pp = pocketPivotStage2({ series, closes, volumes, stage1: ppStage1.get(symbol) });
+        if (!pp) continue;
+
+        // Liquidity floors carried over from the original screen — not part
+        // of the pocket pivot definition, but they keep thinly traded names
+        // (where a "volume signature" is noise) off the list.
         const weeklyVolSma10 = sma(weekly.map((w) => w.v), 10);
-
-        if (sma50 == null || sma200 == null || avgVol50 == null || high52 == null || low52 == null) continue;
-        if (!(today.close > sma50)) continue;
-        if (!(today.close > sma200)) continue;
-        if (!(today.close > 1.3 * low52)) continue;
-        if (!(today.close > 0.75 * high52)) continue;
+        const avgVol50 = sma(volumes, 50);
         if (weeklyVolSma10 == null || !(weeklyVolSma10 > 100000)) continue;
-        if (!(avgVol50 * today.close > 5000000)) continue;
+        if (avgVol50 == null || !(avgVol50 * today.close > 5000000)) continue;
 
-        row.sma50 = Math.round(sma50 * 100) / 100;
-        row.sma200 = Math.round(sma200 * 100) / 100;
+        Object.assign(row, pp);
       }
 
       if (screen === "stage-2" || screen === "wyckoff") {
@@ -559,7 +546,15 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
       }
     }
 
-    rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+    if (screen === "pocket-pivot") {
+      rows.sort(
+        (a, b) => (a.ppGrade < b.ppGrade ? -1 : a.ppGrade > b.ppGrade ? 1 : 0) || (b.volVsDownVol ?? 0) - (a.volVsDownVol ?? 0)
+      );
+    } else if (screen === "ipo-base") {
+      rows.sort((a, b) => a.ipoStatusRank - b.ipoStatusRank || (b.vsListingHighPct ?? 0) - (a.vsListingHighPct ?? 0));
+    } else {
+      rows.sort((a, b) => (b.volumeRatio ?? 0) - (a.volumeRatio ?? 0));
+    }
 
     // Screener-membership bookkeeping — only when this is TODAY's result
     // (recordMembership is false for a historical `date=` lookup), so

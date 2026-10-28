@@ -283,6 +283,79 @@ function WyckoffBacktestBanner() {
   );
 }
 
+// Signed % with a coloured pill — used by the IPO base level columns.
+function PctPill({ pct, sub }) {
+  if (pct == null) {
+    return (
+      <span className="font-mono text-xs" style={{ color: "var(--text-faint)" }}>
+        —
+      </span>
+    );
+  }
+  const above = pct >= 0;
+  return (
+    <>
+      <span
+        className="font-mono text-xs px-1.5 py-0.5 rounded whitespace-nowrap"
+        style={{ color: above ? "var(--gain)" : "var(--loss)", background: above ? "var(--gain-dim)" : "var(--loss-dim)" }}
+      >
+        {above ? "▲ +" : "▼ "}
+        {fmt(pct, 1)}%
+      </span>
+      {sub && (
+        <span className="block text-[10px] mt-0.5 whitespace-nowrap" style={{ color: "var(--text-faint)" }}>
+          {sub}
+        </span>
+      )}
+    </>
+  );
+}
+
+const STATUS_TONE = {
+  gain: { color: "var(--gain)", background: "var(--gain-dim)" },
+  accent: { color: "var(--accent)", background: "var(--surface-2)" },
+  muted: { color: "var(--text-muted)", background: "var(--surface-2)" },
+  loss: { color: "var(--loss)", background: "var(--loss-dim)" },
+};
+
+function IpoStatusCell({ row }) {
+  const tone = STATUS_TONE[row.ipoStatusTone] ?? STATUS_TONE.muted;
+  const warn = row.ipoWarnings?.length ? row.ipoWarnings.join("\n") : null;
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap">
+      <span className="text-xs px-1.5 py-0.5 rounded" style={tone}>
+        {row.ipoStatus ?? "—"}
+      </span>
+      {row.issuePrice == null && (
+        <span className="text-[10px]" style={{ color: "var(--text-faint)" }} title="IPO price unavailable — status uses the listing-day high only">
+          no IPO ₹
+        </span>
+      )}
+      {warn && (
+        <span className="text-xs" style={{ color: "var(--tier-mid)" }} title={warn}>
+          ⚠
+        </span>
+      )}
+    </span>
+  );
+}
+
+function PocketGradeCell({ row }) {
+  if (!row.ppGrade) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  const isA = row.ppGrade === "A";
+  const tip = row.ppWarnings?.length ? row.ppWarnings.join("\n") : "No context warnings";
+  return (
+    <span
+      className="text-xs font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+      style={isA ? STATUS_TONE.gain : { color: "var(--tier-mid)", background: "var(--surface-2)" }}
+      title={tip}
+    >
+      {row.ppGrade}
+      {!isA && row.ppWarnings?.length ? ` · ${row.ppWarnings.length} warning${row.ppWarnings.length === 1 ? "" : "s"}` : ""}
+    </span>
+  );
+}
+
 export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -310,6 +383,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const [weinsteinStageFilter, setWeinsteinStageFilter] = usePersistentState("screener.weinsteinStageFilter", "all");
   // Personal learning: whether condition 3 (a bullish pattern) is required.
   const [plPatternFilter, setPlPatternFilter] = usePersistentState("screener.plPatternFilter", "required");
+  const [ppFilter, setPpFilter] = usePersistentState("screener.ppFilter", "all");
+  const [ipoFilter, setIpoFilter] = usePersistentState("screener.ipoFilter", "all");
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -368,6 +443,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isWeinstein = screen === "weinstein";
   const isTriple = screen === "triple-confirmation";
   const isPersonal = screen === "personal-learning";
+  const isPocket = screen === "pocket-pivot";
+  const isIpo = screen === "ipo-base";
   // All three of the new tabs show their own "Reason added" / "Entry"
   // columns instead of the generic 30WMA + debut columns, per the
   // requested column set.
@@ -389,8 +466,24 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       ? filteredRows?.filter((r) => r.patterns?.some((p) => !p.provisional))
       : isPersonal && plPatternFilter === "fresh-rs"
       ? filteredRows?.filter((r) => r.hasPattern && r.freshRsCross)
+      : isPocket && ppFilter === "A"
+      ? filteredRows?.filter((r) => r.ppGrade === "A")
+      : isPocket && ppFilter !== "all"
+      ? filteredRows?.filter((r) => r.ppType === ppFilter)
+      : isIpo && ipoFilter === "actionable"
+      ? filteredRows?.filter((r) => r.ipoStatusRank <= 4)
+      : isIpo && ipoFilter === "above-high"
+      ? filteredRows?.filter((r) => r.aboveListingDayHigh)
+      : isIpo && ipoFilter === "above-ipo"
+      ? filteredRows?.filter((r) => r.aboveIssuePrice === true)
       : filteredRows;
-  const { sorted, sort, onSort } = useSortableRows(phaseFilteredRows, "volumeRatio", "desc");
+  // Pocket Pivot leads with the volume signature's strength; IPO base with
+  // its Status priority (1 = crossing the listing-day high).
+  const { sorted, sort, onSort } = useSortableRows(
+    phaseFilteredRows,
+    isPocket ? "volVsDownVol" : isIpo ? "ipoStatusRank" : "volumeRatio",
+    isIpo ? "asc" : "desc"
+  );
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
 
   // While live, re-run periodically. 90s rather than something faster
@@ -482,7 +575,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const hasPhaseFilter =
     (isWyckoff && wyckoffPhaseFilter !== "all") ||
     (isWeinstein && weinsteinStageFilter !== "all") ||
-    (isPersonal && plPatternFilter !== "any");
+    (isPersonal && plPatternFilter !== "any") ||
+    (isPocket && ppFilter !== "all") ||
+    (isIpo && ipoFilter !== "all");
 
   return (
     <div>
@@ -536,6 +631,47 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
           <span className="text-[11px]" style={{ color: "var(--text-faint)" }}>
             {data.withPatternCount ?? 0} of {data.resultCount} with a pattern
           </span>
+        </div>
+      )}
+
+      {isPocket && (
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }} htmlFor="pp-filter">
+            Show
+          </label>
+          <select
+            id="pp-filter"
+            value={ppFilter}
+            onChange={(e) => setPpFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="all">All pocket pivots</option>
+            <option value="A">Grade A only (no warnings)</option>
+            <option value="10-DMA continuation">10-DMA continuation</option>
+            <option value="50-DMA bounce">50-DMA bounce</option>
+            <option value="Inside base">Inside base</option>
+          </select>
+        </div>
+      )}
+
+      {isIpo && (
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }} htmlFor="ipo-filter">
+            Show
+          </label>
+          <select
+            id="ipo-filter"
+            value={ipoFilter}
+            onChange={(e) => setIpoFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="all">All matches</option>
+            <option value="actionable">Crossing or approaching only</option>
+            <option value="above-high">Above listing-day high</option>
+            <option value="above-ipo">Above IPO price</option>
+          </select>
         </div>
       )}
 
@@ -661,7 +797,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       {data.rows.length > 0 && phaseFilteredRows.length === 0 ? (
         <EmptyState>
           {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall within
-          the {hasPhaseFilter ? (isPersonal ? "pattern filter or " : "phase/stage or ") : ""}price and volume bounds set above.
+          the {hasPhaseFilter ? (isPersonal ? "pattern filter or " : isPocket || isIpo ? "Show filter or " : "phase/stage or ") : ""}price and volume bounds set above.
         </EmptyState>
       ) : data.rows.length === 0 ? (
         <EmptyState>
@@ -675,6 +811,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
             : isPersonal
             ? `No stock had weekly RSI above 50, a close above the 30-week MA and RS above 0 together, as of ${data.asOf}.`
+            : isIpo
+            ? `No recent listing was crossing or within 5% of its IPO price or listing-day high as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
         </EmptyState>
       ) : (
@@ -886,6 +1024,74 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                     />
                   )}
                   {showListedOn && <SortableTh label="Listed" sortKey="listedOn" sort={sort} onSort={onSort} />}
+                  {isIpo && (
+                    <SortableTh
+                      label="IPO ₹"
+                      sortKey="issuePrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Issue price paid by IPO subscribers, from NSE's Past Issues data (top of the band where NSE gives no final price)"
+                    />
+                  )}
+                  {isIpo && (
+                    <SortableTh label="vs IPO" sortKey="vsIssuePct" sort={sort} onSort={onSort} title="Close against the IPO price" />
+                  )}
+                  {isIpo && (
+                    <SortableTh
+                      label="Day-1 High ₹"
+                      sortKey="listingDayHigh"
+                      sort={sort}
+                      onSort={onSort}
+                      title="High of the first trading session (split/bonus-adjusted)"
+                    />
+                  )}
+                  {isIpo && (
+                    <SortableTh
+                      label="vs Day-1 High"
+                      sortKey="vsListingHighPct"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Close against the listing-day high"
+                    />
+                  )}
+                  {isIpo && (
+                    <SortableTh
+                      label="Status"
+                      sortKey="ipoStatusRank"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Crossing = closed above the level within the last 5 sessions. Approaching = within 5% below. Holding above = above for more than 5 sessions."
+                    />
+                  )}
+                  {isPocket && (
+                    <SortableTh
+                      label="Grade"
+                      sortKey="ppGrade"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="A = no context warnings. B = at least one warning — hover the grade for which."
+                    />
+                  )}
+                  {isPocket && (
+                    <SortableTh label="Type" sortKey="ppType" sort={sort} onSort={onSort} align="left" title="Which moving average the move came up off" />
+                  )}
+                  {isPocket && (
+                    <SortableTh
+                      label="Vol ÷ Down-vol"
+                      sortKey="volVsDownVol"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Today's volume divided by the highest down-day volume of the prior 10 sessions — the pocket pivot's volume signature"
+                    />
+                  )}
+                  {isPocket && (
+                    <SortableTh label="vs 10 DMA" sortKey="distFrom10dmaPct" sort={sort} onSort={onSort} title="Close against the 10-day SMA. Above 5% is extended and excluded." />
+                  )}
+                  {isPocket && (
+                    <SortableTh label="Stop / Risk" sortKey="riskPct" sort={sort} onSort={onSort} title="Stop at the pivot day's low, and the % from the close down to it" />
+                  )}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
                   {showAppearances && (
                     <SortableTh
@@ -1263,6 +1469,65 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       {showListedOn && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {r.listedOn ?? "—"}
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: "var(--text-muted)" }}
+                          title={r.issuePriceSource === "override" ? "Set by hand in lib/ipoIssuePrices.js" : undefined}
+                        >
+                          {r.issuePrice == null ? "—" : `₹${fmt(r.issuePrice)}`}
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-right">
+                          <PctPill pct={r.vsIssuePct} sub={r.crossedIssueOn ? `crossed ${r.crossedIssueOn}` : null} />
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.listingDayHigh == null ? "—" : `₹${fmt(r.listingDayHigh)}`}
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-right">
+                          <PctPill pct={r.vsListingHighPct} sub={r.crossedListingHighOn ? `crossed ${r.crossedListingHighOn}` : null} />
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-left">
+                          <IpoStatusCell row={r} />
+                        </td>
+                      )}
+                      {isPocket && (
+                        <td className="py-2.5 px-2 text-left">
+                          <PocketGradeCell row={r} />
+                        </td>
+                      )}
+                      {isPocket && (
+                        <td className="py-2.5 px-2 text-left text-xs whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                          {r.ppType ?? "—"}
+                        </td>
+                      )}
+                      {isPocket && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
+                          {r.volVsDownVol == null ? "—" : `${r.volVsDownVol.toFixed(2)}×`}
+                        </td>
+                      )}
+                      {isPocket && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.distFrom10dmaPct == null ? "—" : `${r.distFrom10dmaPct >= 0 ? "+" : ""}${fmt(r.distFrom10dmaPct, 1)}%`}
+                        </td>
+                      )}
+                      {isPocket && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.stopLevel == null ? "—" : `₹${fmt(r.stopLevel)}`}
+                          {r.riskPct != null && (
+                            <span className="block text-[10px]" style={{ color: "var(--loss)" }}>
+                              −{fmt(r.riskPct, 1)}%
+                            </span>
+                          )}
                         </td>
                       )}
                       {showMarketCap && (
