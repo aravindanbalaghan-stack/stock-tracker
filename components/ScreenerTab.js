@@ -356,6 +356,43 @@ function PocketGradeCell({ row }) {
   );
 }
 
+function ShakeoutStatusCell({ row }) {
+  const g = row.skGrade;
+  const style =
+    g === "A"
+      ? { color: "var(--gain)", background: "var(--gain-dim)" }
+      : g === "Watch"
+      ? { color: "var(--tier-mid)", background: "var(--surface-2)" }
+      : { color: "var(--text-muted)", background: "var(--surface-2)" };
+  return (
+    <span className="text-xs px-1.5 py-0.5 rounded whitespace-nowrap" style={style} title={row.reason}>
+      {g === "Watch" ? "Watch — not reclaimed" : `${g} · Reclaimed`}
+    </span>
+  );
+}
+
+function ShakeoutEvidencePanel({ row }) {
+  return (
+    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+      <p className="mb-2">{row.reason}</p>
+      <ul className="grid gap-1 sm:grid-cols-2">
+        {row.skChecks?.map((c) => (
+          <li key={c.key} className="flex gap-2">
+            <span style={{ color: c.pass ? "var(--gain)" : "var(--text-faint)" }}>{c.pass ? "✓" : "✗"}</span>
+            <span>
+              <span style={{ color: "var(--text)" }}>{c.label}</span> — {c.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2" style={{ color: "var(--text-faint)" }}>
+        Invalidation: a daily close below the ₹{fmt(row.skStop)} shakeout low.
+        {row.skStatus !== "Reclaimed" && " Until it closes back above the level, this can't be told apart from a breakdown."}
+      </p>
+    </div>
+  );
+}
+
 export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -385,6 +422,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const [plPatternFilter, setPlPatternFilter] = usePersistentState("screener.plPatternFilter", "required");
   const [ppFilter, setPpFilter] = usePersistentState("screener.ppFilter", "all");
   const [ipoFilter, setIpoFilter] = usePersistentState("screener.ipoFilter", "all");
+  const [skFilter, setSkFilter] = usePersistentState("screener.skFilter", "all");
 
   // Identity of the query itself, separate from the refresh counter. When
   // this changes the user asked for genuinely different data, so clearing
@@ -445,6 +483,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isPersonal = screen === "personal-learning";
   const isPocket = screen === "pocket-pivot";
   const isIpo = screen === "ipo-base";
+  const isShakeout = screen === "shakeout";
   // All three of the new tabs show their own "Reason added" / "Entry"
   // columns instead of the generic 30WMA + debut columns, per the
   // requested column set.
@@ -452,7 +491,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   // Screens whose rows carry a stage journey — previous stage, changes
   // inside the stage, and the invalidation level.
   const showJourney = isStage2 || isWyckoff || isWeinstein;
-  const expandable = isStage2 || isWyckoff || isTriple || isWeinstein;
+  const expandable = isStage2 || isWyckoff || isTriple || isWeinstein || isShakeout;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
   const phaseFilteredRows =
@@ -476,12 +515,20 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       ? filteredRows?.filter((r) => r.aboveListingDayHigh)
       : isIpo && ipoFilter === "above-ipo"
       ? filteredRows?.filter((r) => r.aboveIssuePrice === true)
+      : isShakeout && skFilter === "reclaimed"
+      ? filteredRows?.filter((r) => r.skStatus === "Reclaimed")
+      : isShakeout && skFilter === "A"
+      ? filteredRows?.filter((r) => r.skGrade === "A")
+      : isShakeout && skFilter === "delivery"
+      ? filteredRows?.filter((r) => r.skChecks?.some((c) => c.key === "delivery" && c.pass))
+      : isShakeout && skFilter === "watch"
+      ? filteredRows?.filter((r) => r.skGrade === "Watch")
       : filteredRows;
   // Pocket Pivot leads with the volume signature's strength; IPO base with
   // its Status priority (1 = crossing the listing-day high).
   const { sorted, sort, onSort } = useSortableRows(
     phaseFilteredRows,
-    isPocket ? "volVsDownVol" : isIpo ? "ipoStatusRank" : "volumeRatio",
+    isPocket ? "volVsDownVol" : isIpo ? "ipoStatusRank" : isShakeout ? "skSort" : "volumeRatio",
     isIpo ? "asc" : "desc"
   );
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
@@ -577,7 +624,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
     (isWeinstein && weinsteinStageFilter !== "all") ||
     (isPersonal && plPatternFilter !== "any") ||
     (isPocket && ppFilter !== "all") ||
-    (isIpo && ipoFilter !== "all");
+    (isIpo && ipoFilter !== "all") ||
+    (isShakeout && skFilter !== "all");
 
   return (
     <div>
@@ -651,6 +699,27 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             <option value="10-DMA continuation">10-DMA continuation</option>
             <option value="50-DMA bounce">50-DMA bounce</option>
             <option value="Inside base">Inside base</option>
+          </select>
+        </div>
+      )}
+
+      {isShakeout && (
+        <div className="mb-3 flex items-center gap-2">
+          <label className="text-xs" style={{ color: "var(--text-faint)" }} htmlFor="sk-filter">
+            Show
+          </label>
+          <select
+            id="sk-filter"
+            value={skFilter}
+            onChange={(e) => setSkFilter(e.target.value)}
+            className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="all">All — reclaimed and watch</option>
+            <option value="reclaimed">Reclaimed only</option>
+            <option value="A">Grade A only (5+ of 7 evidence)</option>
+            <option value="delivery">Delivery shift confirmed</option>
+            <option value="watch">Undercut — watch for reclaim</option>
           </select>
         </div>
       )}
@@ -797,7 +866,7 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
       {data.rows.length > 0 && phaseFilteredRows.length === 0 ? (
         <EmptyState>
           {data.rows.length} stock{data.rows.length === 1 ? "" : "s"} cleared this screen, but none fall within
-          the {hasPhaseFilter ? (isPersonal ? "pattern filter or " : isPocket || isIpo ? "Show filter or " : "phase/stage or ") : ""}price and volume bounds set above.
+          the {hasPhaseFilter ? (isPersonal ? "pattern filter or " : isPocket || isIpo || isShakeout ? "Show filter or " : "phase/stage or ") : ""}price and volume bounds set above.
         </EmptyState>
       ) : data.rows.length === 0 ? (
         <EmptyState>
@@ -811,6 +880,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
             : isPersonal
             ? `No stock had weekly RSI above 50, a close above the 30-week MA and RS above 0 together, as of ${data.asOf}.`
+            : isShakeout
+            ? `No stock in an uptrend had a fresh shakeout below its base low or 50 DMA that it has since reclaimed, as of ${data.asOf}.`
             : isIpo
             ? `No recent listing was crossing or within 5% of its IPO price or listing-day high as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
@@ -1092,6 +1163,30 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   {isPocket && (
                     <SortableTh label="Stop / Risk" sortKey="riskPct" sort={sort} onSort={onSort} title="Stop at the pivot day's low, and the % from the close down to it" />
                   )}
+                  {isShakeout && (
+                    <SortableTh label="Status" sortKey="skSort" sort={sort} onSort={onSort} align="left" title="Grade from the evidence score — A = 5+ of 7, B = 3–4, C = under 3. Watch = broke the level but hasn't reclaimed it yet." />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Level" sortKey="skLevel" sort={sort} onSort={onSort} title="The support that was undercut — the base low, or the 50 DMA (current value)" />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Shakeout" sortKey="skShakeoutDate" sort={sort} onSort={onSort} title="Day the level broke, and how far below it the shakeout low went" />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Reclaimed" sortKey="skReclaimDate" sort={sort} onSort={onSort} title="First close back above the level, and how many sessions it took" />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Evidence" sortKey="skStrength" sort={sort} onSort={onSort} title="How many of the 7 evidence checks pass — click the row for each one" />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Deliv. shift" sortKey="skReclaimDelivery" sort={sort} onSort={onSort} title="Delivery % on the shakeout day → on the reclaim day. Rising delivery on the reclaim suggests shares moving to holders who take delivery." />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="To pivot" sortKey="skToPivotPct" sort={sort} onSort={onSort} title="How far the base high (the breakout level for the next move) is above the close" />
+                  )}
+                  {isShakeout && (
+                    <SortableTh label="Stop / Risk" sortKey="skRiskPct" sort={sort} onSort={onSort} title="Stop at the shakeout low — a close below it means the shakeout failed" />
+                  )}
                   {showMarketCap && <SortableTh label="Market Cap" sortKey="marketCapCr" sort={sort} onSort={onSort} />}
                   {showAppearances && (
                     <SortableTh
@@ -1116,7 +1211,9 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       style={{ borderColor: "var(--border)" }}
                       onClick={expandable ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
                       title={
-                        isWeinstein
+                        isShakeout
+                          ? "Click for the evidence behind this shakeout"
+                          : isWeinstein
                           ? "Click for the full stage journey"
                           : expandable
                           ? "Click for every entry point both methods give, and the stage journey"
@@ -1530,6 +1627,73 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           )}
                         </td>
                       )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-left">
+                          <ShakeoutStatusCell row={r} />
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          ₹{fmt(r.skLevel)}
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {r.skLevelType}
+                          </span>
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.skShakeoutDate ?? "—"}
+                          <span className="block text-[10px]" style={{ color: "var(--loss)" }}>
+                            −{fmt(r.skUndercutPct, 1)}% under
+                          </span>
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.skReclaimDate ?? "—"}
+                          {r.skSessionsToReclaim != null && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              {r.skSessionsToReclaim === 0 ? "same session" : `${r.skSessionsToReclaim} session${r.skSessionsToReclaim === 1 ? "" : "s"}`}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: "var(--accent)" }}
+                          title={r.skChecks?.map((c) => `${c.pass ? "✓" : "✗"} ${c.label} — ${c.detail}`).join("\n")}
+                        >
+                          {r.skStrength}/{r.skStrengthOf}
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.skShakeDelivery == null && r.skReclaimDelivery == null
+                            ? "—"
+                            : `${r.skShakeDelivery == null ? "—" : `${fmt(r.skShakeDelivery, 0)}%`} → ${r.skReclaimDelivery == null ? "—" : `${fmt(r.skReclaimDelivery, 0)}%`}`}
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.skToPivotPct == null ? "—" : r.skToPivotPct > 0 ? `${fmt(r.skToPivotPct, 1)}%` : "above"}
+                          {r.skPivot != null && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              ₹{fmt(r.skPivot)}
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {isShakeout && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {r.skStop == null ? "—" : `₹${fmt(r.skStop)}`}
+                          {r.skRiskPct != null && (
+                            <span className="block text-[10px]" style={{ color: "var(--loss)" }}>
+                              −{fmt(r.skRiskPct, 1)}%
+                            </span>
+                          )}
+                        </td>
+                      )}
                       {showMarketCap && (
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
                           {fmtCap(r.marketCapCr)}
@@ -1561,6 +1725,13 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       <tr style={{ background: "var(--surface-2)" }}>
                         <td colSpan={30} className="p-0">
                           <StageEntriesPanel row={r} />
+                        </td>
+                      </tr>
+                    )}
+                    {isShakeout && isOpen && (
+                      <tr style={{ background: "var(--surface-2)" }}>
+                        <td colSpan={30} className="px-4 py-3">
+                          <ShakeoutEvidencePanel row={r} />
                         </td>
                       </tr>
                     )}

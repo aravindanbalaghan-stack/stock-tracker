@@ -33,6 +33,7 @@ import { analyzePersonalLearning, PL } from "@/lib/personalLearning";
 import { pocketPivotStage1, pocketPivotStage2 } from "@/lib/pocketPivot";
 import { analyzeIpoBase, IPO_STATUS } from "@/lib/ipoBase";
 import { getIssuePrices } from "@/lib/ipoIssuePrices";
+import { shakeoutPrefilter, analyzeShakeout } from "@/lib/shakeout";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -188,6 +189,13 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
         ppStage1.set(symbol, sig);
         return true;
       });
+    }
+
+    if (screen === "shakeout") {
+      // Cheap pass: a fresh 10-session low in the last 15 sessions that
+      // price has since climbed back above (or is still within 10% of).
+      // The real base / 50-DMA test needs 200+ sessions — Yahoo, below.
+      candidates = universe.filter(({ series }) => shakeoutPrefilter(series));
     }
 
     if (screen === "gap-up") {
@@ -422,6 +430,13 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
         Object.assign(row, pp);
       }
 
+      if (screen === "shakeout") {
+        if (!hist?.bars?.length) continue;
+        const sk = analyzeShakeout({ bars: hist.bars, series, todayDate: latest.date });
+        if (!sk) continue;
+        Object.assign(row, sk);
+      }
+
       if (screen === "stage-2" || screen === "wyckoff") {
         if (!hist?.bars?.length) continue;
         const stage = analyzeStage2(hist.bars, benchmarkBars, { asOfEpoch: asOfCutoff });
@@ -550,6 +565,8 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
       rows.sort(
         (a, b) => (a.ppGrade < b.ppGrade ? -1 : a.ppGrade > b.ppGrade ? 1 : 0) || (b.volVsDownVol ?? 0) - (a.volVsDownVol ?? 0)
       );
+    } else if (screen === "shakeout") {
+      rows.sort((a, b) => b.skSort - a.skSort);
     } else if (screen === "ipo-base") {
       rows.sort((a, b) => a.ipoStatusRank - b.ipoStatusRank || (b.vsListingHighPct ?? 0) - (a.vsListingHighPct ?? 0));
     } else {
