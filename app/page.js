@@ -47,6 +47,9 @@ function PageInner() {
   const [meta, setMeta] = useState(() => loadWatchlistMeta());
   const [quotes, setQuotes] = useState([]);
   const [accumulation, setAccumulation] = useState({});
+  // Session the bhavcopy-based Watchlist columns (turnover, vol vs 30D,
+  // delivery %, accumulation) were read from.
+  const [accumulationAsOf, setAccumulationAsOf] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -141,7 +144,10 @@ function PageInner() {
         const res = await fetch(`/api/watchlist-accumulation?symbols=${encodeURIComponent(symbols.join(","))}`);
         if (!res.ok) return;
         const json = await res.json();
-        if (!cancelled) setAccumulation(json.results ?? {});
+        if (!cancelled) {
+          setAccumulation(json.results ?? {});
+          setAccumulationAsOf(json.asOf ?? null);
+        }
       } catch {
         /* accumulation status is a nice-to-have — the rest of the watchlist still works */
       }
@@ -352,6 +358,7 @@ function PageInner() {
                   quotes={quotes}
                   meta={meta}
                   accumulation={accumulation}
+                  metricsAsOf={accumulationAsOf}
                   onRemove={handleRemove}
                   onNotesChange={handleNotesChange}
                   onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}

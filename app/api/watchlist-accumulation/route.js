@@ -46,6 +46,12 @@ export async function GET(request) {
         inAccumulation,
         daysOfAccumulation: metrics?.daysOfAccumulation ?? null,
         accumulationWindowDays: metrics?.accumulationWindowDays ?? null,
+        // Latest session's bhavcopy figures for the Watchlist columns.
+        // Delivery % only exists in the end-of-day file, so all three come
+        // from the same session to stay comparable with each other.
+        turnoverCr: metrics?.turnoverCr ?? null,
+        volumeRatio30d: metrics?.volumeRatio ?? null,
+        deliveryPct: metrics?.deliveryPct ?? null,
       };
     }
 

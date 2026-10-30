@@ -7,6 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { StageTag } from "@/components/StageJourney";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { formatDayLabel } from "@/lib/periodLabel";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -258,6 +259,12 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                     <tr className="text-left border-b text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
                       <th className="py-2 pl-4 pr-2 font-medium">#</th>
                       <th className="py-2 px-2 font-medium">Symbol</th>
+                      <th
+                        className="py-2 px-2 font-medium text-right"
+                        title="First session of the stock's current run on this list. Days when the Home tab wasn't opened aren't logged and are skipped."
+                      >
+                        First shown
+                      </th>
                       <th className="py-2 px-2 font-medium text-right">Close</th>
                       <th className="py-2 px-2 font-medium text-right" title="Blended percentile score, 0–100">Score</th>
                       <th className="py-2 px-2 font-medium">Why it ranks</th>
@@ -278,7 +285,18 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                             {p.rank}
                           </td>
                           <td className="py-2.5 px-2">
-                            <SymbolLink symbol={p.symbol} className="text-sm" />
+                            <span className="flex items-center gap-1.5 flex-wrap">
+                              <SymbolLink symbol={p.symbol} className="text-sm" />
+                              {p.daysShown > 1 && (
+                                <span
+                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap"
+                                  style={{ color: "var(--accent)", background: "var(--surface-2)" }}
+                                  title={`On the ${h.label.toLowerCase()} list for ${p.daysShown} logged sessions in a row, since ${p.firstShown}`}
+                                >
+                                  {p.daysShown} days
+                                </span>
+                              )}
+                            </span>
                             <span className="flex items-center gap-1 mt-1 flex-wrap">
                               <StageTag stage={p.stage} />
                               {p.alsoIn.map((x) => (
@@ -292,6 +310,24 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                                 </span>
                               ))}
                             </span>
+                          </td>
+                          <td className="py-2.5 px-2 text-right font-mono text-xs whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                            {p.firstShown == null ? (
+                              "—"
+                            ) : p.daysShown > 1 ? (
+                              formatDayLabel(p.firstShown)
+                            ) : (
+                              <span style={{ color: "var(--gain)" }}>New today</span>
+                            )}
+                            {p.firstEverShown && p.firstEverShown < p.firstShown && (
+                              <span
+                                className="block text-[10px]"
+                                style={{ color: "var(--text-faint)" }}
+                                title="It dropped off this list at some point and came back"
+                              >
+                                first seen {formatDayLabel(p.firstEverShown)}
+                              </span>
+                            )}
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
                             ₹{fmt(p.close)}

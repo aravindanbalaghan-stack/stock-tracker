@@ -22,7 +22,7 @@ function fmtVolume(n) {
 // How many <SortableTh>/<th> cells the header row has — the date-group
 // separator row spans all of them. Kept as a named constant rather than a
 // magic number so a future column addition is an obvious two-line diff.
-const COLUMN_COUNT = 10;
+const COLUMN_COUNT = 13;
 
 function formatGroupDate(dateKey) {
   if (!dateKey) return "Added before this was tracked";
@@ -131,6 +131,26 @@ function AccumulationCell({ status }) {
   );
 }
 
+// Turnover in ₹ Cr, compact: 0.84 Cr / 12.3 Cr / 1,240 Cr.
+function fmtTurnover(cr) {
+  if (cr == null) return "—";
+  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
+  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
+  return `₹${cr.toFixed(2)} Cr`;
+}
+
+function VolRatioCell({ ratio }) {
+  if (ratio == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  const color = ratio >= 2 ? "var(--accent)" : ratio >= 1 ? "var(--text)" : "var(--text-faint)";
+  return <span style={{ color }}>{ratio.toFixed(2)}×</span>;
+}
+
+function DeliveryCell({ pct }) {
+  if (pct == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  const color = pct >= 70 ? "var(--tier-high)" : pct >= 50 ? "var(--tier-mid)" : "var(--text-muted)";
+  return <span style={{ color }}>{pct.toFixed(1)}%</span>;
+}
+
 function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
@@ -195,6 +215,15 @@ function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail 
       <td className="py-3 px-2 text-right font-mono text-xs hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>
         {fmtVolume(quote.volume)}
       </td>
+      <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell" style={{ color: "var(--text-muted)" }}>
+        {fmtTurnover(accumulation?.turnoverCr)}
+      </td>
+      <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell">
+        <VolRatioCell ratio={accumulation?.volumeRatio30d} />
+      </td>
+      <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell">
+        <DeliveryCell pct={accumulation?.deliveryPct} />
+      </td>
       <td className="py-3 px-2 hidden lg:table-cell">
         <AccumulationCell status={accumulation} />
       </td>
@@ -215,8 +244,15 @@ function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail 
   );
 }
 
-export default function WatchlistTable({ quotes, meta, accumulation, onRemove, onNotesChange, onOpenDetail }) {
-  const { sorted, sort, onSort } = useSortableRows(quotes, null, "desc");
+export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf, onRemove, onNotesChange, onOpenDetail }) {
+  // The bhavcopy-based columns live in `accumulation`, keyed by symbol —
+  // merged onto each row here so they can be sorted like any quote field.
+  const rows = quotes.map((q) => {
+    const a = accumulation?.[q.symbol];
+    return a ? { ...q, turnoverCr: a.turnoverCr, volumeRatio30d: a.volumeRatio30d, deliveryPct: a.deliveryPct } : q;
+  });
+  const { sorted, sort, onSort } = useSortableRows(rows, null, "desc");
+  const sessionNote = metricsAsOf ? ` — NSE end-of-day figures for ${metricsAsOf}` : " — NSE end-of-day figures";
   const [groupByDate, setGroupByDate] = usePersistentState("watchlist.groupByDate", false);
 
   if (quotes.length === 0) {
@@ -281,6 +317,30 @@ export default function WatchlistTable({ quotes, meta, accumulation, onRemove, o
                 Day range
               </th>
               <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} className="hidden lg:table-cell" />
+              <SortableTh
+                label="Turnover"
+                sortKey="turnoverCr"
+                sort={sort}
+                onSort={onSort}
+                className="hidden md:table-cell"
+                title={`Traded value for the session${sessionNote}`}
+              />
+              <SortableTh
+                label="Vol vs 30D"
+                sortKey="volumeRatio30d"
+                sort={sort}
+                onSort={onSort}
+                className="hidden md:table-cell"
+                title={`Session volume ÷ average daily volume of the 30 sessions before it${sessionNote}`}
+              />
+              <SortableTh
+                label="Deliv. %"
+                sortKey="deliveryPct"
+                sort={sort}
+                onSort={onSort}
+                className="hidden md:table-cell"
+                title={`Share of traded quantity marked for delivery${sessionNote}`}
+              />
               <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider hidden lg:table-cell" style={{ color: "var(--text-faint)" }} title="Delivery-based accumulation read — see the Delivery tab for the exact rule">
                 Accum.
               </th>

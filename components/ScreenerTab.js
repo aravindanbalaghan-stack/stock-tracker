@@ -1197,6 +1197,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       title="How many trading days in the last 30 this stock has shown up in Pocket Pivot — hover a row's count for the exact dates. Only counts days since this tracking started; older history isn't available."
                     />
                   )}
+                  {data.sinceLatestDate && (
+                    <SortableTh
+                      label="Since"
+                      sortKey="sincePct"
+                      sort={sort}
+                      onSort={onSort}
+                      title={`Move from this session's close to the close on ${data.sinceLatestDate}`}
+                    />
+                  )}
                   <th className="py-2 pl-2 pr-4"></th>
                 </tr>
               </thead>
@@ -1710,6 +1719,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           }
                         >
                           {r.appearanceCount30d == null ? "—" : r.appearanceCount30d}
+                        </td>
+                      )}
+                      {data.sinceLatestDate && (
+                        <td
+                          className="py-2.5 px-2 text-right font-mono text-xs"
+                          style={{ color: r.sincePct == null ? "var(--text-faint)" : r.sincePct >= 0 ? "var(--gain)" : "var(--loss)" }}
+                          title={r.closeNow != null ? `₹${fmt(r.closeNow)} on ${data.sinceLatestDate}` : undefined}
+                        >
+                          {r.sincePct == null ? "—" : `${r.sincePct >= 0 ? "+" : ""}${fmt(r.sincePct, 1)}%`}
                         </td>
                       )}
                       <td className="py-2.5 pl-2 pr-4 text-right">

@@ -706,7 +706,11 @@ async function prepareWindow(asOfDate, { live = false } = {}) {
     universe.push({ symbol, series: symbolSeries(symbol, days) });
   }
 
-  return { days, universe, asOfCutoff, actualDate: latest.date, liveInfo, isLive: !!latest.isLive };
+  // The most recent published session, so a historical run can show how
+  // each match has moved since the chosen date.
+  const latestDay = all[all.length - 1];
+
+  return { days, universe, asOfCutoff, actualDate: latest.date, liveInfo, isLive: !!latest.isLive, latestDay };
 }
 
 /**
@@ -924,7 +928,25 @@ export async function GET(request) {
   try {
     const prepared = await prepareWindow(asOfDate, { live: wantLive });
     if (prepared.error) return Response.json({ error: prepared.error }, { status: 503 });
-    const { days, universe, asOfCutoff, actualDate, liveInfo, isLive } = prepared;
+    const { days, universe, asOfCutoff, actualDate, liveInfo, isLive, latestDay } = prepared;
+
+    // On a past-date run, attach today's close and the move since that
+    // date to every row — what happened next is the point of looking back.
+    const withSince = (result) => {
+      if (!asOfDate || !latestDay || latestDay.date <= actualDate || !result?.rows) return result;
+      return {
+        ...result,
+        sinceLatestDate: latestDay.date,
+        rows: result.rows.map((r) => {
+          const now = latestDay.bySymbol.get(r.symbol)?.close ?? null;
+          return {
+            ...r,
+            closeNow: now,
+            sincePct: now && r.close ? Math.round((now / r.close - 1) * 10000) / 100 : null,
+          };
+        }),
+      };
+    };
 
     // The as-of date the caller asked for may not be a trading day; report
     // the session actually used so the UI can say so.
@@ -946,7 +968,7 @@ export async function GET(request) {
     }
 
     if (!isConfluence) {
-      const result = await runScreen({ screen, days, universe, asOfCutoff, isLive, recordMembership });
+      const result = withSince(await runScreen({ screen, days, universe, asOfCutoff, isLive, recordMembership }));
       return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 

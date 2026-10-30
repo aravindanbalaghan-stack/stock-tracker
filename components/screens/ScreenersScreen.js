@@ -4,6 +4,7 @@ import { useState } from "react";
 import BreakoutsTab from "@/components/BreakoutsTab";
 import WmaScreenTab from "@/components/WmaScreenTab";
 import ScreenerTab from "@/components/ScreenerTab";
+import LookbackTab from "@/components/LookbackTab";
 import { SubNav } from "@/components/ui/Chrome";
 import { SCREENS, SCREEN_ORDER, CONFLUENCE_SCREEN, CONFLUENCE_DEF, ALL_SCREEN_IDS } from "@/lib/screens";
 
@@ -21,6 +22,9 @@ const VIEWS = [
   ...BUILT_IN,
   ...SCREEN_ORDER.map((id) => ({ id, label: SCREENS[id].label })),
   { id: CONFLUENCE_SCREEN, label: CONFLUENCE_DEF.label },
+  // Not a screen of its own — past sessions of Shakeout + the Home tab's
+  // Odds-ranked picks, with the move since.
+  { id: "lookback", label: "Lookback (10d)" },
 ];
 
 export default function ScreenersScreen({ onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
@@ -36,6 +40,7 @@ export default function ScreenersScreen({ onAddToWatchlist, watchlistSymbols, on
         <BreakoutsTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
       )}
       {view === "wma" && <WmaScreenTab />}
+      {view === "lookback" && <LookbackTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />}
 
       {ALL_SCREEN_IDS.includes(view) && (
         <ScreenerTab
