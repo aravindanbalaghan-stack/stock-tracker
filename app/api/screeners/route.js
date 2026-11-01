@@ -34,6 +34,7 @@ import { pocketPivotStage1, pocketPivotStage2 } from "@/lib/pocketPivot";
 import { analyzeIpoBase, IPO_STATUS } from "@/lib/ipoBase";
 import { getIssuePrices } from "@/lib/ipoIssuePrices";
 import { shakeoutPrefilter, analyzeShakeout } from "@/lib/shakeout";
+import { analyzeTrendlineBreakout, TLB, TLB_STAGE_INFO } from "@/lib/trendlineBreakout";
 
 export const dynamic = "force-dynamic";
 // Each screen fetches ~31 bhavcopy files (cached per-day for a week) and
@@ -800,6 +801,104 @@ async function runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMe
 }
 
 /**
+ * Trendline breakout tab — weekly breakouts above a long falling trendline
+ * out of a base, judged against the 30-week MA (see lib/trendlineBreakout.js).
+ * Weekly bars only, from the same cached 2y weekly fetch the Weinstein and
+ * Personal learning screens use, so it adds no extra Yahoo traffic when
+ * those have run recently.
+ */
+async function runTrendlineBreakoutScreen({ days, universe, asOfCutoff, isLive, recordMembership = false }) {
+  const latest = days[days.length - 1];
+  const resolved = await resolveWideUniverse(universe);
+  const bySymbol = new Map(universe.map((u) => [u.symbol, u]));
+  const inUniverse = resolved.symbols.map((s) => bySymbol.get(s)).filter(Boolean);
+
+  const weekly = await fetchWeeklyOHLCVBatch(
+    inUniverse.map((u) => u.symbol),
+    { concurrency: STAGE_WEEKLY_CONCURRENCY }
+  );
+
+  const rows = [];
+  let extendedCount = 0;
+  for (const { symbol, series } of inUniverse) {
+    const bars = weekly.get(symbol);
+    const truncated = bars ? bars.filter((b) => b.t <= asOfCutoff) : null;
+    const hit = analyzeTrendlineBreakout(truncated);
+    if (!hit) continue;
+    if (hit.status === "extended") extendedCount++;
+
+    const row = baseRow(symbol, series);
+    const stageKey = hit.status === "extended" ? "extended" : hit.stage;
+    const info = TLB_STAGE_INFO[stageKey];
+    row.tlbStatus = hit.status;
+    row.tlbStage = stageKey;
+    row.tlbStageLabel = info.name;
+    row.tlbTone = info.tone;
+    row.tlbScore = hit.score;
+    row.tlb = hit;
+    row.wma30 = hit.ma30;
+    row.entryPrice = hit.trendlineAtBreakout;
+    row.entryDate = hit.breakoutWeekOf;
+    row.weeksSinceBreakout = hit.weeksSinceBreakout;
+    row.extensionPct = hit.extensionPct;
+    const maText = hit.ma30Rising
+      ? `30-week MA rising (${hit.ma30SlopePct}% over 4 weeks)`
+      : `30-week MA flattening (${hit.ma30SlopePct}% over 4 weeks)`;
+    row.reason =
+      `Closed above a ${hit.downtrendWeeks}-week falling trendline (${hit.trendlineTouches} touches) in the week of ` +
+      `${hit.breakoutWeekOf} on ${hit.breakoutVolRatio}× volume, after a ${hit.drawdownPct}% decline from ₹${fmt2(hit.peakHigh)}` +
+      `${hit.shakeout ? `, with a shakeout under ₹${fmt2(hit.supportLevel)} that was reclaimed` : ""}. ${maText}. ` +
+      `Stop under the base low ₹${fmt2(hit.baseLow)}.`;
+    rows.push(row);
+  }
+
+  if (isLive) {
+    const progress = sessionProgress();
+    for (const row of rows) {
+      row.isLive = true;
+      row.deliveryIsPreviousSession = true;
+      row.projectedVolume = progress > 0.05 && row.volume != null ? Math.round(row.volume / progress) : null;
+    }
+  }
+
+  // Actionable first (not extended), then by score.
+  rows.sort(
+    (a, b) =>
+      (a.tlbStatus === "extended") - (b.tlbStatus === "extended") ||
+      (b.tlbScore ?? 0) - (a.tlbScore ?? 0)
+  );
+
+  if (recordMembership) {
+    try {
+      await recordScreenSnapshot(
+        "trendline-breakout",
+        latest.date,
+        rows.filter((r) => r.tlbStatus !== "extended").map((r) => r.symbol)
+      );
+    } catch {
+      // Non-fatal.
+    }
+  }
+
+  return {
+    screen: "trendline-breakout",
+    label: SCREENS["trendline-breakout"].label,
+    description: SCREENS["trendline-breakout"].description,
+    asOf: latest.date,
+    windowFirstDate: days[0]?.date ?? null,
+    universeSize: universe.length,
+    stageUniverseSource: resolved.source,
+    stageWeeklyScanned: inUniverse.length,
+    resultCount: rows.length,
+    notes: [
+      resolved.sourceLabel,
+      `${extendedCount} of ${rows.length} are more than ${TLB.maxExtensionPct}% above the breakout level and tagged Extended.`,
+    ],
+    rows,
+  };
+}
+
+/**
  * Personal learning tab — weekly RSI > 50, above the 30-week MA, and
  * Relative Strength vs NIFTY 500 above 0, with bullish weekly candlestick
  * patterns attached (see lib/personalLearning.js). Weekly bars only, from
@@ -964,6 +1063,11 @@ export async function GET(request) {
 
     if (screen === "weinstein") {
       const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMembership });
+      return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
+    }
+
+    if (screen === "trendline-breakout") {
+      const result = withSince(await runTrendlineBreakoutScreen({ days, universe, asOfCutoff, isLive, recordMembership }));
       return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 

@@ -145,3 +145,22 @@ refuses to save at all — see "Managing sectors" above).
 
 Prices are for personal tracking only and may be delayed relative to the
 exchange. Do not use this app as the sole basis for trading decisions.
+
+## Trendline breakout screen
+
+Screeners → **Trendline breakout** finds weekly breakouts above a long
+falling trendline out of a base, judged against the 30-week MA: a spike
+into a peak, a 20+ week downtrend with at least 3 trendline touches, a base
+(ideally with a shakeout under support), then a weekly close 2%+ above the
+line on 1.5×+ volume while price is at or above a rising or flattening
+30-week MA. Rows are tagged Fresh breakout / Retest / Follow-through, or
+Extended when more than 20% above the breakout level, and scored out of 100.
+Click a row for the peak, base, breakout, MA and stop levels.
+
+- Logic: `lib/trendlineBreakout.js` (all thresholds in `TLB` at the top)
+- Wiring: `runTrendlineBreakoutScreen` in `app/api/screeners/route.js`
+- Self-check: `node --no-warnings scripts/test-trendline-breakout.mjs`
+  (synthetic charts + 1,500 randomised runs)
+- Uses the same cached 2-year weekly Yahoo bars and ~500-stock universe as
+  the Weinstein screen. BSE-only stocks are not covered: the app's universe
+  comes from NSE bhavcopy.

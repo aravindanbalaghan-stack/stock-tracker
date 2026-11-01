@@ -393,6 +393,45 @@ function ShakeoutEvidencePanel({ row }) {
   );
 }
 
+// Trendline breakout tab: the levels behind a match, laid out as the chart
+// would be read left to right — peak, downtrend, base, breakout, now.
+function TrendlineBreakoutPanel({ row }) {
+  const t = row.tlb;
+  if (!t) return null;
+  const items = [
+    ["Peak", `₹${fmt(t.peakHigh)}`, `wk of ${t.peakWeekOf}${t.priorSpikePct != null ? ` · +${t.priorSpikePct}% spike into it` : ""}`],
+    ["Downtrend", `${t.downtrendWeeks} weeks`, `${t.trendlineTouches} touches · line ${t.trendlineSlopePctPerWeek}%/wk`],
+    ["Base low", `₹${fmt(t.baseLow)}`, `wk of ${t.baseLowWeekOf} · −${t.drawdownPct}% from peak`],
+    [
+      "Shakeout",
+      t.shakeout ? `Yes, under ₹${fmt(t.supportLevel)}` : "No",
+      t.shakeout ? "Support undercut, then reclaimed within 4 weeks" : "No undercut-and-reclaim of support",
+    ],
+    ["Breakout", `₹${fmt(t.trendlineAtBreakout)} line`, `wk of ${t.breakoutWeekOf} · close ₹${fmt(t.breakoutClose)} · ${t.breakoutVolRatio}× vol`],
+    ["Trendline now", `₹${fmt(t.trendlineNow)}`, `${t.weeksSinceBreakout} week${t.weeksSinceBreakout === 1 ? "" : "s"} since breakout`],
+    ["30-week MA", `₹${fmt(t.ma30)}`, `${t.ma30Rising ? "Rising" : "Flattening"} · ${t.ma30SlopePct}% over 4 weeks`],
+    ["From breakout", `${t.extensionPct > 0 ? "+" : ""}${t.extensionPct}%`, t.status === "extended" ? "Extended — past the easy part" : "Within 20% of the line"],
+    ["Stop", `₹${fmt(t.stopLevel)}`, "A weekly close under the base low ends the setup"],
+  ];
+  return (
+    <div className="grid gap-x-6 gap-y-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
+      {items.map(([label, value, sub]) => (
+        <div key={label}>
+          <span className="block text-[10px] uppercase tracking-wide" style={{ color: "var(--text-faint)" }}>
+            {label}
+          </span>
+          <span className="block font-mono text-sm" style={{ color: "var(--text)" }}>
+            {value}
+          </span>
+          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+            {sub}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -484,14 +523,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
   const isPocket = screen === "pocket-pivot";
   const isIpo = screen === "ipo-base";
   const isShakeout = screen === "shakeout";
+  const isTrendline = screen === "trendline-breakout";
   // All three of the new tabs show their own "Reason added" / "Entry"
   // columns instead of the generic 30WMA + debut columns, per the
   // requested column set.
-  const hideGenericCols = isWyckoff || isWeinstein || isTriple;
+  const hideGenericCols = isWyckoff || isWeinstein || isTriple || isTrendline;
   // Screens whose rows carry a stage journey — previous stage, changes
   // inside the stage, and the invalidation level.
   const showJourney = isStage2 || isWyckoff || isWeinstein;
-  const expandable = isStage2 || isWyckoff || isTriple || isWeinstein || isShakeout;
+  const expandable = isStage2 || isWyckoff || isTriple || isWeinstein || isShakeout || isTrendline;
 
   const filteredRows = applyNumericFilters(data?.rows, numeric, { priceKey: "close", volumeKey: "volume" });
   const phaseFilteredRows =
@@ -876,6 +916,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
             ? `No stock has a recent Wyckoff Aggressive or Conservative entry as of ${data.asOf}.`
             : isWeinstein
             ? `No stock entered a new Weinstein stage in the last few weeks, as of ${data.asOf}.`
+            : isTrendline
+            ? `No stock closed above a long falling trendline out of a base, on volume, in the last 10 weeks as of ${data.asOf}.`
             : isTriple
             ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
             : isPersonal
@@ -993,6 +1035,44 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       sort={sort}
                       onSort={onSort}
                       title="Weekly close at the moment the stage changed"
+                    />
+                  )}
+                  {isTrendline && (
+                    <SortableTh
+                      label="Stage"
+                      sortKey="tlbStage"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="Fresh breakout, Retest (back near the trendline or 30-week MA), Follow-through, or Extended (more than 20% above the breakout level)"
+                    />
+                  )}
+                  {isTrendline && (
+                    <SortableTh
+                      label="Reason added"
+                      sortKey="tlbScore"
+                      sort={sort}
+                      onSort={onSort}
+                      align="left"
+                      title="The trendline, breakout, volume and base behind this match"
+                    />
+                  )}
+                  {isTrendline && (
+                    <SortableTh
+                      label="Breakout"
+                      sortKey="entryPrice"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Trendline level in the breakout week, and the week of the breakout"
+                    />
+                  )}
+                  {isTrendline && (
+                    <SortableTh
+                      label="Score"
+                      sortKey="tlbScore"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Out of 100 — how closely the shape matches: touches, volume, shakeout, recency, prior spike, rising MA, decline depth"
                     />
                   )}
                   {isTriple && (
@@ -1224,6 +1304,8 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           ? "Click for the evidence behind this shakeout"
                           : isWeinstein
                           ? "Click for the full stage journey"
+                          : isTrendline
+                          ? "Click for the trendline, base and breakout levels"
                           : expandable
                           ? "Click for every entry point both methods give, and the stage journey"
                           : undefined
@@ -1417,6 +1499,46 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           <span className="block text-[10px]" style={{ color: "var(--text-faint)" }} title={r.entryWeekOf ? `Week of ${r.entryWeekOf}` : undefined}>
                             {r.entryDate}
                           </span>
+                        </td>
+                      )}
+                      {isTrendline && (
+                        <td className="py-2.5 px-2 text-left">
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
+                            style={{
+                              borderColor: r.tlbTone === "bullish" ? "var(--gain)" : "var(--border)",
+                              color: r.tlbTone === "bullish" ? "var(--gain)" : "var(--text-muted)",
+                            }}
+                          >
+                            {r.tlbStageLabel}
+                          </span>
+                          {r.tlbStatus === "extended" && (
+                            <span className="block text-[10px] mt-1" style={{ color: "var(--text-faint)" }}>
+                              +{r.extensionPct}% vs line
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {isTrendline && (
+                        <td className="py-2.5 px-2 text-left max-w-[340px]">
+                          <p className="text-[11px] leading-snug" style={{ color: "var(--text-faint)" }}>
+                            {r.reason}
+                          </p>
+                        </td>
+                      )}
+                      {isTrendline && (
+                        <td className="py-2.5 px-2 text-right">
+                          <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
+                            ₹{fmt(r.entryPrice)}
+                          </span>
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            wk of {r.entryDate}
+                          </span>
+                        </td>
+                      )}
+                      {isTrendline && (
+                        <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
+                          {r.tlbScore}
                         </td>
                       )}
                       {isTriple && (
@@ -1757,6 +1879,13 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                       <tr style={{ background: "var(--surface-2)" }}>
                         <td colSpan={30} className="px-4 py-3">
                           <StageJourneyPanel journey={r.journey} />
+                        </td>
+                      </tr>
+                    )}
+                    {isTrendline && isOpen && (
+                      <tr style={{ background: "var(--surface-2)" }}>
+                        <td colSpan={30} className="px-4 py-3">
+                          <TrendlineBreakoutPanel row={r} />
                         </td>
                       </tr>
                     )}
