@@ -13,6 +13,7 @@ import ScreenersScreen from "@/components/screens/ScreenersScreen";
 import HoldingsTab from "@/components/HoldingsTab";
 import SectorManagerTab from "@/components/SectorManagerTab";
 import HomeTab from "@/components/HomeTab";
+import TradingSuggestionsTab from "@/components/TradingSuggestionsTab";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
@@ -31,6 +32,7 @@ const TABS = [
   { id: "holdings", label: "Holdings" },
   { id: "market", label: "Market" },
   { id: "delivery", label: "Delivery" },
+  { id: "trading", label: "Trading Suggestions" },
   { id: "screeners", label: "Screeners" },
   { id: "sectors", label: "Sectors" },
 ];
@@ -386,6 +388,7 @@ function PageInner() {
           <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
         {activeTab === "sectors" && <SectorManagerTab />}
+        {activeTab === "trading" && <TradingSuggestionsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
         {activeTab === "screeners" && (
           <ScreenersScreen
             onAddToWatchlist={handleAdd}
