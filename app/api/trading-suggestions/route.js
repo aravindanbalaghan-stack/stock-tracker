@@ -41,12 +41,13 @@ export async function GET(request) {
   const section = searchParams.get("section") === "banknifty" ? "banknifty" : "stocks";
   const dateParam = searchParams.get("date");
   const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : null;
+  const minWin = Number(searchParams.get("bar")) / 100 || undefined;
 
   try {
     if (section === "banknifty") {
       const { analysis, lot } = await loadBankNifty();
       if (!analysis) return Response.json({ error: "Couldn't load BANKNIFTY history from Yahoo" }, { status: 503 });
-      const result = buildSection([analysis], { date, isIndex: true, lots: { BANKNIFTY: lot } });
+      const result = buildSection([analysis], { date, isIndex: true, lots: { BANKNIFTY: lot }, minWin });
       return Response.json({ section, ...result, lotSize: lot });
     }
 
@@ -54,7 +55,7 @@ export async function GET(request) {
     if (!analyses.some(Boolean)) {
       return Response.json({ error: "Couldn't load price history for the F&O stocks" }, { status: 503 });
     }
-    const result = buildSection(analyses, { date, isIndex: false, lots: universe.lots });
+    const result = buildSection(analyses, { date, isIndex: false, lots: universe.lots, minWin });
     return Response.json({
       section,
       ...result,

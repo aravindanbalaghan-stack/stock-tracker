@@ -21,10 +21,10 @@ function signed(v, d = 2) {
 }
 const tone = (v) => (v == null ? "var(--text-faint)" : v > 0 ? "var(--gain)" : "var(--loss)");
 
-function useSection(section, date) {
+function useSection(section, date, bar) {
   // Results are keyed by the request so a date change shows the loading
   // state straight away without resetting state inside the effect.
-  const key = `${section}|${date}`;
+  const key = `${section}|${date}|${bar}`;
   const [loaded, setLoaded] = useState({ key: null, data: null, error: null });
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +32,7 @@ function useSection(section, date) {
       try {
         const qs = new URLSearchParams({ section });
         if (date) qs.set("date", date);
+        qs.set("bar", String(bar));
         const res = await fetch(`/api/trading-suggestions?${qs.toString()}`);
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Couldn't build suggestions");
@@ -43,7 +44,7 @@ function useSection(section, date) {
     return () => {
       cancelled = true;
     };
-  }, [section, date, key]);
+  }, [section, date, bar, key]);
   return loaded.key === key ? loaded : { data: null, error: null };
 }
 
@@ -102,13 +103,55 @@ function EvidencePanel({ data }) {
       </p>
       <StatLine label="Following these suggestions (walk-forward)" s={wf} highlight />
       <div className="mt-1">
-        <StatLine label="Every signal, no 80% filter" s={data.unfiltered} />
+        <StatLine label="Every signal, no win-rate filter" s={data.unfiltered} />
       </div>
-      {wf && wf.winRatePct < 80 && (
+      {wf && wf.winRatePct < data.minWinPct && (
         <p className="text-xs mt-2" style={{ color: "var(--tier-mid)" }}>
-          Out of sample, following only the suggestions that cleared the 80% bar at the time won {fmt(wf.winRatePct, 1)}% —
-          under 80%. Past win rates on a stock don&apos;t fully carry forward; treat the per-stock figures as an upper bound.
+          Out of sample, following only the suggestions that cleared the {data.minWinPct}% bar at the time won{" "}
+          {fmt(wf.winRatePct, 1)}% — under {data.minWinPct}%. Past win rates on a stock don&apos;t fully carry forward; treat the per-stock figures as an upper bound.
         </p>
+      )}
+      {data.bars?.length > 0 && (
+        <div className="mt-3 table-scroll">
+          <table className="text-xs border-collapse">
+            <thead>
+              <tr style={{ color: "var(--text-faint)" }}>
+                <th className="text-left pr-4 py-1 font-medium" title="Minimum past win rate a symbol+setup needed at the time of the signal">
+                  Bar
+                </th>
+                <th className="text-right pr-4 py-1 font-medium">Trades</th>
+                <th className="text-right pr-4 py-1 font-medium" title="Walk-forward — what following only signals that cleared this bar actually did">
+                  Won
+                </th>
+                <th className="text-right pr-4 py-1 font-medium">Avg / trade</th>
+                <th className="text-right pr-4 py-1 font-medium">Worst</th>
+                <th className="text-right py-1 font-medium" title="Sessions in the last year with at least one suggestion at this bar">
+                  Sessions with a suggestion
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.bars.map((b) => (
+                <tr key={b.bar} style={{ color: b.bar === data.minWinPct ? "var(--text)" : "var(--text-muted)" }}>
+                  <td className="pr-4 py-0.5">
+                    {b.bar}%{b.bar === data.minWinPct ? " ◂" : ""}
+                  </td>
+                  <td className="text-right pr-4 py-0.5 font-mono">{b.stats?.trades?.toLocaleString("en-IN") ?? 0}</td>
+                  <td className="text-right pr-4 py-0.5 font-mono">{b.stats ? `${fmt(b.stats.winRatePct, 1)}%` : "—"}</td>
+                  <td className="text-right pr-4 py-0.5 font-mono" style={{ color: tone(b.stats?.avgRetPct) }}>
+                    {signed(b.stats?.avgRetPct)}
+                  </td>
+                  <td className="text-right pr-4 py-0.5 font-mono" style={{ color: "var(--loss)" }}>
+                    {signed(b.stats?.worstPct)}
+                  </td>
+                  <td className="text-right py-0.5 font-mono">
+                    {b.sessionsWithSignal} / {b.sessionsInWindow}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       <details className="mt-2">
         <summary className="text-xs cursor-pointer" style={{ color: "var(--accent)" }}>
@@ -126,6 +169,46 @@ function EvidencePanel({ data }) {
           ))}
         </div>
       </details>
+    </div>
+  );
+}
+
+function NearMisses({ data, isIndex }) {
+  if (!data.signalsFired) {
+    return (
+      <EmptyState>
+        No setup fired on {isIndex ? "BANKNIFTY" : "any F&O stock"} on {formatDayLabel(data.date)}
+        {isIndex ? "" : ` (${data.symbolsTested} stocks checked)`}. If that wasn&apos;t a trading day, pick another date.
+      </EmptyState>
+    );
+  }
+  return (
+    <div className="rounded-[var(--radius)] border p-3" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <p className="text-xs mb-2" style={{ color: "var(--text-muted)" }}>
+        {data.signalsFired} signal{data.signalsFired === 1 ? "" : "s"} fired on {formatDayLabel(data.date)}, but none had a{" "}
+        {data.minWinPct}%+ record over {data.rules.minPriorTrades}+ earlier trades. Closest:
+      </p>
+      <table className="text-xs border-collapse w-full">
+        <tbody>
+          {data.nearMisses.map((m) => (
+            <tr key={`${m.symbol}|${m.setupLabel}`} style={{ color: "var(--text-muted)" }}>
+              <td className="py-0.5 pr-3 whitespace-nowrap">
+                <span style={{ color: "var(--text)" }}>{m.symbol}</span> <SideBadge side={m.side} />
+              </td>
+              <td className="py-0.5 pr-3 whitespace-nowrap">{m.setupLabel}</td>
+              <td className="py-0.5 pr-3 whitespace-nowrap font-mono">
+                {m.priorWinRate == null ? "—" : `${fmt(m.priorWinRate, 0)}% of ${m.priorTrades}`}
+              </td>
+              <td className="py-0.5 pr-3" style={{ color: "var(--tier-mid)" }}>
+                {m.why}
+              </td>
+              <td className="py-0.5 text-right font-mono whitespace-nowrap" style={{ color: tone(m.outcomePct) }}>
+                {m.status === "closed" ? `then ${signed(m.outcomePct)}` : ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -303,8 +386,8 @@ function SuggestionTable({ rows, isIndex, onAddToWatchlist, watchlistSymbols }) 
   );
 }
 
-function Section({ title, section, date, onDates, onAddToWatchlist, watchlistSymbols }) {
-  const { data, error } = useSection(section, date);
+function Section({ title, section, date, bar, onDates, onAddToWatchlist, watchlistSymbols }) {
+  const { data, error } = useSection(section, date, bar);
   const isIndex = section === "banknifty";
 
   useEffect(() => {
@@ -343,11 +426,7 @@ function Section({ title, section, date, onDates, onAddToWatchlist, watchlistSym
           <EvidencePanel data={data} />
 
           {data.suggestions.length === 0 ? (
-            <EmptyState>
-              Nothing cleared the bar on {formatDayLabel(data.date)} — no signal where this {isIndex ? "index" : "stock"}&apos;s own
-              record on that setup was {data.rules.minWinRatePct}%+ over at least {data.rules.minPriorTrades} trades. No trade is a
-              valid answer. (If {formatDayLabel(data.date)} wasn&apos;t a trading day, pick another date.)
-            </EmptyState>
+            <NearMisses data={data} isIndex={isIndex} />
           ) : (
             <SuggestionTable
               rows={data.suggestions}
@@ -378,6 +457,7 @@ function Section({ title, section, date, onDates, onAddToWatchlist, watchlistSym
 
 export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbols }) {
   const [date, setDate] = usePersistentState("tradingSuggestions.date", "");
+  const [bar, setBar] = usePersistentState("tradingSuggestions.bar", 80);
   const [meta, setMeta] = useState({});
 
   // Each section reports its latest date, browsable window and signal
@@ -439,6 +519,37 @@ export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbo
           Latest
         </button>
       )}
+      <select
+        value=""
+        onChange={(e) => e.target.value && setDate(e.target.value === latest ? "" : e.target.value)}
+        disabled={!signalDates.length}
+        className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+        style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+        title="Jump to a session that had at least one suggestion"
+      >
+        <option value="">{signalDates.length} sessions with suggestions…</option>
+        {[...signalDates].reverse().map((d) => (
+          <option key={d} value={d}>
+            {formatDayLabel(d)}
+          </option>
+        ))}
+      </select>
+      <label className="flex items-center gap-1.5 ml-1">
+        Min win rate
+        <select
+          value={bar}
+          onChange={(e) => setBar(Number(e.target.value))}
+          className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          title="Minimum past win rate (symbol + setup) for a signal to be shown. Compare the bars in the table under each section."
+        >
+          {[80, 75, 70, 65].map((b) => (
+            <option key={b} value={b}>
+              {b}%
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 
@@ -461,8 +572,8 @@ export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbo
           Three published short-term setups (Connors &amp; Alvarez: RSI(2) pullback, Cumulative RSI(2), Double 7s) are backtested
           on every F&amp;O stock (~5 years) and BANKNIFTY (10 years), long in uptrends and short in downtrends. A signal is only
           shown if that symbol&apos;s own past trades on that setup — counting only trades that had closed before the signal date —
-          won at least 80% of at least 10 trades, net of costs. Entry is the next session&apos;s open; exits are on the close: the
-          setup&apos;s exit price, a closing-basis stop, or 10 sessions. The stop sits beyond the 5-session swing and away from round
+          won at least the chosen bar (80% by default) of at least 10 trades, net of costs. Entry is the next session&apos;s open; exits are on the close: the
+          setup&apos;s exit price, a closing-basis stop, or 10 sessions. The stop sits 2 × ATR beyond the 5-session swing and away from round
           numbers, and only a close beyond it counts, so an intraday stop-hunt wick doesn&apos;t shake you out. The
           &ldquo;walk-forward&rdquo; line is what following only these filtered suggestions actually returned; that is the honest
           number, and it can come in under 80%. High-win-rate setups win small and lose bigger, so one loss can erase several
@@ -475,6 +586,7 @@ export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbo
         title="Stock F&O"
         section="stocks"
         date={date}
+        bar={bar}
         onDates={onDates}
         onAddToWatchlist={onAddToWatchlist}
         watchlistSymbols={watchlistSymbols}
@@ -483,6 +595,7 @@ export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbo
         title="BANKNIFTY"
         section="banknifty"
         date={date}
+        bar={bar}
         onDates={onDates}
         onAddToWatchlist={onAddToWatchlist}
         watchlistSymbols={watchlistSymbols}
