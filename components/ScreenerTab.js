@@ -432,7 +432,18 @@ function TrendlineBreakoutPanel({ row }) {
   );
 }
 
-export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
+// Turnover in ₹ Cr, compact: 0.84 Cr / 12.3 Cr / 1,240 Cr.
+function fmtTurnover(cr) {
+  if (cr == null) return "—";
+  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
+  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
+  return `₹${cr.toFixed(2)} Cr`;
+}
+
+export default function ScreenerTab({ screen, archived = false, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
+  // Turnover is shown on the front-row screens; archived ones keep their
+  // original columns.
+  const showTurnover = !archived;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(null);
@@ -942,6 +953,15 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                   <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
                   <SortableTh label="Deliv. %" sortKey="deliveryPct" sort={sort} onSort={onSort} />
                   <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
+                  {showTurnover && (
+                    <SortableTh
+                      label="Turnover"
+                      sortKey="turnoverCr"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Traded value for the session (close × volume)"
+                    />
+                  )}
                   <SortableTh
                     label="vs Avg Vol"
                     sortKey="volumeRatio"
@@ -1355,6 +1375,12 @@ export default function ScreenerTab({ screen, onAddToWatchlist, watchlistSymbols
                           </span>
                         )}
                       </td>
+                      {showTurnover && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {fmtTurnover(r.turnoverCr)}
+                          {r.isLive && <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>so far</span>}
+                        </td>
+                      )}
                       <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                         {r.volumeRatio ? `${r.volumeRatio.toFixed(2)}×` : "—"}
                       </td>

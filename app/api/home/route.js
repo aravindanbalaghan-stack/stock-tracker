@@ -1,5 +1,5 @@
 import { volumeDeliverySurge, enteringStage2WithAccumulation, fiftyTwoWeekHighs } from "@/lib/homeScans";
-import { getPicks, getPicksForDate } from "@/lib/picks";
+import { getPicks, getPicksForDate, getPicksScreener } from "@/lib/picks";
 
 export const dynamic = "force-dynamic";
 // The Stage 2 section runs the same wide weekly + daily scan as the
@@ -18,7 +18,10 @@ export async function GET(request) {
     else if (section === "picks-history") {
       const date = new URL(request.url).searchParams.get("date");
       result = await getPicksForDate(date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null);
-    } else return Response.json({ error: "Expected ?section=surge, stage2, picks, picks-history or highs" }, { status: 400 });
+    } else if (section === "picks-screener") {
+      const date = new URL(request.url).searchParams.get("date");
+      result = await getPicksScreener(date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null);
+    } else return Response.json({ error: "Expected ?section=surge, stage2, picks, picks-history, picks-screener or highs" }, { status: 400 });
 
     if (result.error) return Response.json(result, { status: 503 });
     return Response.json(result);

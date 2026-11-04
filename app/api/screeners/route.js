@@ -114,6 +114,8 @@ function baseRow(symbol, series) {
     changePercent: changePercent != null ? Math.round(changePercent * 100) / 100 : null,
     deliveryPct: today.deliveryPct,
     volume: today.volume,
+    // Traded value for the session (close × volume), ₹ Cr.
+    turnoverCr: today.close && today.volume ? Math.round(((today.close * today.volume) / 1e7) * 100) / 100 : null,
     avgVolume30: avgVolume30 != null ? Math.round(avgVolume30) : null,
     volumeRatio: avgVolume30 && avgVolume30 > 0 ? Math.round((today.volume / avgVolume30) * 100) / 100 : null,
     wma30: null, // filled in during Yahoo enrichment below

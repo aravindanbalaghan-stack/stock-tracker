@@ -7,7 +7,7 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { StageTag } from "@/components/StageJourney";
 import { usePersistentState } from "@/lib/usePersistentState";
-import { formatDayLabel } from "@/lib/periodLabel";
+import { StreakBadge, FirstShownCell } from "@/components/PickStreak";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -261,7 +261,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                       <th className="py-2 px-2 font-medium">Symbol</th>
                       <th
                         className="py-2 px-2 font-medium text-right"
-                        title="First session of the stock's current run on this list. Days when the Home tab wasn't opened aren't logged and are skipped."
+                        title="Week the stock's current run on this list began. The ranking is weekly, so this is rebuilt by re-ranking each past week — no stored history needed."
                       >
                         First shown
                       </th>
@@ -287,15 +287,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                           <td className="py-2.5 px-2">
                             <span className="flex items-center gap-1.5 flex-wrap">
                               <SymbolLink symbol={p.symbol} className="text-sm" />
-                              {p.daysShown > 1 && (
-                                <span
-                                  className="text-[10px] font-medium px-1.5 py-0.5 rounded whitespace-nowrap"
-                                  style={{ color: "var(--accent)", background: "var(--surface-2)" }}
-                                  title={`On the ${h.label.toLowerCase()} list for ${p.daysShown} logged sessions in a row, since ${p.firstShown}`}
-                                >
-                                  {p.daysShown} days
-                                </span>
-                              )}
+                              <StreakBadge pick={p} horizonLabel={h.label} />
                             </span>
                             <span className="flex items-center gap-1 mt-1 flex-wrap">
                               <StageTag stage={p.stage} />
@@ -312,22 +304,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                             </span>
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono text-xs whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
-                            {p.firstShown == null ? (
-                              "—"
-                            ) : p.daysShown > 1 ? (
-                              formatDayLabel(p.firstShown)
-                            ) : (
-                              <span style={{ color: "var(--gain)" }}>New today</span>
-                            )}
-                            {p.firstEverShown && p.firstEverShown < p.firstShown && (
-                              <span
-                                className="block text-[10px]"
-                                style={{ color: "var(--text-faint)" }}
-                                title="It dropped off this list at some point and came back"
-                              >
-                                first seen {formatDayLabel(p.firstEverShown)}
-                              </span>
-                            )}
+                            <FirstShownCell pick={p} />
                           </td>
                           <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
                             ₹{fmt(p.close)}

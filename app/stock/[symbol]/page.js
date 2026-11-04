@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import GlobalSearch from "@/components/GlobalSearch";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
+import TechnicalView from "@/components/TechnicalView";
 import { StageJourneyPanel } from "@/components/StageJourney";
 
 function fmt(n, d = 2) {
@@ -825,6 +826,12 @@ export default function StockInsightPage({ params }) {
                 )}
               </Panel>
             )}
+          </div>
+
+          {/* ---- Technical View: the five front-row screens ---- */}
+          <div>
+            <SectionTitle>Technical View</SectionTitle>
+            <TechnicalView symbol={sym} />
           </div>
 
           {/* ---- Order book & volume at price ---- */}
