@@ -1,5 +1,4 @@
-import { getSessionCookies } from "@/lib/nseSession";
-import { fetchMarketCapBatch } from "@/lib/marketCap";
+import { getMarketCapsCr } from "@/lib/marketCap";
 
 export const dynamic = "force-dynamic";
 
@@ -18,19 +17,19 @@ export async function GET(request) {
   const symbolsParam = searchParams.get("symbols");
   if (!symbolsParam) return Response.json({ error: "Missing ?symbols=SYM1,SYM2" }, { status: 400 });
 
-  const requested = [...new Set(symbolsParam.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))];
-  const symbols = requested.slice(0, MAX_SYMBOLS);
+  const symbols = [...new Set(symbolsParam.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, 2000);
   if (symbols.length === 0) return Response.json({ results: {} });
 
   try {
-    const cookies = await getSessionCookies();
-    const capMap = await fetchMarketCapBatch(symbols, cookies, { concurrency: 8 });
+    // Imported and cached values come back for every symbol; only up to
+    // MAX_SYMBOLS still-unknown ones are asked of NSE live.
+    const capMap = await getMarketCapsCr(symbols, { nseLimit: MAX_SYMBOLS });
     const results = {};
     for (const symbol of symbols) {
       const cap = capMap.get(symbol);
       results[symbol] = cap != null ? Math.round(cap) : null;
     }
-    return Response.json({ results, truncated: requested.length > MAX_SYMBOLS, cap: MAX_SYMBOLS });
+    return Response.json({ results, cap: MAX_SYMBOLS });
   } catch (err) {
     console.error("market-cap: failed to fetch market caps:", err?.message || err);
     return Response.json(

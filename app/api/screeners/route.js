@@ -1,7 +1,6 @@
 import { isTradingToday } from "@/lib/marketCalendar";
 import { getRecentBhavcopies, getBhavcopyNear } from "@/lib/nseBhavcopy";
-import { getSessionCookies } from "@/lib/nseSession";
-import { fetchMarketCapCr } from "@/lib/marketCap";
+import { getMarketCapsCr } from "@/lib/marketCap";
 import {
   sma,
   ema,
@@ -71,7 +70,6 @@ const YAHOO_CONCURRENCY = 8;
 // Market cap is only looked up for the Pocket Pivot final shortlist —
 // NSE's quote endpoint is rate-limited and can't be run across a wide
 // list. See the note in the response payload.
-const MARKET_CAP_CONCURRENCY = 6;
 
 // Stage 2 scans a ~500-stock universe (the NIFTY 500 where NSE's endpoint
 // is reachable, otherwise the top 500 by turnover — see lib/nifty500.js).
@@ -531,13 +529,8 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
 
     // ---------------- Market cap (Pocket Pivot only) ----------------
     if (screen === "pocket-pivot" && rows.length > 0) {
-      const cookies = await getSessionCookies();
-      const caps = [];
-      for (let i = 0; i < rows.length; i += MARKET_CAP_CONCURRENCY) {
-        const batch = rows.slice(i, i + MARKET_CAP_CONCURRENCY);
-        const got = await Promise.all(batch.map((r) => fetchMarketCapCr(r.symbol, cookies).catch(() => null)));
-        caps.push(...got);
-      }
+      const capMap = await getMarketCapsCr(rows.map((r) => r.symbol), { nseLimit: rows.length });
+      const caps = rows.map((r) => capMap.get(r.symbol) ?? null);
       rows = rows
         .map((r, i) => ({ ...r, marketCapCr: caps[i] != null ? Math.round(caps[i]) : null }))
         // The filter is "market cap >= ₹100 Cr". A symbol whose market cap

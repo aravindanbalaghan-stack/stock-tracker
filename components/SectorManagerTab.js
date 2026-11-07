@@ -271,7 +271,9 @@ export default function SectorManagerTab() {
   // sector, comfortably inside the cap; leaving every sector unfiltered
   // (400+ symbols) would either time out or risk NSE flagging the
   // session, so that case is skipped with an explanatory note instead.
-  const MARKET_CAP_FETCH_CAP = 150;
+  // Imported / cached market caps come back for every visible row; the
+  // server only asks NSE live for up to 150 unknown ones per request.
+  const MARKET_CAP_FETCH_CAP = 500;
   useEffect(() => {
     const symbols = visibleRows.map((r) => r.symbol);
     if (symbols.length === 0 || symbols.length > MARKET_CAP_FETCH_CAP) {

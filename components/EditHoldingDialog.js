@@ -99,9 +99,10 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+      <div className="min-h-full flex justify-center px-4 py-6">
       <div
-        className="w-full max-w-sm rounded-lg border p-4 flex flex-col gap-3"
+        className="w-full max-w-sm my-auto rounded-lg border p-4 flex flex-col gap-3"
         style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -188,6 +189,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
             {busy ? "Saving…" : "Save"}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

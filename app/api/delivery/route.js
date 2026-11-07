@@ -1,6 +1,6 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies } from "@/lib/nseSession";
-import { fetchMarketCapCr } from "@/lib/marketCap";
+import { fetchMarketCapCr, getMarketCapsCr } from "@/lib/marketCap";
 import {
   computePeriodMetrics,
   buildRecentPeriodHistory,
@@ -209,15 +209,13 @@ export async function GET(request) {
     // the session flagged).
     const cookies = capLookupTargets.length > 0 ? await getSessionCookies() : "";
 
-    const marketCapsPromise = (async () => {
-      const marketCaps = [];
-      for (let i = 0; i < capLookupTargets.length; i += CONCURRENCY) {
-        const batch = capLookupTargets.slice(i, i + CONCURRENCY);
-        const caps = await Promise.all(batch.map((c) => fetchMarketCapCr(c.symbol, cookies)));
-        marketCaps.push(...caps);
-      }
-      return marketCaps;
-    })();
+    // Every stock row gets a market cap from imported data or Panel's
+    // cache; only the top MARKET_CAP_LOOKUP_CAP still-unknown ones are
+    // asked of NSE live (lib/marketCap.js).
+    const marketCapsPromise = getMarketCapsCr(
+      stockCandidates.map((c) => c.symbol),
+      { nseLimit: capLookupTargets.length, cookies }
+    ).then((map) => stockCandidates.map((c) => map.get(c.symbol) ?? null));
 
     // Runs alongside the market-cap batch above rather than after it —
     // two independent rate-limited upstreams (NSE session vs Yahoo chart

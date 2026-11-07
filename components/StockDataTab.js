@@ -156,7 +156,7 @@ export default function StockDataTab() {
         }
       />
 
-      {error && (
+      {error && !file && (
         <div className="mb-4">
           <ErrorState>{error}</ErrorState>
         </div>
@@ -201,14 +201,18 @@ export default function StockDataTab() {
           <SectionTitle>3 · Import</SectionTitle>
           <Panel>
             <div className="flex flex-wrap items-center gap-3 mb-3">
+              {/* Hidden native input, opened by the buttons below so it's obvious where to click. */}
               <input
                 ref={inputRef}
                 type="file"
                 accept=".csv,.xlsx,.json"
                 onChange={(e) => onPick(e.target.files?.[0] ?? null)}
-                className="text-xs"
-                style={{ color: "var(--text-muted)" }}
+                className="hidden"
               />
+              <Btn onClick={() => inputRef.current?.click()}>{file ? "Choose a different file" : "Choose file…"}</Btn>
+              <span className="text-xs font-mono truncate max-w-[14rem]" style={{ color: file ? "var(--text)" : "var(--text-faint)" }}>
+                {file ? file.name : "No file chosen (.xlsx, .csv or .json)"}
+              </span>
               <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-muted)" }}>
                 Mode
                 <select
@@ -226,9 +230,14 @@ export default function StockDataTab() {
               </label>
             </div>
 
-            {file && !parsed && !error && (
-              <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-                Reading {file.name}…
+            {file && !preview && !error && (
+              <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
+                {parsed ? `Checking ${parsed.rows.length.toLocaleString("en-IN")} rows…` : `Reading ${file.name}…`}
+              </p>
+            )}
+            {error && file && (
+              <p className="text-xs mb-3" style={{ color: "var(--loss)" }}>
+                {error}
               </p>
             )}
 
@@ -276,8 +285,14 @@ export default function StockDataTab() {
             )}
 
             <div className="flex gap-2">
-              <Btn primary disabled={!preview || busy} onClick={() => runImport(false)}>
-                {busy ? "Working…" : "Import"}
+              {/* Always clickable: with no file yet it opens the file picker;
+                  once the preview is ready it saves. */}
+              <Btn
+                primary
+                disabled={busy || (file && !preview && !error)}
+                onClick={() => (preview ? runImport(false) : inputRef.current?.click())}
+              >
+                {busy ? "Working…" : preview ? `Import ${preview.rows.toLocaleString("en-IN")} rows` : "Import…"}
               </Btn>
               {info?.count > 0 && <Btn onClick={clearAll}>Delete imported data</Btn>}
             </div>
