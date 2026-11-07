@@ -63,8 +63,31 @@ export async function PATCH(request) {
   const identity = await currentIdentity();
   if (!identity) return Response.json({ error: "Not signed in" }, { status: 401 });
   try {
-    const { symbol, ...patch } = (await request.json()) || {};
+    const { symbol, ...body } = (await request.json()) || {};
     if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
+    // Only the fields the Holdings tab edits, validated.
+    const patch = {};
+    if (body.quantity !== undefined) {
+      const q = Number(body.quantity);
+      if (!(q > 0)) return Response.json({ error: "Quantity must be greater than 0" }, { status: 400 });
+      patch.quantity = q;
+    }
+    if (body.avgPrice !== undefined) {
+      const a = body.avgPrice === null || body.avgPrice === "" ? null : Number(body.avgPrice);
+      if (a !== null && !(a >= 0)) return Response.json({ error: "Average price must be 0 or more" }, { status: 400 });
+      patch.avgPrice = a;
+    }
+    if (body.buyDate !== undefined) patch.buyDate = body.buyDate || null;
+    if (typeof body.notes === "string") patch.notes = body.notes.slice(0, 2000);
+    if (body.historyEntry && typeof body.historyEntry === "object") {
+      const h = body.historyEntry;
+      patch.historyEntry = {
+        type: ["buy", "sell", "edit"].includes(h.type) ? h.type : "edit",
+        quantity: Number(h.quantity) || null,
+        price: h.price != null && h.price !== "" ? Number(h.price) : null,
+        date: typeof h.date === "string" ? h.date : null,
+      };
+    }
     const result = await updateHolding(identity, symbol, patch);
     return Response.json({ storage: "server", ...result });
   } catch (err) {

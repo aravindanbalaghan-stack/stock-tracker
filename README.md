@@ -89,6 +89,41 @@ practical paths are:
 Swapping either in only requires changing `app/api/quote/route.js` — the
 rest of the app (UI, polling, watchlist) stays the same.
 
+## Stock Data (import / export)
+
+**Stock Data** tab → **Export** (Excel, CSV or JSON) downloads every NSE
+stock with everything Panel has for it. Fill in or fix `sector`,
+`industry`, `marketCapCr` (₹ crore) and `name`, add any columns of your
+own, and **Import** the file back (preview first, then Merge or Replace).
+Imported sectors decide which sector each stock is in everywhere in the
+app (new sector names create new sectors); imported market caps are used
+instead of NSE's lookup; your own columns show on the stock page. See
+`lib/stockMaster.js`.
+
+## Journal
+
+**Journal** tab: log trades with stop, target, setup, emotions, mistakes
+and a lesson. It shows expectancy, R-multiples, profit factor, drawdown,
+what each mistake cost and which setups pay. **Export → AI review pack**
+writes a Markdown file with the stats, breakdowns, every trade and a
+coaching prompt — upload it to any AI assistant. Also exports CSV / Excel /
+JSON and imports the same formats.
+
+## Events
+
+Upcoming results, dividends, bonuses, splits and other corporate actions
+come from NSE's event calendar and corporate-actions feeds (cached 6h). A
+small tag appears next to a stock anywhere in the app when it has an event
+in the next 14 days; the stock page lists upcoming and recent events.
+
+## Market holidays
+
+Weekends and NSE holidays are never treated as sessions: there's no live
+overlay on a holiday, Yahoo's holiday bars are dropped, and the header
+shows NSE closed. The calendar merges NSE's holiday list with a built-in
+list in `lib/marketHours.js` — add next year's dates there when NSE
+publishes them.
+
 ## Set up storage and sign-in
 
 Panel needs two things on Vercel before Watchlist, Holdings, Top 5,

@@ -18,6 +18,9 @@ import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
 import ChangePassword from "@/components/ChangePassword";
+import JournalTab from "@/components/JournalTab";
+import StockDataTab from "@/components/StockDataTab";
+import { marketIsOpen } from "@/lib/marketHours";
 
 const REFRESH_MS = 12000;
 
@@ -31,11 +34,13 @@ const TABS = [
   { id: "home", label: "Home" },
   { id: "watchlist", label: "Watchlist" },
   { id: "holdings", label: "Holdings" },
+  { id: "journal", label: "Journal" },
   { id: "market", label: "Market" },
   { id: "delivery", label: "Delivery" },
   { id: "trading", label: "Trading Suggestions" },
   { id: "screeners", label: "Screeners" },
   { id: "sectors", label: "Sectors" },
+  { id: "data", label: "Stock Data" },
 ];
 
 function PageInner() {
@@ -335,17 +340,12 @@ function PageInner() {
     }
   }
 
-  const marketOpenGuess = (() => {
-    const now = new Date();
-    const istHour = (now.getUTCHours() + 5) % 24;
-    const istMin = now.getUTCMinutes() + 30;
-    const minutesSinceMidnight = istHour * 60 + istMin;
-    return minutesSinceMidnight >= 555 && minutesSinceMidnight <= 930;
-  })();
+  // Weekends AND NSE holidays count as closed (lib/marketHours.js).
+  const marketOpenGuess = marketIsOpen();
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TickerTape quotes={quotes} />
+      <TickerTape />
 
       <header className="px-4 md:px-8 pt-6 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-baseline gap-3">
@@ -446,6 +446,8 @@ function PageInner() {
           <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}
         {activeTab === "sectors" && <SectorManagerTab />}
+        {activeTab === "journal" && <JournalTab />}
+        {activeTab === "data" && <StockDataTab />}
         {activeTab === "trading" && <TradingSuggestionsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
         {activeTab === "screeners" && (
           <ScreenersScreen

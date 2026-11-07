@@ -1,3 +1,4 @@
+import { isTradingToday } from "@/lib/marketCalendar";
 import { getRecentBhavcopies, getBhavcopyNear } from "@/lib/nseBhavcopy";
 import { getSessionCookies } from "@/lib/nseSession";
 import { fetchMarketCapCr } from "@/lib/marketCap";
@@ -662,7 +663,12 @@ async function prepareWindow(asOfDate, { live = false } = {}) {
   // and a live feed at the same time is contradictory, so live is ignored
   // there rather than silently mixing today's prices into a historical run.
   let liveInfo = null;
-  if (live && !asOfDate) {
+  if (live && !asOfDate && !(await isTradingToday())) {
+    // Weekend or NSE holiday: there's no session today, so there's nothing
+    // live to overlay. Showing Yahoo's quotes as "today" would just copy the
+    // previous session's prices onto a holiday date.
+    liveInfo = { active: false, reason: "holiday" };
+  } else if (live && !asOfDate) {
     const today = istToday();
     const eodHasToday = days[days.length - 1]?.date === today;
     const priorDay = eodHasToday ? days[days.length - 2] : days[days.length - 1];

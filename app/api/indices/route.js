@@ -1,4 +1,4 @@
-import { NSE_INDICES } from "@/lib/indices";
+import { NSE_INDICES, TICKER_EXTRA_INDICES } from "@/lib/indices";
 
 export const dynamic = "force-dynamic";
 
@@ -40,11 +40,15 @@ export async function fetchChartQuote(symbol) {
   }
 }
 
-export async function GET() {
+export async function GET(request) {
   try {
-    const charts = await Promise.all(NSE_INDICES.map((i) => fetchChartQuote(i.symbol)));
+    // ?ticker=1 adds India VIX for the header ticker; it's left out of the
+    // performance ranking below either way.
+    const forTicker = new URL(request.url).searchParams.get("ticker") === "1";
+    const list = forTicker ? [...NSE_INDICES, ...TICKER_EXTRA_INDICES] : NSE_INDICES;
+    const charts = await Promise.all(list.map((i) => fetchChartQuote(i.symbol)));
 
-    const merged = NSE_INDICES.map(({ symbol, name }, i) => {
+    const merged = list.map(({ symbol, name }, i) => {
       const chart = charts[i];
       if (!chart || chart.price == null) {
         return { symbol, name, price: null, change: null, changePercent: null, dayHigh: null, dayLow: null, ok: false };
@@ -65,7 +69,7 @@ export async function GET() {
     });
 
     const ranked = merged
-      .filter((m) => m.ok)
+      .filter((m) => m.ok && !TICKER_EXTRA_INDICES.some((x) => x.symbol === m.symbol))
       .sort((a, b) => (b.changePercent ?? -Infinity) - (a.changePercent ?? -Infinity));
 
     return Response.json({

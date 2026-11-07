@@ -846,6 +846,8 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                 volume-based screens fill in as the day progresses rather than firing early.
               </div>
             </>
+          ) : data.live?.reason === "holiday" ? (
+            <>NSE is closed today (weekend or market holiday), so there&apos;s no live session — showing the last trading day ({data.asOf}).</>
           ) : data.live?.reason === "historical" ? (
             <>Live doesn&apos;t apply to a past date — showing the end-of-day data for {data.asOf}.</>
           ) : (

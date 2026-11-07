@@ -7,6 +7,7 @@ import SymbolLink from "@/components/SymbolLink";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadHoldings, saveHoldingsLocal } from "@/lib/holdings";
 import { RangeBar } from "@/components/MyTopFive";
+import EditHoldingDialog from "@/components/EditHoldingDialog";
 import { usePersistentState } from "@/lib/usePersistentState";
 
 // Same cadence as the Watchlist / Home's My Top 5 live prices.
@@ -22,7 +23,7 @@ const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : 
 
 // One holding, laid out like a Home → My Top 5 card, plus the position
 // figures a holding has and a watchlist entry doesn't.
-function HoldingCard({ r, onRemove }) {
+function HoldingCard({ r, onRemove, onEdit }) {
   const q = r.quote;
   const live = q && q.ok !== false;
   return (
@@ -118,14 +119,24 @@ function HoldingCard({ r, onRemove }) {
         <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
           {r.buyDate ? `Bought ${new Date(`${r.buyDate}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}` : r.quote?.ok === false ? "price unavailable" : ""}
         </span>
-        <button
-          onClick={() => onRemove(r.symbol)}
-          className="text-[11px] px-2 py-0.5 rounded border transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]"
-          style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
-          aria-label={`Remove ${r.symbol} from holdings`}
-        >
-          Remove
-        </button>
+        <span className="flex gap-1.5">
+          <button
+            onClick={() => onEdit(r.symbol)}
+            className="text-[11px] px-2 py-0.5 rounded border"
+            style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+            aria-label={`Edit ${r.symbol}`}
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onRemove(r.symbol)}
+            className="text-[11px] px-2 py-0.5 rounded border transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]"
+            style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+            aria-label={`Remove ${r.symbol} from holdings`}
+          >
+            Remove
+          </button>
+        </span>
       </div>
     </div>
   );
@@ -486,6 +497,27 @@ export default function HoldingsTab() {
     }
   }
 
+  // Edit / add shares / sell shares (EditHoldingDialog). Applied locally
+  // straight away, then saved to the account.
+  async function handleEdit(symbol, patch) {
+    const { historyEntry, ...fields } = patch;
+    setHoldings((prev) =>
+      prev.map((h) =>
+        h.symbol === symbol
+          ? { ...h, ...fields, history: historyEntry ? [...(h.history ?? []), { ...historyEntry, at: new Date().toISOString() }] : h.history }
+          : h
+      )
+    );
+    const res = await fetch("/api/holdings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol, ...patch }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(json?.error || "Couldn't save the change");
+    if (json?.entries) setHoldings(json.entries);
+  }
+
   async function handleRemove(symbol) {
     fetch(`/api/holdings?symbol=${encodeURIComponent(symbol)}`, { method: "DELETE" }).catch(() => {});
     setHoldings((prev) => prev.filter((h) => h.symbol !== symbol));
@@ -516,6 +548,8 @@ export default function HoldingsTab() {
 
   const { sorted, sort, onSort } = useSortableRows(rows, "currentValue", "desc");
   const [view, setView] = usePersistentState("holdings.view", "cards");
+  const [editing, setEditing] = useState(null);
+  const editingHolding = editing ? holdings.find((h) => h.symbol === editing) : null;
   const [cardSortKey, setCardSortKey] = usePersistentState("holdings.cardSort", "currentValue");
   const cardSort = CARD_SORTS.find((s) => s.key === cardSortKey) ?? CARD_SORTS[0];
   const cardRows = [...rows].sort((a, b) => {
@@ -653,7 +687,7 @@ export default function HoldingsTab() {
           {view === "cards" ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {cardRows.map((r) => (
-                <HoldingCard key={r.symbol} r={r} onRemove={handleRemove} />
+                <HoldingCard key={r.symbol} r={r} onRemove={handleRemove} onEdit={setEditing} />
               ))}
             </div>
           ) : (
@@ -741,7 +775,15 @@ export default function HoldingsTab() {
                         </span>
                       )}
                     </td>
-                    <td className="py-3 pl-2 pr-4 text-right">
+                    <td className="py-3 pl-2 pr-4 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => setEditing(r.symbol)}
+                        className="text-xs px-2 py-1 rounded border mr-1.5"
+                        style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+                        aria-label={`Edit ${r.symbol}`}
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => handleRemove(r.symbol)}
                         className="text-xs px-2 py-1 rounded border transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]"
@@ -758,6 +800,16 @@ export default function HoldingsTab() {
           </div>
           )}
         </>
+      )}
+
+      {editingHolding && (
+        <EditHoldingDialog
+          holding={editingHolding}
+          currentPrice={quotes[editingHolding.symbol]?.price ?? null}
+          onSave={handleEdit}
+          onRemove={handleRemove}
+          onClose={() => setEditing(null)}
+        />
       )}
 
       <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>

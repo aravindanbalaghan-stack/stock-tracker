@@ -1,7 +1,14 @@
 "use client";
 
+// Header ticker — every NSE index (plus India VIX), not watchlist stocks.
+// Scrolls and refreshes every 30s while NSE is in session; on weekends,
+// holidays and outside hours it holds still and says Closed, since the
+// values are just the last close.
+
 import { useEffect, useState } from "react";
 import { marketIsOpen } from "@/lib/marketHours";
+
+const REFRESH_MS = 30 * 1000;
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -12,54 +19,70 @@ function TickerItem({ q }) {
   const up = (q.change ?? 0) >= 0;
   return (
     <div className="flex items-center gap-2 px-6 py-2 whitespace-nowrap border-r" style={{ borderColor: "var(--border)" }}>
-      <span className="font-mono text-xs tracking-wide" style={{ color: "var(--text-muted)" }}>
-        {q.symbol}
+      <span className="text-xs tracking-wide" style={{ color: "var(--text-muted)" }}>
+        {q.name}
       </span>
       <span className="font-mono text-sm" style={{ color: "var(--text)" }}>
-        ₹{fmt(q.price)}
+        {fmt(q.price)}
       </span>
-      <span
-        className="font-mono text-xs"
-        style={{ color: up ? "var(--gain)" : "var(--loss)" }}
-      >
+      <span className="font-mono text-xs" style={{ color: up ? "var(--gain)" : "var(--loss)" }}>
         {up ? "▲" : "▼"} {fmt(Math.abs(q.changePercent ?? 0))}%
       </span>
     </div>
   );
 }
 
-export default function TickerTape({ quotes }) {
-  // Scrolling implies live movement. When NSE is shut the prices are
-  // frozen at the last close, so animating them is misleading — the tape
-  // holds still and says so instead. Computed client-side after mount to
-  // avoid a server/client mismatch, since the two can disagree on time.
+export default function TickerTape() {
   const [open, setOpen] = useState(null);
+  const [indices, setIndices] = useState([]);
+
   useEffect(() => {
     const check = () => setOpen(marketIsOpen());
     check();
-    // Re-check periodically so the tape starts and stops on its own across
-    // the open and close without needing a reload.
     const id = setInterval(check, 30 * 1000);
     return () => clearInterval(id);
   }, []);
 
-  if (!quotes || quotes.length === 0) return null;
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/indices?ticker=1");
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled) setIndices((json.all ?? []).filter((q) => q.ok));
+      } catch {
+        /* keep the last values */
+      }
+    };
+    load();
+    // Only keep polling while the market is open — closed values don't move.
+    if (!open) {
+      return () => {
+        cancelled = true;
+      };
+    }
+    const id = setInterval(load, REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [open]);
 
-  // Duplicating the list is only needed for a seamless loop. When static,
-  // one copy avoids rendering everything twice for no reason.
-  const items = open ? [...quotes, ...quotes] : quotes;
+  if (indices.length === 0) return null;
+  const items = open ? [...indices, ...indices] : indices;
 
   return (
     <div
       className="overflow-hidden border-b flex items-stretch"
       style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-      aria-label={open ? "Live price ticker" : "Price ticker — market closed"}
+      aria-label={open ? "Live index ticker" : "Index ticker — market closed"}
     >
       {open === false && (
         <div
           className="flex items-center gap-1.5 px-3 shrink-0 border-r"
           style={{ borderColor: "var(--border)" }}
-          title="NSE is closed — these are last-traded prices, not live"
+          title="NSE is closed (outside hours, weekend or market holiday) — these are last closing values"
         >
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--text-faint)" }} />
           <span className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>

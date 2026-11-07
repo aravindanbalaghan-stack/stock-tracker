@@ -7,6 +7,9 @@ import GlobalSearch from "@/components/GlobalSearch";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 import TechnicalView from "@/components/TechnicalView";
+import StockEvents from "@/components/StockEvents";
+import StockMasterPanel from "@/components/StockMasterPanel";
+import EventTag from "@/components/EventTag";
 import { StageJourneyPanel } from "@/components/StageJourney";
 
 function fmt(n, d = 2) {
@@ -262,6 +265,7 @@ export default function StockInsightPage({ params }) {
             <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
               {sym}
             </h1>
+            <EventTag symbol={sym} />
             {data?.name && (
               <span className="text-base" style={{ color: "var(--text-muted)" }}>
                 {data.name}
@@ -321,6 +325,10 @@ export default function StockInsightPage({ params }) {
 
       {data && (
         <div className="flex flex-col gap-6">
+          {/* ---- Upcoming / recent corporate events ---- */}
+          <StockEvents symbol={sym} />
+          <StockMasterPanel symbol={sym} />
+
           {/* ---- Price & levels ---- */}
           <div>
             <SectionTitle>Price &amp; levels</SectionTitle>
