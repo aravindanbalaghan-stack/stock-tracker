@@ -10,6 +10,7 @@ import { StageTag, InvalidationCell } from "@/components/StageJourney";
 import { useSortableRows } from "@/lib/useSortableRows";
 import { formatDayLabel } from "@/lib/periodLabel";
 import PicksSection from "@/components/PicksSection";
+import MyTopFive from "@/components/MyTopFive";
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -584,11 +585,12 @@ function HighsSection({ onAddToWatchlist, watchlistSymbols }) {
   );
 }
 
-export default function HomeTab({ onAddToWatchlist, watchlistSymbols }) {
+export default function HomeTab({ onAddToWatchlist, watchlistSymbols, myTop = [], myTopLoading = false, onOpenWatchlist }) {
   return (
     <div>
       <ScreenHeader title="Home" meta="Ranked ideas by horizon, 52-week highs, today's standout volume, and fresh Stage 2 breakouts built on accumulation" />
       <div className="flex flex-col gap-8">
+        <MyTopFive items={myTop} loading={myTopLoading} onOpenWatchlist={onOpenWatchlist} />
         <PicksSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <HighsSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />
         <SurgeSection onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />

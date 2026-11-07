@@ -197,6 +197,7 @@ function PageInner() {
               next[e.symbol] = {
                 addedPrice: e.addedPrice ?? prev[e.symbol]?.addedPrice ?? null,
                 notes: e.notes ?? prev[e.symbol]?.notes ?? "",
+                topRank: e.topRank ?? prev[e.symbol]?.topRank ?? null,
                 source: e.source ?? prev[e.symbol]?.source ?? null,
                 addedAt: e.addedAt ?? prev[e.symbol]?.addedAt ?? null,
               };
@@ -277,6 +278,45 @@ function PageInner() {
       body: JSON.stringify({ symbol, notes }),
     }).catch(() => {});
   }
+
+  // Top 5: give `symbol` slot `rank` (1–5), or clear it with null. A slot
+  // holds one stock, so whoever had it before is bumped off the list.
+  function handleTopRankChange(symbol, rank) {
+    const r = rank ? Number(rank) : null;
+    const changes = [];
+    const next = { ...meta };
+    if (r) {
+      for (const s of symbols) {
+        if (s !== symbol && next[s]?.topRank === r) {
+          next[s] = { ...next[s], topRank: null };
+          changes.push([s, null]);
+        }
+      }
+    }
+    next[symbol] = { ...next[symbol], topRank: r };
+    changes.push([symbol, r]);
+    setMeta(next);
+    for (const [s, topRank] of changes) {
+      fetch("/api/watchlist", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: s, topRank }),
+      }).catch(() => {});
+    }
+  }
+
+  // The Top 5 as Home shows it — slot order, with the same live quotes and
+  // bhavcopy figures the Watchlist polls, so Home updates on its own.
+  const myTop = symbols
+    .filter((s) => meta[s]?.topRank)
+    .sort((a, b) => meta[a].topRank - meta[b].topRank)
+    .map((s) => ({
+      symbol: s,
+      rank: meta[s].topRank,
+      meta: meta[s],
+      quote: quotes.find((q) => q.symbol === s) ?? null,
+      metrics: accumulation[s] ?? null,
+    }));
 
   async function handleLogout() {
     try {
@@ -363,6 +403,7 @@ function PageInner() {
                   metricsAsOf={accumulationAsOf}
                   onRemove={handleRemove}
                   onNotesChange={handleNotesChange}
+                  onTopRankChange={handleTopRankChange}
                   onOpenDetail={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)}
                 />
               </>
@@ -381,7 +422,15 @@ function PageInner() {
           </>
         )}
 
-        {activeTab === "home" && <HomeTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
+        {activeTab === "home" && (
+          <HomeTab
+            onAddToWatchlist={handleAdd}
+            watchlistSymbols={symbols}
+            myTop={myTop}
+            myTopLoading={loading && quotes.length === 0}
+            onOpenWatchlist={() => changeTab("watchlist")}
+          />
+        )}
         {activeTab === "holdings" && <HoldingsTab />}
         {activeTab === "market" && <MarketScreen />}
         {activeTab === "delivery" && (

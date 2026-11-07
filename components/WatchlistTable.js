@@ -22,7 +22,7 @@ function fmtVolume(n) {
 // How many <SortableTh>/<th> cells the header row has — the date-group
 // separator row spans all of them. Kept as a named constant rather than a
 // magic number so a future column addition is an obvious two-line diff.
-const COLUMN_COUNT = 13;
+const COLUMN_COUNT = 14;
 
 function formatGroupDate(dateKey) {
   if (!dateKey) return "Added before this was tracked";
@@ -151,7 +151,38 @@ function DeliveryCell({ pct }) {
   return <span style={{ color }}>{pct.toFixed(1)}%</span>;
 }
 
-function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail }) {
+// Top 5 slot picker. Picking a slot another stock holds moves this one in
+// and bumps that one off — the option label says who.
+function TopRankCell({ symbol, rank, slotHolders, onChange }) {
+  return (
+    <select
+      value={rank ?? ""}
+      onChange={(e) => onChange(symbol, e.target.value ? Number(e.target.value) : null)}
+      aria-label={`Top 5 slot for ${symbol}`}
+      className="rounded-[var(--radius-sm)] px-1.5 py-1 text-xs border font-mono"
+      style={{
+        background: rank ? "var(--accent)" : "var(--surface-2)",
+        color: rank ? "var(--bg)" : "var(--text-muted)",
+        borderColor: rank ? "var(--accent)" : "var(--border)",
+        fontWeight: rank ? 600 : 400,
+      }}
+      title={rank ? `#${rank} in your Top 5 — shown on Home` : "Add to your Top 5 on Home"}
+    >
+      <option value="">—</option>
+      {[1, 2, 3, 4, 5].map((n) => {
+        const holder = slotHolders[n];
+        return (
+          <option key={n} value={n}>
+            #{n}
+            {holder && holder !== symbol ? ` (replaces ${holder})` : ""}
+          </option>
+        );
+      })}
+    </select>
+  );
+}
+
+function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail, slotHolders, onTopRankChange }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
 
@@ -188,6 +219,9 @@ function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail 
             </span>
           )}
         </div>
+      </td>
+      <td className="py-3 px-2">
+        <TopRankCell symbol={quote.symbol} rank={meta?.topRank ?? null} slotHolders={slotHolders} onChange={onTopRankChange} />
       </td>
       <td className="py-3 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
         {stale ? "—" : `₹${fmt(quote.price)}`}
@@ -244,13 +278,30 @@ function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail 
   );
 }
 
-export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf, onRemove, onNotesChange, onOpenDetail }) {
+export default function WatchlistTable({
+  quotes,
+  meta,
+  accumulation,
+  metricsAsOf,
+  onRemove,
+  onNotesChange,
+  onTopRankChange,
+  onOpenDetail,
+}) {
   // The bhavcopy-based columns live in `accumulation`, keyed by symbol —
   // merged onto each row here so they can be sorted like any quote field.
+  // topRank sorts unpicked stocks last whichever way the column is sorted.
   const rows = quotes.map((q) => {
     const a = accumulation?.[q.symbol];
-    return a ? { ...q, turnoverCr: a.turnoverCr, volumeRatio30d: a.volumeRatio30d, deliveryPct: a.deliveryPct } : q;
+    const base = { ...q, topRank: meta?.[q.symbol]?.topRank ?? null };
+    return a ? { ...base, turnoverCr: a.turnoverCr, volumeRatio30d: a.volumeRatio30d, deliveryPct: a.deliveryPct } : base;
   });
+  const slotHolders = {};
+  for (const q of quotes) {
+    const r = meta?.[q.symbol]?.topRank;
+    if (r) slotHolders[r] = q.symbol;
+  }
+  const picked = Object.keys(slotHolders).length;
   const { sorted, sort, onSort } = useSortableRows(rows, null, "desc");
   const sessionNote = metricsAsOf ? ` — NSE end-of-day figures for ${metricsAsOf}` : " — NSE end-of-day figures";
   const [groupByDate, setGroupByDate] = usePersistentState("watchlist.groupByDate", false);
@@ -291,7 +342,14 @@ export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf
 
   return (
     <div>
-      <div className="flex items-center justify-end gap-2 mb-2">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Top 5:{" "}
+          <span className="font-mono" style={{ color: picked ? "var(--accent)" : "var(--text-faint)" }}>
+            {picked}/5
+          </span>{" "}
+          picked — pick a slot in the Top 5 column and it shows on Home
+        </span>
         <label className="flex items-center gap-1.5 text-xs cursor-pointer select-none" style={{ color: "var(--text-muted)" }}>
           <input
             type="checkbox"
@@ -307,6 +365,14 @@ export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf
           <thead>
             <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
               <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
+              <SortableTh
+                label="Top 5"
+                sortKey="topRank"
+                sort={sort}
+                onSort={onSort}
+                align="left"
+                title="Your Top 5 slot — these appear at the top of the Home tab, in this order"
+              />
               <SortableTh label="LTP" sortKey="price" sort={sort} onSort={onSort} />
               <SortableTh label="Chg" sortKey="change" sort={sort} onSort={onSort} />
               <SortableTh label="Chg %" sortKey="changePercent" sort={sort} onSort={onSort} />
@@ -364,6 +430,8 @@ export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf
                         onRemove={onRemove}
                         onNotesChange={onNotesChange}
                         onOpenDetail={onOpenDetail}
+                        slotHolders={slotHolders}
+                        onTopRankChange={onTopRankChange}
                       />
                     ))}
                   </Fragment>
@@ -377,6 +445,8 @@ export default function WatchlistTable({ quotes, meta, accumulation, metricsAsOf
                     onRemove={onRemove}
                     onNotesChange={onNotesChange}
                     onOpenDetail={onOpenDetail}
+                    slotHolders={slotHolders}
+                    onTopRankChange={onTopRankChange}
                   />
                 ))}
           </tbody>

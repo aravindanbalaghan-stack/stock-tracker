@@ -81,8 +81,18 @@ export async function PATCH(request) {
   const identity = await currentIdentity();
   if (!identity) return Response.json({ error: "Not signed in" }, { status: 401 });
   try {
-    const { symbol, ...patch } = (await request.json()) || {};
+    const { symbol, ...body } = (await request.json()) || {};
     if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
+    // Only the fields the UI edits; anything else in the body is ignored.
+    const patch = {};
+    if (typeof body.notes === "string") patch.notes = body.notes;
+    if ("topRank" in body) {
+      const r = body.topRank;
+      if (r !== null && !(Number.isInteger(r) && r >= 1 && r <= 5)) {
+        return Response.json({ error: "topRank must be 1–5 or null" }, { status: 400 });
+      }
+      patch.topRank = r;
+    }
     const result = await updateWatchlistEntry(identity, symbol, patch);
     return Response.json({ storage: "server", ...result });
   } catch (err) {
