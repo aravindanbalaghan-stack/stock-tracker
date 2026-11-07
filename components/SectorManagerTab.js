@@ -440,12 +440,9 @@ export default function SectorManagerTab() {
           className="text-xs mb-4 px-3 py-2 rounded border"
           style={{ borderColor: "var(--loss)", color: "var(--loss)" }}
         >
-          Sector customizations can&apos;t be saved on this deployment — the KV store this needs (the same
-          one Watchlist and Holdings use) isn&apos;t configured. You can still browse the base
-          lists below, but Add, Remove, and Import won&apos;t work until it&apos;s set up — see the README
-          section &quot;Add a database (Vercel KV)&quot; for how. Unlike Watchlist and Holdings, sector data
-          has no per-browser fallback — it&apos;s shared across the whole app, so it has nothing to
-          silently fall back to.
+          Sector customizations can&apos;t be saved yet — this deployment has no Upstash Redis database connected
+          (the same store Watchlist, Holdings and sign-in use). You can still browse the base lists below. To fix it,
+          follow README → &quot;Set up storage and sign-in&quot;.
         </p>
       )}
 

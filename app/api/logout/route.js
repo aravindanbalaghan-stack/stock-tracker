@@ -1,8 +1,6 @@
-import { cookies } from "next/headers";
-import { IDENTITY_COOKIE } from "@/lib/identity";
+import { clearSessionCookies } from "@/lib/auth";
 
 export async function POST() {
-  const cookieStore = await cookies();
-  cookieStore.delete(IDENTITY_COOKIE);
+  await clearSessionCookies();
   return Response.json({ ok: true });
 }

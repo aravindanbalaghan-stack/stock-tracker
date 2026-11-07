@@ -6,6 +6,138 @@ import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadHoldings, saveHoldingsLocal } from "@/lib/holdings";
+import { RangeBar } from "@/components/MyTopFive";
+import { usePersistentState } from "@/lib/usePersistentState";
+
+// Same cadence as the Watchlist / Home's My Top 5 live prices.
+const QUOTE_REFRESH_MS = 12000;
+
+function fmtTurnover(cr) {
+  if (cr == null) return "—";
+  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
+  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
+  return `₹${cr.toFixed(2)} Cr`;
+}
+const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : "var(--loss)");
+
+// One holding, laid out like a Home → My Top 5 card, plus the position
+// figures a holding has and a watchlist entry doesn't.
+function HoldingCard({ r, onRemove }) {
+  const q = r.quote;
+  const live = q && q.ok !== false;
+  return (
+    <div className="rounded-[var(--radius)] border p-3 flex flex-col gap-2.5" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <SymbolLink symbol={r.symbol} className="text-sm" />
+          {(q?.name || r.sectorLabel) && (
+            <p className="text-[11px] truncate mt-0.5" style={{ color: "var(--text-muted)" }} title={[q?.name, r.sectorLabel].filter(Boolean).join(" · ")}>
+              {q?.name ?? r.sectorLabel}
+            </p>
+          )}
+        </div>
+        <span
+          className="font-mono text-xs px-1.5 py-0.5 rounded whitespace-nowrap"
+          style={{
+            color: tone(r.changePercent),
+            background: r.changePercent == null ? "var(--surface-2)" : r.changePercent >= 0 ? "var(--gain-dim)" : "var(--loss-dim)",
+          }}
+        >
+          {r.changePercent == null ? "—" : `${r.changePercent >= 0 ? "+" : ""}${fmt(r.changePercent)}%`}
+        </span>
+      </div>
+
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-mono text-xl" style={{ color: "var(--text)" }}>
+          {r.price == null ? "—" : `₹${fmt(r.price)}`}
+        </p>
+        <p className="font-mono text-xs" style={{ color: "var(--text-faint)" }}>
+          {fmt(r.quantity, 0)} × {r.avgPrice == null ? "—" : `₹${fmt(r.avgPrice)}`}
+        </p>
+      </div>
+
+      <RangeBar low={live ? q.dayLow : null} high={live ? q.dayHigh : null} price={r.price} />
+
+      {/* Position — the part that's specific to a holding */}
+      <div className="rounded-[var(--radius-sm)] px-2.5 py-2 grid grid-cols-2 gap-x-3 gap-y-1.5" style={{ background: "var(--surface-2)" }}>
+        <div>
+          <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>P&amp;L</p>
+          <p className="font-mono text-sm">
+            <Signed value={r.pnl} digits={0} suffix="" />
+            <span className="text-[11px] ml-1">
+              (<Signed value={r.pnlPct} digits={1} />)
+            </span>
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>Today</p>
+          <p className="font-mono text-sm">
+            <Signed value={r.dayPnl} digits={0} suffix="" />
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>Invested</p>
+          <p className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+            {r.invested == null ? "—" : `₹${fmt(r.invested, 0)}`}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>Current</p>
+          <p className="font-mono text-xs" style={{ color: "var(--text)" }}>
+            {r.currentValue == null ? "—" : `₹${fmt(r.currentValue, 0)}`}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-[11px]">
+        <div>
+          <p style={{ color: "var(--text-faint)" }}>Deliv. %</p>
+          <p className="font-mono" style={{ color: "var(--text-muted)" }}>
+            {r.accumulation?.deliveryPct == null ? "—" : `${fmt(r.accumulation.deliveryPct, 1)}%`}
+          </p>
+        </div>
+        <div>
+          <p style={{ color: "var(--text-faint)" }}>Turnover</p>
+          <p className="font-mono" style={{ color: "var(--text-muted)" }}>
+            {fmtTurnover(r.accumulation?.turnoverCr)}
+          </p>
+        </div>
+        <div>
+          <p style={{ color: "var(--text-faint)" }}>Accum.</p>
+          <p
+            className="font-mono"
+            style={{ color: r.accumulation?.inAccumulation ? "var(--gain)" : "var(--text-faint)" }}
+            title={r.accumulation?.inAccumulation && r.accumulation.firstYes ? `First flagged on ${r.accumulation.firstYes}` : undefined}
+          >
+            {r.accumulation?.inAccumulation == null ? "—" : r.accumulation.inAccumulation ? "Yes" : "No"}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2 pt-1 border-t" style={{ borderColor: "var(--border)" }}>
+        <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+          {r.buyDate ? `Bought ${new Date(`${r.buyDate}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })}` : r.quote?.ok === false ? "price unavailable" : ""}
+        </span>
+        <button
+          onClick={() => onRemove(r.symbol)}
+          className="text-[11px] px-2 py-0.5 rounded border transition-colors hover:border-[var(--loss)] hover:text-[var(--loss)]"
+          style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+          aria-label={`Remove ${r.symbol} from holdings`}
+        >
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const CARD_SORTS = [
+  { key: "currentValue", dir: "desc", label: "Current value" },
+  { key: "pnlPct", dir: "desc", label: "P&L %" },
+  { key: "pnl", dir: "desc", label: "P&L ₹" },
+  { key: "changePercent", dir: "desc", label: "Today's change" },
+  { key: "symbol", dir: "asc", label: "Symbol" },
+];
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -256,6 +388,26 @@ export default function HoldingsTab() {
     saveHoldingsLocal(holdings);
   }, [holdings]);
 
+  // Live prices every few seconds, like the Watchlist — sectors and the
+  // bhavcopy figures below only change daily, so they stay a one-off fetch.
+  const symbolKey = holdings.map((h) => h.symbol).join(",");
+  useEffect(() => {
+    if (!symbolKey) return;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/quote?symbols=${encodeURIComponent(symbolKey)}`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const quoteMap = {};
+        for (const q of json.results ?? []) quoteMap[q.symbol] = q;
+        setQuotes(quoteMap);
+      } catch {
+        /* keep the last prices; the next tick retries */
+      }
+    }, QUOTE_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [symbolKey]);
+
   // Live quotes, sectors, and accumulation status — refetched whenever
   // the symbol list changes. Quotes alone would poll on an interval like
   // the Watchlist does; kept to a single fetch on symbol-list change here
@@ -363,6 +515,18 @@ export default function HoldingsTab() {
   });
 
   const { sorted, sort, onSort } = useSortableRows(rows, "currentValue", "desc");
+  const [view, setView] = usePersistentState("holdings.view", "cards");
+  const [cardSortKey, setCardSortKey] = usePersistentState("holdings.cardSort", "currentValue");
+  const cardSort = CARD_SORTS.find((s) => s.key === cardSortKey) ?? CARD_SORTS[0];
+  const cardRows = [...rows].sort((a, b) => {
+    const av = a[cardSort.key];
+    const bv = b[cardSort.key];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1; // missing values last either way
+    if (bv == null) return -1;
+    const c = typeof av === "string" ? av.localeCompare(bv) : av - bv;
+    return cardSort.dir === "asc" ? c : -c;
+  });
 
   const totals = rows.reduce(
     (acc, r) => ({
@@ -447,6 +611,52 @@ export default function HoldingsTab() {
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="inline-flex rounded-[var(--radius-sm)] border p-0.5 gap-0.5" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+              {[
+                { id: "cards", label: "Cards" },
+                { id: "table", label: "Table" },
+              ].map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setView(v.id)}
+                  className="px-3 py-1 text-xs font-medium rounded-[4px]"
+                  style={{
+                    background: view === v.id ? "var(--surface-3)" : "transparent",
+                    color: view === v.id ? "var(--text)" : "var(--text-muted)",
+                  }}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+            {view === "cards" && (
+              <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
+                Sort by
+                <select
+                  value={cardSort.key}
+                  onChange={(e) => setCardSortKey(e.target.value)}
+                  className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
+                  style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+                >
+                  {CARD_SORTS.map((s) => (
+                    <option key={s.key} value={s.key}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
+
+          {view === "cards" ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {cardRows.map((r) => (
+                <HoldingCard key={r.symbol} r={r} onRemove={handleRemove} />
+              ))}
+            </div>
+          ) : (
           <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
             <table className="w-full border-collapse">
               <thead>
@@ -546,6 +756,7 @@ export default function HoldingsTab() {
               </tbody>
             </table>
           </div>
+          )}
         </>
       )}
 

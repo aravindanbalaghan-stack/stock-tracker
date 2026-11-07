@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { IDENTITY_COOKIE } from "@/lib/identity";
+import { getSessionUser } from "@/lib/auth";
 import {
   getWatchlist,
   addToWatchlist,
@@ -10,15 +9,11 @@ import {
 
 export const dynamic = "force-dynamic";
 
-// NOTE ON WHAT THIS IS: the identity cookie is a self-declared name, not
-// authenticated — see lib/identity.js. It's enough to keep two people's
-// watchlists apart on a shared link, which is what it's for, but it is NOT
-// a security boundary: anyone could type someone else's identity on the
-// login screen and see their list. Don't put anything sensitive here.
-
+// The username comes ONLY from the signed session cookie (lib/auth.js), so
+// it can't be spoofed — and the same account on any device reads and
+// writes the same server-side list.
 async function currentIdentity() {
-  const store = await cookies();
-  return store.get(IDENTITY_COOKIE)?.value ?? null;
+  return getSessionUser();
 }
 
 function unavailable(entries) {
@@ -69,7 +64,7 @@ export async function POST(request) {
     return Response.json(
       {
         error: isStorage
-          ? "Couldn't save — server-side storage isn't configured for this deployment."
+          ? "Couldn't save — no Upstash Redis database is connected to this deployment. See README → \"Set up storage and sign-in\"."
           : msg,
       },
       { status: isStorage ? 503 : 400 }

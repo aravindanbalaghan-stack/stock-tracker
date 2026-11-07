@@ -1,16 +1,13 @@
-import { cookies } from "next/headers";
-import { IDENTITY_COOKIE } from "@/lib/identity";
+import { getSessionUser } from "@/lib/auth";
 import { getHoldings, saveHoldings, addHolding, removeHolding, updateHolding } from "@/lib/holdingsStore";
 
 export const dynamic = "force-dynamic";
 
-// Same "identity cookie isn't real auth" caveat as app/api/watchlist/route.js
-// — good enough to keep two people's holdings apart on a shared link, not a
-// security boundary.
-
+// The username comes ONLY from the signed session cookie (lib/auth.js), so
+// it can't be spoofed — and the same account on any device reads and
+// writes the same server-side list.
 async function currentIdentity() {
-  const store = await cookies();
-  return store.get(IDENTITY_COOKIE)?.value ?? null;
+  return getSessionUser();
 }
 
 function unavailable(entries) {
@@ -55,15 +52,10 @@ export async function POST(request) {
     return Response.json({ storage: "server", ...result });
   } catch (err) {
     const msg = String(err?.message || err);
-    const isStorage = /kv|redis|url|token|credential/i.test(msg);
-    return Response.json(
-      {
-        error: isStorage
-          ? "Couldn't save — server-side storage isn't configured for this deployment."
-          : msg,
-      },
-      { status: isStorage ? 503 : 400 }
-    );
+    // Storage down: answer like GET does, so the Holdings tab applies the
+    // add in this browser instead of failing outright.
+    if (/kv|redis|upstash|url|token|credential|not configured/i.test(msg)) return unavailable(null);
+    return Response.json({ error: msg }, { status: 400 });
   }
 }
 

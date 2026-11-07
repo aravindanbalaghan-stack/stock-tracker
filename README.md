@@ -36,7 +36,8 @@ Open http://localhost:3000.
 
 1. Push this folder to a GitHub repo.
 2. Go to vercel.com → New Project → import the repo.
-3. No environment variables are required — click Deploy.
+3. Click Deploy, then follow "Set up storage and sign-in" below — the
+   app needs a database and a `SESSION_SECRET` before anyone can sign in.
 4. Vercel builds and hosts it; the two API routes become serverless
    functions automatically.
 
@@ -88,60 +89,74 @@ practical paths are:
 Swapping either in only requires changing `app/api/quote/route.js` — the
 rest of the app (UI, polling, watchlist) stays the same.
 
-## Access
+## Set up storage and sign-in
 
-Every page and API route requires a `panel_identity` cookie, set by
-entering your email or name at `/login`. **This is not real
-authentication** — nothing is verified, there's no password, and anyone
-with your deployed URL can type any email or name and get in. It exists
-so that if you share this with friends, everyone identifies themselves
-(mainly so each person's Watchlist and Holdings belong to them, rather
-than one shared pool everyone can see and edit).
+Panel needs two things on Vercel before Watchlist, Holdings, Top 5,
+Sectors and sign-in work: an **Upstash Redis** database and a
+**SESSION_SECRET**. Do these once.
 
-If you actually want to restrict who can get in — not just ask visitors
-to identify themselves — you'd need to add an allowlist check in
-`proxy.js` (e.g. against a fixed list of emails in an env var) and
-probably real email verification (a magic link via an email-sending
-service like Resend). Neither is implemented here.
+### 1. Connect an Upstash Redis database
+
+Vercel's old "KV" product was retired; its replacement is Upstash Redis
+from the Vercel Marketplace (free tier is plenty).
+
+1. Vercel dashboard → your project → **Storage** tab.
+2. **Create Database** (or **Browse Marketplace**) → **Upstash** →
+   **Upstash for Redis** → choose the free plan and a region close to you
+   (e.g. Mumbai / `ap-south-1`) → Create.
+3. On the database page, **Connect Project** → pick this project → tick
+   **Production**, **Preview** and **Development** → Connect.
+   Leave the "custom prefix" field empty.
+4. Check **Settings → Environment Variables**: you should now see
+   `KV_REST_API_URL` and `KV_REST_API_TOKEN` (plus a few others).
+
+The app also accepts `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`
+(a database made directly on upstash.com) or a custom-prefixed pair like
+`STORAGE_KV_REST_API_URL` — see `lib/kv.js`.
+
+### 2. Add SESSION_SECRET (and optionally SIGNUP_CODE)
+
+**Settings → Environment Variables → Add**, for all environments:
+
+| Name | Value |
+| --- | --- |
+| `SESSION_SECRET` | A long random string, 32+ characters. Generate one with `openssl rand -base64 48`, or any password generator. It signs every sign-in cookie — keep it private, and changing it signs everyone out. |
+| `SIGNUP_CODE` (optional) | Any word or phrase. If set, creating an account needs this code — give it only to people you want using the app. |
+| `ADMIN_KEY` (optional) | Enables `/admin/logins` (see below). |
+
+### 3. Redeploy
+
+**Deployments** → latest → **⋯ → Redeploy**. Environment variables only
+apply to new deployments.
+
+### 4. Create your account
+
+Open the app → **Create account**. If you used Panel before with just a
+name, create the account with **that same name** — the watchlist,
+holdings and Top 5 saved under it carry over, and anything that was only
+in your browser is uploaded to your account the first time you load
+Watchlist and Holdings.
+
+### How sign-in works
+
+- Accounts are username + password. Passwords are stored only as salted
+  scrypt hashes (`lib/auth.js`).
+- Signing in sets an httpOnly cookie signed with `SESSION_SECRET`, valid
+  for 30 days. `proxy.js` checks the signature on every request, so a
+  cookie can't be edited to become someone else.
+- Watchlist and Holdings are keyed by the signed-in username on the
+  server, so the same account shows the same data on every device.
+- 8 wrong passwords lock that username for 15 minutes.
+- Change your password from **Password** in the header.
 
 Note: this app uses **Proxy** (`proxy.js` in the project root), not the
-older `middleware.js` convention — this Next.js version renamed it (see
-`AGENTS.md` and `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md`).
+older `middleware.js` convention — this Next.js version renamed it.
 
 ### Checking who's logged in
 
-Every submission to `/login` is recorded (identity + timestamp) in Vercel
-KV — the same database Watchlist and Holdings use, so you need that set
-up too (see below). To view the log:
-
-1. In your Vercel project → **Settings** → **Environment Variables**, add
-   `ADMIN_KEY` set to any secret string of your choosing. Redeploy.
-2. Visit `/admin/logins` on your deployed app and enter that key (or
-   bookmark `/admin/logins?key=YOUR_KEY` to skip re-typing it).
-
-This key is separate from the friend-identity cookie on purpose — since
-that cookie can be set to literally anything by anyone, it can't be what
-decides who gets to see everyone else's login history. Without `ADMIN_KEY` set, `/admin/logins` just shows an error and nothing
-recorded is ever exposed.
-
-## Add a database (Vercel KV)
-
-Watchlist, Holdings, Sectors, accumulation history, and screener-
-membership tracking all need a small server-side database to persist
-anything beyond a single browser — without it, the app still runs, but
-each of those quietly falls back to local-only behavior (or, for Sectors,
-refuses to save at all — see "Managing sectors" above).
-
-1. In your Vercel dashboard, open your project → **Storage** tab.
-2. **Create Database** → choose **KV** (built on Upstash Redis, free tier
-   is plenty for this).
-3. Once created, click **Connect Project** and select this project.
-   Vercel automatically adds the required environment variables
-   (`KV_REST_API_URL`, `KV_REST_API_TOKEN`, etc.) — you don't need to
-   copy/paste anything.
-4. Redeploy (Vercel usually prompts you to).
-
-
+Every successful sign-in is recorded (username + timestamp). Set
+`ADMIN_KEY` to a secret string, redeploy, then visit `/admin/logins`
+and enter that key.
 
 Prices are for personal tracking only and may be delayed relative to the
 exchange. Do not use this app as the sole basis for trading decisions.

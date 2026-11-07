@@ -20,7 +20,8 @@ function fmtTurnover(cr) {
   return `₹${cr.toFixed(2)} Cr`;
 }
 
-function RangeBar({ low, high, price }) {
+// Shared with the Holdings cards.
+export function RangeBar({ low, high, price }) {
   const ok = low != null && high != null && price != null && high > low;
   const pct = ok ? Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100)) : null;
   return (

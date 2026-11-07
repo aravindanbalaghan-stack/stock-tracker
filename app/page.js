@@ -17,6 +17,7 @@ import TradingSuggestionsTab from "@/components/TradingSuggestionsTab";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
+import ChangePassword from "@/components/ChangePassword";
 
 const REFRESH_MS = 12000;
 
@@ -322,6 +323,13 @@ function PageInner() {
     try {
       await fetch("/api/logout", { method: "POST" });
     } finally {
+      // Drop this browser's copies so the next person to sign in here
+      // doesn't inherit them — the account copy on the server is untouched.
+      try {
+        for (const k of ["panel:watchlist", "panel:watchlist-meta", "panel:holdings"]) window.localStorage.removeItem(k);
+      } catch {
+        /* storage blocked — nothing to clear */
+      }
       setIdentity(null);
       window.location.href = "/login";
     }
@@ -367,6 +375,7 @@ function PageInner() {
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span className="hidden md:inline">{identity}</span>
+              <ChangePassword />
               <button onClick={handleLogout} style={{ color: "var(--text-faint)" }}>
                 Sign out
               </button>

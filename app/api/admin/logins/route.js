@@ -27,7 +27,7 @@ export async function GET(request) {
     return Response.json({ logins });
   } catch (err) {
     return Response.json(
-      { error: "Failed to load login log — is Vercel KV set up? See README.", detail: String(err?.message || err) },
+      { error: "Failed to load login log — is the Upstash Redis database connected? See README → \"Set up storage and sign-in\".", detail: String(err?.message || err) },
       { status: 500 }
     );
   }

@@ -143,7 +143,7 @@ export async function POST(request) {
     return Response.json(
       {
         error: isStorage
-          ? "Couldn't save — the KV store this uses (the same one Watchlist and Holdings need) doesn't look configured for this deployment."
+          ? "Couldn't save — no Upstash Redis database is connected to this deployment. See README → \"Set up storage and sign-in\"."
           : msg,
       },
       { status: isStorage ? 503 : 400 }

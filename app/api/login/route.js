@@ -1,27 +1,54 @@
-import { cookies } from "next/headers";
-import { IDENTITY_COOKIE } from "@/lib/identity";
+import { signIn, signUp, setSessionCookies, sessionSecret, MIN_PASSWORD } from "@/lib/auth";
+import { kvConfigured, kvHealthy } from "@/lib/kv";
 import { recordLogin } from "@/lib/loginLog";
 
-const MAX_LENGTH = 100;
+export const dynamic = "force-dynamic";
 
+// GET — what the login screen needs to know before showing the form:
+// whether this deployment is set up for sign-in at all, and whether new
+// accounts need an invite code.
+export async function GET() {
+  const storage = kvConfigured ? ((await kvHealthy()) ? "ok" : "unreachable") : "missing";
+  return Response.json({
+    storage,
+    secret: sessionSecret() ? "ok" : "missing",
+    inviteCodeRequired: !!process.env.SIGNUP_CODE,
+    minPassword: MIN_PASSWORD,
+  });
+}
+
+// POST { mode: "signin" | "signup", username, password, inviteCode? }
 export async function POST(request) {
   const body = await request.json().catch(() => null);
-  const raw = typeof body?.identity === "string" ? body.identity.trim() : "";
+  const mode = body?.mode === "signup" ? "signup" : "signin";
 
-  if (!raw) {
-    return Response.json({ error: "Enter your email or name" }, { status: 400 });
+  if (!sessionSecret()) {
+    return Response.json(
+      { error: "Sign-in isn't set up on this deployment: SESSION_SECRET is missing. See README → \"Set up storage and sign-in\"." },
+      { status: 503 }
+    );
+  }
+  if (!kvConfigured) {
+    return Response.json(
+      { error: "Sign-in isn't set up on this deployment: no Upstash Redis database is connected. See README → \"Set up storage and sign-in\"." },
+      { status: 503 }
+    );
   }
 
-  const identity = raw.slice(0, MAX_LENGTH);
-  const cookieStore = await cookies();
-  cookieStore.set(IDENTITY_COOKIE, identity, {
-    path: "/",
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365, // 1 year
-  });
+  try {
+    const result =
+      mode === "signup"
+        ? await signUp(body?.username, body?.password, body?.inviteCode)
+        : await signIn(body?.username, body?.password);
+    if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
 
-  await recordLogin(identity);
-
-  return Response.json({ ok: true, identity });
+    await setSessionCookies(result.username);
+    await recordLogin(result.username);
+    return Response.json({ ok: true, username: result.username, created: mode === "signup" });
+  } catch (err) {
+    return Response.json(
+      { error: "Couldn't reach the database — check the Upstash connection.", detail: String(err?.message || err) },
+      { status: 503 }
+    );
+  }
 }
