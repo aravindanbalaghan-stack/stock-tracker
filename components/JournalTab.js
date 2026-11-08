@@ -8,6 +8,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScreenHeader, SectionTitle, Panel, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import TradeForm from "@/components/TradeForm";
+import QuickCapture from "@/components/QuickCapture";
+import { describeParse, parseQuickNote } from "@/lib/quickNote";
 import SymbolLink from "@/components/SymbolLink";
 import { enrich, computeStats, insights, exportRows, EXPORT_COLUMNS, aiReviewPack } from "@/lib/journalStats";
 import { downloadTable, downloadText, parseTableFile } from "@/lib/tabularFile";
@@ -140,7 +142,10 @@ export default function JournalTab() {
   }, []);
 
   // Live prices for open trades, so unrealised P&L shows.
-  const openSymbols = useMemo(() => [...new Set((trades ?? []).filter((t) => t.exitPrice == null).map((t) => t.symbol))].join(","), [trades]);
+  const openSymbols = useMemo(
+    () => [...new Set((trades ?? []).filter((t) => !t.draft && t.exitPrice == null && t.symbol).map((t) => t.symbol))].join(","),
+    [trades]
+  );
   useEffect(() => {
     if (!openSymbols) return;
     fetch(`/api/quote?symbols=${encodeURIComponent(openSymbols)}`)
@@ -154,7 +159,8 @@ export default function JournalTab() {
   const inPeriod = enriched.filter((t) => !start || (t.exitDate ?? t.entryDate) >= start);
   const stats = useMemo(() => computeStats(inPeriod), [inPeriod]);
   const notes = insights(stats);
-  const listed = inPeriod.filter((t) => statusFilter === "all" || t.status.toLowerCase() === statusFilter);
+  const drafts = enriched.filter((t) => t.status === "Draft");
+  const listed = inPeriod.filter((t) => t.status !== "Draft" && (statusFilter === "all" || t.status.toLowerCase() === statusFilter));
   const unrealised = enriched.filter((t) => t.status === "Open" && t.netPnl != null).reduce((a, t) => a + t.netPnl, 0);
 
   async function saveTrade(t) {
@@ -217,7 +223,11 @@ export default function JournalTab() {
     <div>
       <ScreenHeader
         title="Journal"
-        meta={trades ? `${trades.length} trades logged · ${stats.closed ?? 0} closed in view` : "Your trades, the plan behind them, and what the numbers say"}
+        meta={
+          trades
+            ? `${trades.filter((t) => !t.draft).length} trades logged · ${stats.closed ?? 0} closed in view${drafts.length ? ` · ${drafts.length} note${drafts.length === 1 ? "" : "s"} to complete` : ""}`
+            : "Your trades, the plan behind them, and what the numbers say"
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <select value={period} onChange={(e) => setPeriod(e.target.value)} className="rounded px-2 py-1 text-xs border" style={sel}>
@@ -253,7 +263,58 @@ export default function JournalTab() {
       {error && <ErrorState>{error}</ErrorState>}
       {!trades && !error && <LoadingState>Loading your journal…</LoadingState>}
 
-      {trades && trades.length === 0 && (
+      {trades && (
+        <div className="mb-6 flex flex-col gap-3">
+          <QuickCapture trades={trades} onSaveTrade={saveTrade} />
+          {drafts.length > 0 && (
+            <div>
+              <SectionTitle meta="Notes saved in the moment — not counted in any stats until completed">
+                Needs details ({drafts.length})
+              </SectionTitle>
+              <div className="grid gap-2 md:grid-cols-2">
+                {drafts.map((d) => {
+                  const first = d.quickNotes?.[0];
+                  const chips = first ? describeParse(parseQuickNote(first.text)) : [];
+                  return (
+                    <div key={d.id} className="rounded-[var(--radius)] border p-3 flex flex-col gap-2" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                      <p className="text-[10px] font-mono" style={{ color: "var(--text-faint)" }}>
+                        {first?.at ? new Date(first.at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : d.entryDate}
+                      </p>
+                      <p className="text-sm leading-snug whitespace-pre-wrap" style={{ color: "var(--text)" }}>
+                        {(d.quickNotes ?? []).map((n) => n.text).join("\n\n") || d.symbol}
+                      </p>
+                      {chips.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {chips.map((c) => (
+                            <span key={c} className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => window.confirm("Delete this note?") && deleteTrade(d.id)}
+                          className="text-[11px] px-2 py-1 rounded border"
+                          style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
+                        >
+                          Delete
+                        </button>
+                        <button type="button" onClick={() => setEditing(d)} className="text-[11px] px-2.5 py-1 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+                          Complete trade
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {trades && trades.filter((t) => !t.draft).length === 0 && drafts.length === 0 && (
         <Panel>
           <p className="text-sm mb-2" style={{ color: "var(--text)" }}>
             Log your first trade.
@@ -266,7 +327,7 @@ export default function JournalTab() {
         </Panel>
       )}
 
-      {trades?.length > 0 && (
+      {trades?.some((t) => !t.draft) && (
         <div className="flex flex-col gap-6">
           {/* Headline numbers */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">

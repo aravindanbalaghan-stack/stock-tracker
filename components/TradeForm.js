@@ -86,13 +86,22 @@ export function blankTrade() {
 }
 
 export default function TradeForm({ initial, onSave, onDelete, onClose }) {
-  const [t, setT] = useState(() => ({ ...blankTrade(), ...initial, emotions: initial?.emotions ?? [], mistakes: initial?.mistakes ?? [] }));
+  const [t, setT] = useState(() => ({
+    ...blankTrade(),
+    ...initial,
+    // nulls from a draft would otherwise blank the inputs' controlled values
+    ...Object.fromEntries(Object.entries(initial ?? {}).filter(([, v]) => v === null).map(([k]) => [k, ""])),
+    emotions: initial?.emotions ?? [],
+    mistakes: initial?.mistakes ?? [],
+    quickNotes: initial?.quickNotes ?? [],
+  }));
+  const [newNote, setNewNote] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setT((p) => ({ ...p, [k]: e?.target ? e.target.value : e }));
 
   const n = (v) => (v === "" || v == null ? null : Number(v));
-  const preview = enrich({ ...t, quantity: n(t.quantity) ?? 0, entryPrice: n(t.entryPrice) ?? 0, stopLoss: n(t.stopLoss), target: n(t.target), exitPrice: n(t.exitPrice), fees: n(t.fees) ?? 0 });
+  const preview = enrich({ ...t, draft: false, quantity: n(t.quantity) ?? 0, entryPrice: n(t.entryPrice) ?? 0, stopLoss: n(t.stopLoss), target: n(t.target), exitPrice: n(t.exitPrice), fees: n(t.fees) ?? 0 });
 
   async function save() {
     setError(null);
@@ -106,7 +115,13 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
     }
     setBusy(true);
     try {
-      await onSave({ ...t, symbol: t.symbol.trim().toUpperCase() });
+      await onSave({
+        ...t,
+        symbol: t.symbol.trim().toUpperCase(),
+        // Saving the full form completes a draft.
+        draft: false,
+        quickNotes: newNote.trim() ? [...t.quickNotes, { at: new Date().toISOString(), text: newNote.trim() }] : t.quickNotes,
+      });
       onClose();
     } catch (err) {
       setError(err.message);
@@ -124,7 +139,7 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
       <div className="w-full max-w-3xl my-auto rounded-lg border p-4 flex flex-col gap-4" style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-baseline justify-between">
           <h3 className="font-display text-lg" style={{ color: "var(--text)" }}>
-            {initial?.id ? `Edit ${initial.symbol}` : "New trade"}
+            {initial?.draft ? `Complete ${initial.symbol || "trade"}` : initial?.id ? `Edit ${initial.symbol}` : "New trade"}
           </h3>
           <span className="text-xs font-mono" style={{ color: preview.netPnl == null ? "var(--text-faint)" : preview.netPnl >= 0 ? "var(--gain)" : "var(--loss)" }}>
             {preview.netPnl != null ? `${preview.netPnl >= 0 ? "+" : "−"}₹${Math.abs(preview.netPnl).toLocaleString("en-IN")}` : "open"}
@@ -132,6 +147,30 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
             {preview.plannedRR != null ? ` · planned ${preview.plannedRR}:1` : ""}
           </span>
         </div>
+
+        {(t.quickNotes.length > 0 || initial?.id) && (
+          <section className="rounded-[var(--radius-sm)] p-3" style={{ background: "var(--surface-2)" }}>
+            <p className="text-[11px] font-semibold mb-1.5" style={{ color: "var(--text-muted)" }}>
+              {initial?.draft ? "YOUR NOTE — the fields below were filled from it; check and complete them" : "NOTES"}
+            </p>
+            {t.quickNotes.map((n, i) => (
+              <p key={i} className="text-xs leading-relaxed mb-1 whitespace-pre-wrap" style={{ color: "var(--text)" }}>
+                <span className="font-mono text-[10px] mr-1.5" style={{ color: "var(--text-faint)" }}>
+                  {n.at ? new Date(n.at).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" }) : ""}
+                </span>
+                {n.text}
+              </p>
+            ))}
+            <textarea
+              rows={1}
+              value={newNote}
+              onChange={(e) => setNewNote(e.target.value)}
+              placeholder="Add a note (saved with a timestamp)…"
+              className={`${inputCls} mt-1`}
+              style={field}
+            />
+          </section>
+        )}
 
         <section>
           <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--text-muted)" }}>THE TRADE</p>

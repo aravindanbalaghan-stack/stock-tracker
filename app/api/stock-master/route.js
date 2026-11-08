@@ -4,6 +4,8 @@ import {
   clearStockMaster,
   getStockMaster,
   getStockMasterInfo,
+  getThemeIndex,
+  setThemes,
 } from "@/lib/stockMaster";
 import { getResolvedSectorList } from "@/lib/sectorOverrides";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
@@ -23,6 +25,7 @@ export async function GET(request) {
     if (searchParams.get("export") === "1") {
       return Response.json(await buildStockExport(await getResolvedSectorList()));
     }
+    if (searchParams.get("themes") === "1") return Response.json(await getThemeIndex());
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     if (symbol) {
       const rec = (await getStockMaster()).get(symbol) ?? null;
@@ -51,6 +54,19 @@ export async function POST(request) {
     return Response.json(result);
   } catch (err) {
     return Response.json({ error: "Couldn't save — is the database connected?", detail: String(err?.message || err) }, { status: 503 });
+  }
+}
+
+// PATCH { symbol, themes: [...] } → set one stock's themes (Sectors tab).
+export async function PATCH(request) {
+  if (!(await getSessionUser())) return Response.json({ error: "Not signed in" }, { status: 401 });
+  const body = await request.json().catch(() => null);
+  if (!body?.symbol || !Array.isArray(body.themes)) return Response.json({ error: "Expected { symbol, themes: [...] }" }, { status: 400 });
+  try {
+    const themes = await setThemes(body.symbol, body.themes);
+    return Response.json({ ok: true, symbol: String(body.symbol).toUpperCase(), themes, index: await getThemeIndex() });
+  } catch (err) {
+    return Response.json({ error: String(err?.message || err) }, { status: 503 });
   }
 }
 

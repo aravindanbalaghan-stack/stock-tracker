@@ -27,6 +27,7 @@ export default function StockMasterPanel({ symbol }) {
     ["Name", rec.name],
     ["Sector", rec.sectors?.join(", ")],
     ["Industry", rec.industry],
+    ["Themes", rec.themes?.join(", ")],
     ["Market cap", rec.marketCapCr != null ? `₹${Number(rec.marketCapCr).toLocaleString("en-IN")} Cr` : null],
     ...Object.entries(rec.custom ?? {}),
   ].filter(([, v]) => v !== null && v !== undefined && v !== "");

@@ -38,3 +38,22 @@ export async function GET(request) {
     );
   }
 }
+
+// POST { symbols: [...] } — same as GET, for lists too long for a URL
+// (the Sectors tab sends every filtered row so it can sort by market cap).
+export async function POST(request) {
+  const body = await request.json().catch(() => null);
+  const symbols = [...new Set((body?.symbols ?? []).map((s) => String(s).trim().toUpperCase()).filter(Boolean))].slice(0, 3000);
+  if (!symbols.length) return Response.json({ results: {} });
+  try {
+    const capMap = await getMarketCapsCr(symbols, { nseLimit: MAX_SYMBOLS });
+    const results = {};
+    for (const s of symbols) {
+      const cap = capMap.get(s);
+      results[s] = cap != null ? Math.round(cap) : null;
+    }
+    return Response.json({ results, cap: MAX_SYMBOLS });
+  } catch (err) {
+    return Response.json({ error: "Failed to fetch market cap", detail: String(err?.message || err) }, { status: 502 });
+  }
+}

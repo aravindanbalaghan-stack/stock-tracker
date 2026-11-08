@@ -223,15 +223,116 @@ function AddStockControl({ allSectors, onAdd }) {
   );
 }
 
+function ThemeBadge({ symbol, theme, onRemove, busy }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded"
+      style={{ background: "var(--tier-low-dim)", color: "var(--tier-low)" }}
+    >
+      {theme}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => onRemove(symbol, theme)}
+        className="hover:opacity-70 disabled:opacity-30"
+        title="Remove this theme"
+        style={{ color: "var(--loss)" }}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+// Pick an existing theme or type a new one.
+function AddThemeControl({ symbol, current, allThemes, onAdd, busy }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const options = allThemes.filter((t) => !current.includes(t.name) && t.name.toLowerCase().includes(text.trim().toLowerCase()));
+  const canCreate = text.trim() && !allThemes.some((t) => t.name.toLowerCase() === text.trim().toLowerCase());
+  const add = (name) => {
+    onAdd(symbol, name);
+    setOpen(false);
+    setText("");
+  };
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy}
+        className="text-[11px] px-1.5 py-0.5 rounded border disabled:opacity-40"
+        style={{ borderColor: "var(--tier-low)", color: "var(--tier-low)" }}
+      >
+        + Theme
+      </button>
+      {open && (
+        <div
+          className="absolute z-20 mt-1 rounded border shadow-xl p-1.5"
+          style={{ background: "var(--surface-2)", borderColor: "var(--border-strong)", minWidth: "13rem" }}
+        >
+          <input
+            autoFocus
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && text.trim()) {
+                e.preventDefault();
+                add(options[0]?.name && !canCreate ? options[0].name : text.trim());
+              }
+            }}
+            placeholder="Find or create a theme…"
+            className="w-full rounded px-2 py-1 text-xs outline-none border mb-1"
+            style={{ background: "var(--surface)", borderColor: "var(--border)", color: "var(--text)" }}
+          />
+          <div className="max-h-52 overflow-auto">
+            {canCreate && (
+              <button type="button" onClick={() => add(text.trim())} className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5" style={{ color: "var(--accent)" }}>
+                + Create “{text.trim()}”
+              </button>
+            )}
+            {options.map((t) => (
+              <button key={t.name} type="button" onClick={() => add(t.name)} className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5" style={{ color: "var(--text)" }}>
+                {t.name} <span style={{ color: "var(--text-faint)" }}>({t.count})</span>
+              </button>
+            ))}
+            {!canCreate && !options.length && (
+              <p className="px-2 py-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
+                Type a name to create a theme
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SectorManagerTab() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState("");
+  const [themeFilter, setThemeFilter] = useState("");
+  const [themeIndex, setThemeIndex] = useState({ themes: [], bySymbol: {} });
+  const [sort, setSort] = useState({ key: "symbol", dir: "asc" });
   const [busySymbol, setBusySymbol] = useState(null);
   const [importMsg, setImportMsg] = useState(null);
   const [marketCaps, setMarketCaps] = useState({});
-  const [marketCapLoading, setMarketCapLoading] = useState(false);
+  // Which filtered list the market caps were last loaded for — "loading"
+  // is derived from it rather than set inside the effect.
+  const [capsLoadedFor, setCapsLoadedFor] = useState(null);
   const fileInputRef = useRef(null);
 
   async function load() {
@@ -241,6 +342,11 @@ export default function SectorManagerTab() {
       if (!res.ok) throw new Error(json?.error || "Couldn't load sectors");
       setData(json);
       setError(null);
+      // Themes live with the imported stock data (lib/stockMaster.js).
+      fetch("/api/stock-master?themes=1")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((t) => t && setThemeIndex({ themes: t.themes ?? [], bySymbol: t.bySymbol ?? {} }))
+        .catch(() => {});
     } catch (err) {
       setError(err.message);
     }
@@ -253,51 +359,99 @@ export default function SectorManagerTab() {
   const allSectors = data?.sectors ?? [];
 
   const filtered = useMemo(() => {
-    const list = data?.classified ?? [];
+    // Stocks with a theme but no sector yet are listed too, so a theme
+    // filter shows every stock tagged with it.
+    const classified = data?.classified ?? [];
+    const known = new Set(classified.map((r) => r.symbol));
+    const themeOnly = Object.keys(themeIndex.bySymbol)
+      .filter((s) => !known.has(s))
+      .map((symbol) => ({ symbol, sectors: [] }));
     const q = search.trim().toUpperCase();
-    return list.filter((row) => {
-      if (sectorFilter && !row.sectors.some((s) => s.key === sectorFilter)) return false;
-      if (q && !row.symbol.includes(q) && !row.sectors.some((s) => s.name.toUpperCase().includes(q))) return false;
-      return true;
-    });
-  }, [data, search, sectorFilter]);
+    return [...classified, ...themeOnly]
+      .map((row) => ({ ...row, themes: themeIndex.bySymbol[row.symbol] ?? [] }))
+      .filter((row) => {
+        if (sectorFilter && !row.sectors.some((s) => s.key === sectorFilter)) return false;
+        if (themeFilter === "__none" && row.themes.length) return false;
+        if (themeFilter && themeFilter !== "__none" && !row.themes.includes(themeFilter)) return false;
+        if (
+          q &&
+          !row.symbol.includes(q) &&
+          !row.sectors.some((s) => s.name.toUpperCase().includes(q)) &&
+          !row.themes.some((t) => t.toUpperCase().includes(q))
+        )
+          return false;
+        return true;
+      });
+  }, [data, search, sectorFilter, themeFilter, themeIndex]);
 
-  const visibleRows = filtered.slice(0, 500);
-
-  // Market cap — NSE's rate-limited quote-equity endpoint (see
-  // lib/marketCap.js), so this only fetches when the CURRENT filter
-  // narrows things down to a reasonable batch. Applying a sector filter
-  // is the expected way to see it: the base lists run 20-100 symbols per
-  // sector, comfortably inside the cap; leaving every sector unfiltered
-  // (400+ symbols) would either time out or risk NSE flagging the
-  // session, so that case is skipped with an explanatory note instead.
-  // Imported / cached market caps come back for every visible row; the
-  // server only asks NSE live for up to 150 unknown ones per request.
-  const MARKET_CAP_FETCH_CAP = 500;
+  // Market caps for EVERY filtered row (imported / cached values are
+  // instant; only unknown ones go to NSE), so sorting by market cap ranks
+  // the whole filtered list, not just the first page.
+  const filteredKey = filtered.map((r) => r.symbol).join(",");
   useEffect(() => {
-    const symbols = visibleRows.map((r) => r.symbol);
-    if (symbols.length === 0 || symbols.length > MARKET_CAP_FETCH_CAP) {
-      setMarketCaps({});
-      return;
-    }
+    const symbols = filteredKey ? filteredKey.split(",") : [];
+    if (symbols.length === 0) return;
     let cancelled = false;
-    setMarketCapLoading(true);
     (async () => {
       try {
-        const res = await fetch(`/api/market-cap?symbols=${encodeURIComponent(symbols.join(","))}`);
+        const res = await fetch("/api/market-cap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbols }),
+        });
         const json = await res.json();
-        if (!cancelled && res.ok) setMarketCaps(json.results ?? {});
+        if (!cancelled && res.ok) setMarketCaps((prev) => ({ ...prev, ...(json.results ?? {}) }));
       } catch {
         /* market cap is a nice-to-have — the rest of the tab still works */
       } finally {
-        if (!cancelled) setMarketCapLoading(false);
+        if (!cancelled) setCapsLoadedFor(filteredKey);
       }
     })();
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleRows.map((r) => r.symbol).join(",")]);
+  }, [filteredKey]);
+  const marketCapLoading = !!filteredKey && capsLoadedFor !== filteredKey;
+
+  const sorted = useMemo(() => {
+    const val = (r) =>
+      sort.key === "marketCapCr" ? marketCaps[r.symbol] ?? null : sort.key === "theme" ? r.themes[0]?.toLowerCase() ?? null : r.symbol;
+    return [...filtered].sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1; // unknowns last, whichever direction
+      if (bv == null) return -1;
+      const c = typeof av === "number" ? av - bv : String(av).localeCompare(String(bv));
+      return sort.dir === "asc" ? c : -c;
+    });
+  }, [filtered, sort, marketCaps]);
+
+  const onSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "marketCapCr" ? "desc" : "asc" }));
+  const arrow = (key) => (sort.key === key ? (sort.dir === "asc" ? " ▲" : " ▼") : "");
+
+  const visibleRows = sorted.slice(0, 500);
+
+  async function handleThemeChange(symbol, nextThemes) {
+    setBusySymbol(symbol);
+    try {
+      const res = await fetch("/api/stock-master", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol, themes: nextThemes }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Couldn't save the theme");
+      setThemeIndex({ themes: json.index.themes, bySymbol: json.index.bySymbol });
+    } catch (err) {
+      setImportMsg(err.message);
+    } finally {
+      setBusySymbol(null);
+    }
+  }
+
+
 
   async function handleRemove(symbol, sectorKey, viaOverride) {
     setBusySymbol(symbol);
@@ -475,18 +629,38 @@ export default function SectorManagerTab() {
             ))}
           </select>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+            Theme
+          </label>
+          <select
+            value={themeFilter}
+            onChange={(e) => setThemeFilter(e.target.value)}
+            className="rounded px-2 py-2 text-sm outline-none border"
+            style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
+          >
+            <option value="">All themes</option>
+            {themeIndex.themes.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.name} ({t.count})
+              </option>
+            ))}
+            <option value="__none">No theme yet</option>
+          </select>
+        </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by symbol or sector…"
+          placeholder="Search by symbol, sector or theme…"
           className="w-full max-w-sm rounded px-3 py-2 text-sm outline-none border"
           style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
         />
-        {(sectorFilter || search) && (
+        {(sectorFilter || themeFilter || search) && (
           <button
             type="button"
             onClick={() => {
               setSectorFilter("");
+              setThemeFilter("");
               setSearch("");
             }}
             className="text-xs px-2.5 py-2 rounded border"
@@ -497,25 +671,33 @@ export default function SectorManagerTab() {
         )}
       </div>
 
-      {visibleRows.length > MARKET_CAP_FETCH_CAP && (
-        <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
-          Market cap isn&apos;t fetched for more than {MARKET_CAP_FETCH_CAP} stocks at once — pick a sector
-          above (or narrow your search) to see it.
-        </p>
-      )}
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
         <table className="w-full border-collapse">
           <thead>
             <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
               <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
-                Symbol
+                <button type="button" onClick={() => onSort("symbol")} className="uppercase tracking-wider hover:underline">
+                  Symbol{arrow("symbol")}
+                </button>
               </th>
               <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-right" style={{ color: "var(--text-faint)" }}>
-                Mkt cap (₹ Cr)
+                <button
+                  type="button"
+                  onClick={() => onSort("marketCapCr")}
+                  className="uppercase tracking-wider hover:underline"
+                  title="Sort by market cap — stocks with no known market cap go to the bottom"
+                >
+                  Mkt cap (₹ Cr){arrow("marketCapCr")}
+                </button>
               </th>
               <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
                 Sectors
+              </th>
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+                <button type="button" onClick={() => onSort("theme")} className="uppercase tracking-wider hover:underline">
+                  Themes{arrow("theme")}
+                </button>
               </th>
             </tr>
           </thead>
@@ -526,9 +708,7 @@ export default function SectorManagerTab() {
                   {row.symbol}
                 </td>
                 <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
-                  {visibleRows.length > MARKET_CAP_FETCH_CAP ? (
-                    "—"
-                  ) : marketCapLoading && marketCaps[row.symbol] === undefined ? (
+                  {marketCapLoading && marketCaps[row.symbol] === undefined ? (
                     <span style={{ color: "var(--text-faint)" }}>…</span>
                   ) : marketCaps[row.symbol] == null ? (
                     "—"
@@ -542,6 +722,26 @@ export default function SectorManagerTab() {
                       <SectorBadge key={s.key} symbol={row.symbol} sector={s} onRemove={handleRemove} busy={busySymbol === row.symbol} />
                     ))}
                     <AddSectorControl symbol={row.symbol} allSectors={allSectors} onAdd={handleAddSectorToSymbol} busy={busySymbol === row.symbol} />
+                  </div>
+                </td>
+                <td className="py-2 px-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {row.themes.map((t) => (
+                      <ThemeBadge
+                        key={t}
+                        symbol={row.symbol}
+                        theme={t}
+                        busy={busySymbol === row.symbol}
+                        onRemove={(sym, name) => handleThemeChange(sym, row.themes.filter((x) => x !== name))}
+                      />
+                    ))}
+                    <AddThemeControl
+                      symbol={row.symbol}
+                      current={row.themes}
+                      allThemes={themeIndex.themes}
+                      busy={busySymbol === row.symbol}
+                      onAdd={(sym, name) => handleThemeChange(sym, [...row.themes, name])}
+                    />
                   </div>
                 </td>
               </tr>
