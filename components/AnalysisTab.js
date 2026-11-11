@@ -619,6 +619,15 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                 setStudyId(id);
               }}
               onAddIdea={(st) => {
+                const n = (v) => (v === "" || v == null ? "" : Number(v));
+                const dir = st.plan?.direction ?? (st.verdict === "Bearish" ? "Short" : "Long");
+                const dup = (draft.ideas ?? []).some(
+                  (i) => i.symbol === st.symbol && i.direction === dir && n(i.entry) === n(st.plan?.entry) && n(i.stop) === n(st.plan?.stop) && n(i.target) === n(st.plan?.target)
+                );
+                if (dup) {
+                  setMsg(`${st.symbol} is already in this day's ideas with the same levels.`);
+                  return;
+                }
                 set(["ideas"], [
                   ...(draft.ideas ?? []),
                   {

@@ -69,7 +69,10 @@ export default function TodayPlanCard({ onOpenAnalysis }) {
           <div className="flex flex-col gap-1.5">
             {e.ideas?.length ? (
               <div className="flex flex-wrap gap-2">
-                {e.ideas.slice(0, 8).map((i) => (
+                {e.ideas
+                  .filter((i, k, all) => all.findIndex((x) => x.symbol === i.symbol && x.direction === i.direction && x.entry === i.entry && x.stop === i.stop && x.target === i.target) === k)
+                  .slice(0, 8)
+                  .map((i) => (
                   <span key={i.id} className="text-xs px-2 py-1 rounded inline-flex items-center gap-1.5" style={{ background: "var(--surface-2)" }}>
                     <span style={{ color: i.direction === "Long" ? "var(--gain)" : "var(--loss)" }}>{i.direction === "Long" ? "▲" : "▼"}</span>
                     <SymbolLink symbol={i.symbol} className="text-xs" showEvents={false} />

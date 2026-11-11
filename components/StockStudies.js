@@ -24,6 +24,16 @@ const field = { background: "var(--surface-2)", borderColor: "var(--border)", co
 const inputCls = "rounded px-2 py-1.5 text-sm outline-none border w-full";
 const signed = (n) => (n == null ? "—" : `${n >= 0 ? "+" : ""}${n}%`);
 
+// What each plan status means — shown under the status.
+const PLAN_EXPLAIN = {
+  Waiting: "The plan hasn't started: price hasn't reached your trigger yet (or there's been no trading session since the study). It's checked again every time you open Analysis.",
+  "Not triggered": "Price never reached your trigger within the horizon, so the plan never started.",
+  Open: "Triggered and still running — neither stop nor target hit yet.",
+  "Target hit": "Triggered, then reached the target before the stop.",
+  "Stop hit": "Triggered, then hit the stop first (if both happened on the same day, the stop is assumed first).",
+  "Time exit": "Triggered, but neither stop nor target was hit within the horizon — closed at the last session's price.",
+};
+
 export function blankStudy(symbol) {
   return {
     id: crypto.randomUUID(),
@@ -219,12 +229,29 @@ function StudyEditor({ st, date, update, remove, history, events, onAddIdea, onL
         </div>
       </div>
 
-      {g && (
-        <div className="rounded-[var(--radius-sm)] px-3 py-2 text-xs flex flex-wrap gap-x-4 gap-y-1" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
-          <span>Since the study (₹{g.priceAtStudy}): <b style={{ color: g.moveSince >= 0 ? "var(--gain)" : "var(--loss)" }}>{signed(g.moveSince)}</b></span>
-          <span>5 / 10 / 20 sessions: {signed(g.move5)} / {signed(g.move10)} / {signed(g.move20)}</span>
-          {g.correct != null && <span style={{ color: g.correct ? "var(--gain)" : "var(--loss)" }}>{g.correct ? "✓ Verdict right" : "✗ Verdict wrong"} at {st.horizonDays} sessions</span>}
-          {st.planOutcome && <span>Plan: {st.planOutcome.status}{st.planOutcome.returnPct != null ? ` ${signed(st.planOutcome.returnPct)}` : ""}</span>}
+      {(g || st.planOutcome) && (
+        <div className="rounded-[var(--radius-sm)] px-3 py-2 text-xs flex flex-col gap-1" style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}>
+          {g && (
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <span>Since the study (₹{g.priceAtStudy}): <b style={{ color: g.moveSince >= 0 ? "var(--gain)" : "var(--loss)" }}>{signed(g.moveSince)}</b></span>
+              <span>5 / 10 / 20 sessions: {signed(g.move5)} / {signed(g.move10)} / {signed(g.move20)}</span>
+              {g.correct != null ? (
+                <span style={{ color: g.correct ? "var(--gain)" : "var(--loss)" }}>{g.correct ? "✓ Verdict right" : "✗ Verdict wrong"} at {st.horizonDays} sessions</span>
+              ) : (
+                st.verdict && st.verdict !== "Wait" && <span>Verdict graded after {st.horizonDays} sessions</span>
+              )}
+            </div>
+          )}
+          {st.planOutcome && (
+            <div>
+              <span style={{ color: "var(--text)" }}>Plan: {st.planOutcome.status}</span>
+              {st.planOutcome.returnPct != null ? ` ${signed(st.planOutcome.returnPct)}` : ""}
+              <span className="block text-[11px]" style={{ color: "var(--text-faint)" }}>
+                {PLAN_EXPLAIN[st.planOutcome.status]}
+                {st.planOutcome.note ? ` ${st.planOutcome.note}.` : ""}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
