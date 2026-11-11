@@ -125,6 +125,17 @@ forward to the next day, or turned into a draft Journal trade; the Home tab
 shows today's plan. **Export → AI review pack** writes a Markdown file with
 the scorecard, breakdowns and every day, plus a coaching prompt.
 
+**Stock studies** (second view in Analysis): technical analysis of
+individual stocks, several per day — top-down trend per timeframe, stage,
+patterns, candle, levels, indicators, volume/delivery, relative strength,
+verdict with conviction and horizon, an optional plan, a quality checklist
+(several items checked automatically) and notes. **Auto-fill** pulls
+Panel's own readings (trends, stage, MAs, RSI, MACD, 52-week position,
+ATR, delivery, RS vs NIFTY, swing levels, screens the stock is on) and
+saves them with the study. Each study is graded at its horizon and its
+plan like an idea; the scorecard breaks accuracy down by verdict, pattern,
+stage, conviction and timeframe alignment.
+
 ## Events
 
 Upcoming results, dividends, bonuses, splits and other corporate actions

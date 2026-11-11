@@ -7,11 +7,13 @@
 // lib/analysis.js; scoring: lib/analysisStats.js.
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ScreenHeader, SectionTitle, Panel, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import { ScreenHeader, SectionTitle, Panel, ErrorState, LoadingState, SubNav } from "@/components/ui/Chrome";
+import StockStudies from "@/components/StockStudies";
+import { usePersistentState } from "@/lib/usePersistentState";
 import SymbolLink from "@/components/SymbolLink";
 import { parseQuickNote } from "@/lib/quickNote";
 import { EMOTIONS } from "@/lib/journalStats";
-import { scorecard, insights, dayRows, ideaRows, DAY_COLUMNS, IDEA_COLUMNS, aiReviewPack, ideaWon } from "@/lib/analysisStats";
+import { scorecard, insights, dayRows, ideaRows, studyRows, DAY_COLUMNS, IDEA_COLUMNS, STUDY_COLUMNS, aiReviewPack, ideaWon } from "@/lib/analysisStats";
 import { downloadTable, downloadText, parseTableFile } from "@/lib/tabularFile";
 import { isNonTradingDate } from "@/lib/marketHours";
 
@@ -46,6 +48,7 @@ function blankEntry(date, checklist) {
     themesInFocus: [],
     events: "",
     ideas: [],
+    studies: [],
     checklist: Object.fromEntries(checklist.map((c) => [c, false])),
     review: "",
     worked: "",
@@ -151,12 +154,18 @@ function Scorecard({ s, notes, entries, onPick }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
         {cell("NIFTY bias", s.bias.nifty.accuracyNextDay != null ? `${s.bias.nifty.accuracyNextDay}%` : "—", `right next session · ${s.bias.nifty.calls} calls`, acc(s.bias.nifty.accuracyNextDay))}
         {cell("BANK NIFTY bias", s.bias.bankNifty.accuracyNextDay != null ? `${s.bias.bankNifty.accuracyNextDay}%` : "—", `right next session · ${s.bias.bankNifty.calls} calls`, acc(s.bias.bankNifty.accuracyNextDay))}
         {cell("Idea win rate", s.ideas.winRate != null ? `${s.ideas.winRate}%` : "—", `target before stop · ${s.ideas.resolved} resolved`, acc(s.ideas.winRate))}
         {cell("Avg idea", s.ideas.avgReturnPct != null ? signed(s.ideas.avgReturnPct) : "—", s.ideas.avgR != null ? `${s.ideas.avgR}R · ${s.ideas.open} open` : `${s.ideas.open} open`, s.ideas.avgReturnPct >= 0 ? "var(--gain)" : "var(--loss)")}
         {cell("Triggered", s.ideas.triggerRate != null ? `${s.ideas.triggerRate}%` : "—", `${s.ideas.triggered} of ${s.ideas.total} ideas`)}
+        {cell(
+          "Stock studies",
+          s.studies.accuracy != null ? `${s.studies.accuracy}%` : `${s.studies.total}`,
+          s.studies.accuracy != null ? `verdicts right · ${s.studies.graded} graded` : `studies on ${s.studies.stocks} stocks`,
+          acc(s.studies.accuracy)
+        )}
         {cell("Consistency", `${s.streak} day streak`, `${s.last30Days} entries in 30 days${s.avgRating ? ` · rating ${s.avgRating}/5` : ""}`)}
       </div>
 
@@ -293,6 +302,8 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
   const [quotes, setQuotes] = useState({});
   const [ideaText, setIdeaText] = useState("");
   const [editChecklist, setEditChecklist] = useState(false);
+  const [view, setView] = usePersistentState("analysis.view", "day");
+  const [studyId, setStudyId] = useState(null);
   const fileRef = useRef(null);
 
   const load = async () => {
@@ -458,6 +469,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
     if (kind === "ai") return downloadText(aiReviewPack(entries, s), `${base}-ai-review.md`, "text/markdown");
     if (kind === "csv-days") return downloadTable(dayRows(entries), DAY_COLUMNS, { format: "csv", baseName: `${base}-days` });
     if (kind === "csv-ideas") return downloadTable(ideaRows(entries), IDEA_COLUMNS, { format: "csv", baseName: `${base}-ideas` });
+    if (kind === "csv-studies") return downloadTable(studyRows(entries), STUDY_COLUMNS, { format: "csv", baseName: `${base}-stock-studies` });
     if (kind === "json") return downloadText(JSON.stringify({ exportedAt: new Date().toISOString(), scorecard: s, entries }, null, 2), `${base}.json`, "application/json");
     await downloadTable(dayRows(entries), DAY_COLUMNS, {
       format: "xlsx",
@@ -465,6 +477,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
       sheetName: "Days",
       extraSheets: [
         { name: "Ideas", rows: ideaRows(entries), columns: IDEA_COLUMNS },
+        { name: "Stock studies", rows: studyRows(entries), columns: STUDY_COLUMNS },
         { name: "By setup", rows: s.bySetup, columns: ["key", "ideas", "resolved", "winRate", "avgReturnPct"] },
       ],
     });
@@ -519,9 +532,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
             <select value="" onChange={(e) => e.target.value && exportAs(e.target.value)} className="rounded px-2 py-1 text-xs border" style={sel} disabled={!entries?.length}>
               <option value="">Export…</option>
               <option value="ai">AI review pack (.md)</option>
-              <option value="xlsx">Excel (days + ideas)</option>
+              <option value="xlsx">Excel (days, ideas, studies)</option>
               <option value="csv-days">CSV — days</option>
               <option value="csv-ideas">CSV — ideas</option>
+              <option value="csv-studies">CSV — stock studies</option>
               <option value="json">JSON (full backup)</option>
             </select>
             <button type="button" onClick={() => fileRef.current?.click()} className="text-xs px-2.5 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
@@ -582,15 +596,72 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
             </div>
           </div>
 
+          <SubNav
+            items={[
+              { id: "day", label: "Market & ideas" },
+              { id: "studies", label: `Stock studies${draft.studies?.length ? ` (${draft.studies.length})` : ""}` },
+            ]}
+            active={view}
+            onChange={setView}
+          />
+
+          {view === "studies" ? (
+            <StockStudies
+              date={date}
+              studies={draft.studies ?? []}
+              setStudies={(list) => set(["studies"], list)}
+              entries={entries}
+              events={events}
+              selectedId={studyId}
+              setSelectedId={setStudyId}
+              onOpen={(d, id) => {
+                setDate(d);
+                setStudyId(id);
+              }}
+              onAddIdea={(st) => {
+                set(["ideas"], [
+                  ...(draft.ideas ?? []),
+                  {
+                    id: crypto.randomUUID(),
+                    symbol: st.symbol,
+                    direction: st.plan?.direction ?? (st.verdict === "Bearish" ? "Short" : "Long"),
+                    setup: st.patterns?.[0] ?? "",
+                    timeframe: "Swing (days)",
+                    entry: st.plan?.entry ?? "",
+                    stop: st.plan?.stop ?? "",
+                    target: st.plan?.target ?? "",
+                    horizonDays: st.horizonDays ?? 10,
+                    thesis: st.notes?.split("\n")[0] || `${st.verdict} study`,
+                  },
+                ]);
+                setMsg(`${st.symbol} added to this day's ideas — save to keep it.`);
+              }}
+              onLogTrade={(st) =>
+                logTrade({
+                  symbol: st.symbol,
+                  direction: st.plan?.direction ?? "Long",
+                  entry: st.plan?.entry,
+                  stop: st.plan?.stop,
+                  target: st.plan?.target,
+                  setup: st.patterns?.[0] ?? "",
+                  timeframe: "Swing (days)",
+                  thesis: st.notes?.split("\n")[0] || `${st.verdict} study`,
+                })
+              }
+              onAddToWatchlist={onAddToWatchlist}
+              watchlistSymbols={watchlistSymbols}
+            />
+          ) : (
+            <>
           <div>
             <SectionTitle meta="Saved with the day, so you can see later what the market looked like when you wrote it">Market snapshot</SectionTitle>
             <Panel>
               <Snapshot snap={snapshot} />
             </Panel>
-          </div>
+            </div>
 
           {/* Pre-market */}
-          <div>
+            <div>
             <SectionTitle>Before the open — your view</SectionTitle>
             <Panel>
               <div className="grid gap-4 md:grid-cols-2">
@@ -659,10 +730,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                 </L>
               </div>
             </Panel>
-          </div>
+            </div>
 
           {/* Ideas */}
-          <div>
+            <div>
             <SectionTitle meta="Each idea is graded automatically: did it trigger, and did target or stop come first">Ideas</SectionTitle>
             <Panel>
               <div className="flex flex-wrap gap-2 mb-3">
@@ -770,10 +841,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                 </div>
               )}
             </Panel>
-          </div>
+            </div>
 
           {/* Checklist + post-market */}
-          <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
+            <div className="grid gap-6 lg:grid-cols-[1fr_2fr]">
             <div>
               <SectionTitle
                 meta={
@@ -837,7 +908,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                 </div>
               </Panel>
             </div>
-          </div>
+            </div>
+
+            </>
+          )}
 
           {/* History */}
           {entries.length > 0 && (

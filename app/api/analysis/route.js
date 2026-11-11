@@ -9,7 +9,9 @@ import {
   marketSnapshot,
   getPrefs,
   savePrefs,
+  studyTechnicals,
 } from "@/lib/analysis";
+import { getTechnicalView } from "@/lib/technicalView";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -36,6 +38,22 @@ async function guard(fn) {
 export async function GET(request) {
   return guard(async (user) => {
     const { searchParams } = new URL(request.url);
+    // Auto-fill for a stock study: Panel's readings (+ which screens it's
+    // on, for the latest session only).
+    const tech = searchParams.get("technicals")?.trim().toUpperCase();
+    if (tech) {
+      const date = searchParams.get("date");
+      const asOf = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      const [t, view] = await Promise.all([
+        studyTechnicals(tech, asOf && asOf < today ? asOf : null),
+        !asOf || asOf >= today
+          ? Promise.race([getTechnicalView(tech).catch(() => null), new Promise((r) => setTimeout(() => r(null), 20000))])
+          : null,
+      ]);
+      const screens = view?.cards?.filter((c) => c.status === "match" || c.status === "watch").map((c) => `${c.label}: ${c.headline}`) ?? null;
+      return Response.json({ ...t, screens });
+    }
     const snap = searchParams.get("snapshot");
     if (snap && /^\d{4}-\d{2}-\d{2}$/.test(snap)) return Response.json(await marketSnapshot(snap));
 
@@ -47,11 +65,12 @@ export async function GET(request) {
     }
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     if (symbol) {
-      const mine = entries.filter((e) => e.ideas.some((i) => i.symbol === symbol));
+      const mine = entries.filter((e) => e.ideas.some((i) => i.symbol === symbol) || (e.studies ?? []).some((st) => st.symbol === symbol));
       const graded = await gradeEntries(mine);
       return Response.json({
         symbol,
         ideas: graded.flatMap((e) => e.ideas.filter((i) => i.symbol === symbol).map((i) => ({ ...i, date: e.date }))),
+        studies: graded.flatMap((e) => (e.studies ?? []).filter((st) => st.symbol === symbol).map((st) => ({ ...st, date: e.date }))),
       });
     }
     const [graded, prefs] = await Promise.all([gradeEntries(entries), getPrefs(user)]);

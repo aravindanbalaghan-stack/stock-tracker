@@ -17,16 +17,17 @@ const TONE = {
 const field = { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" };
 
 export default function StockAnalysisPanel({ symbol, price }) {
-  const [loaded, setLoaded] = useState({ key: null, ideas: [] });
+  const [loaded, setLoaded] = useState({ key: null, ideas: [], studies: [] });
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ direction: "Long", entry: "", stop: "", target: "", setup: "", thesis: "" });
   const [msg, setMsg] = useState(null);
   const ideas = loaded.key === symbol ? loaded.ideas : [];
+  const studies = loaded.key === symbol ? loaded.studies : [];
 
   const load = () =>
     fetch(`/api/analysis?symbol=${encodeURIComponent(symbol)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setLoaded({ key: symbol, ideas: j?.ideas ?? [] }))
+      .then((j) => setLoaded({ key: symbol, ideas: j?.ideas ?? [], studies: j?.studies ?? [] }))
       .catch(() => {});
   useEffect(() => {
     Promise.resolve().then(load);
@@ -90,9 +91,42 @@ export default function StockAnalysisPanel({ symbol, price }) {
             {msg}
           </p>
         )}
+        {studies.length > 0 && (
+          <div className="mb-3">
+            <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-faint)" }}>
+              Technical studies
+            </p>
+            <ul className="flex flex-col">
+              {[...studies].reverse().map((st) => (
+                <li key={st.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5 border-b last:border-b-0 text-xs" style={{ borderColor: "var(--border)" }}>
+                  <span className="font-mono" style={{ color: "var(--text-faint)" }}>
+                    {st.date}
+                  </span>
+                  <span style={{ color: st.verdict === "Bullish" ? "var(--gain)" : st.verdict === "Bearish" ? "var(--loss)" : "var(--accent)" }}>{st.verdict || "—"}</span>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    W {st.timeframes?.Weekly?.trend || "—"} · D {st.timeframes?.Daily?.trend || "—"}
+                    {st.stage ? ` · Stage ${st.stage}` : ""}
+                  </span>
+                  {st.patterns?.length > 0 && <span style={{ color: "var(--text-muted)" }}>{st.patterns.join(", ")}</span>}
+                  {st.verdictGrade?.correct != null && (
+                    <span style={{ color: st.verdictGrade.correct ? "var(--gain)" : "var(--loss)" }}>
+                      {st.verdictGrade.correct ? "✓ right" : "✗ wrong"}
+                      {st.verdictGrade.move10 != null ? ` (${st.verdictGrade.move10 >= 0 ? "+" : ""}${st.verdictGrade.move10}% in 10)` : ""}
+                    </span>
+                  )}
+                  {st.notes && (
+                    <span className="basis-full line-clamp-2" style={{ color: "var(--text-muted)" }}>
+                      {st.notes}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {ideas.length === 0 ? (
           <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-            You haven&apos;t written an idea on {symbol} yet.
+            {studies.length ? "No trade ideas on" : "You haven't written an idea or study on"} {symbol} yet.
           </p>
         ) : (
           <ul className="flex flex-col">
