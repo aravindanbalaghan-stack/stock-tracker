@@ -2,6 +2,7 @@
 
 import DeliveryTab from "@/components/DeliveryTab";
 import SectorDeliveryTab from "@/components/SectorDeliveryTab";
+import DeliveryTopTab from "@/components/DeliveryTopTab";
 import PeriodToggle from "@/components/PeriodToggle";
 import DatePicker from "@/components/DatePicker";
 import { ScreenHeader } from "@/components/ui/Chrome";
@@ -18,7 +19,17 @@ import { usePersistentState } from "@/lib/usePersistentState";
 // stocks at a specific delivery-% range. Period, as-of date, and the
 // stage toggle are owned here and shared by both views.
 const SECTORS_TAB = { id: "sectors", label: "Sectors" };
-const TABS = [SECTORS_TAB, ...DELIVERY_BUCKETS];
+// Same volume-weighted view as Sectors, grouped by the themes you tag on
+// the Sectors tab / import on Stock Data.
+const THEMES_TAB = { id: "themes", label: "Themes" };
+// Highest delivery % over a week / month among stocks whose volume and
+// turnover also expanded (app/api/delivery-top). These have their own fixed
+// period, so the Daily/Weekly/Monthly toggle doesn't apply to them.
+const TOP_TABS = [
+  { id: "top-weekly", label: "Top 20 · Weekly", period: "weekly" },
+  { id: "top-monthly", label: "Top 20 · Monthly", period: "monthly" },
+];
+const TABS = [SECTORS_TAB, THEMES_TAB, ...TOP_TABS, ...DELIVERY_BUCKETS];
 
 export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
   const [view, setView] = usePersistentState("delivery.view", "60");
@@ -26,7 +37,8 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
   const [asOfDate, setAsOfDate] = usePersistentState("delivery.date", "");
   const [showStage, setShowStage] = usePersistentState("delivery.showStage", false);
 
-  const isSectors = view === "sectors";
+  const isSectors = view === "sectors" || view === "themes";
+  const topTab = TOP_TABS.find((t) => t.id === view);
   const activeBucket = DELIVERY_BUCKETS.find((b) => b.id === view) ?? DELIVERY_BUCKETS[3];
 
   return (
@@ -35,7 +47,7 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
         title="Delivery"
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            <PeriodToggle period={period} onChange={setPeriod} />
+            {!topTab && <PeriodToggle period={period} onChange={setPeriod} />}
             <button
               type="button"
               onClick={() => setShowStage((v) => !v)}
@@ -69,8 +81,18 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
         ))}
       </div>
 
-      {isSectors ? (
+      {topTab ? (
+        <DeliveryTopTab
+          key={topTab.id}
+          period={topTab.period}
+          asOfDate={asOfDate}
+          onAddToWatchlist={onAddToWatchlist}
+          watchlistSymbols={watchlistSymbols}
+        />
+      ) : isSectors ? (
         <SectorDeliveryTab
+          key={view}
+          group={view === "themes" ? "themes" : "sectors"}
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
           period={period}

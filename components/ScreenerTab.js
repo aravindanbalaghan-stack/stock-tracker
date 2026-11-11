@@ -534,6 +534,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
   const isPocket = screen === "pocket-pivot";
   const isIpo = screen === "ipo-base";
   const isShakeout = screen === "shakeout";
+  const isMonthly = screen === "monthly-breakout";
   const isTrendline = screen === "trendline-breakout";
   // All three of the new tabs show their own "Reason added" / "Entry"
   // columns instead of the generic 30WMA + debut columns, per the
@@ -579,8 +580,8 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
   // its Status priority (1 = crossing the listing-day high).
   const { sorted, sort, onSort } = useSortableRows(
     phaseFilteredRows,
-    isPocket ? "volVsDownVol" : isIpo ? "ipoStatusRank" : isShakeout ? "skSort" : "volumeRatio",
-    isIpo ? "asc" : "desc"
+    isPocket ? "volVsDownVol" : isIpo ? "ipoStatusRank" : isShakeout ? "skSort" : isMonthly ? "mbStatusRank" : "volumeRatio",
+    isIpo || isMonthly ? "asc" : "desc"
   );
   const def = isConfluence ? CONFLUENCE_DEF : SCREENS[screen];
 
@@ -935,6 +936,8 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
             ? `No stock had trend, volume, and relative strength all confirming at once as of ${data.asOf}.`
             : isPersonal
             ? `No stock had weekly RSI above 50, a close above the 30-week MA and RS above 0 together, as of ${data.asOf}.`
+            : isMonthly
+            ? `No stock closed above a monthly high it had been below for 12+ months, as of ${data.asOf}.`
             : isShakeout
             ? `No stock in an uptrend had a fresh shakeout below its base low or 50 DMA that it has since reclaimed, as of ${data.asOf}.`
             : isIpo
@@ -1264,6 +1267,20 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                   )}
                   {isPocket && (
                     <SortableTh label="Stop / Risk" sortKey="riskPct" sort={sort} onSort={onSort} title="Stop at the pivot day's low, and the % from the close down to it" />
+                  )}
+                  {isMonthly && (
+                    <SortableTh label="Status" sortKey="mbStatusRank" sort={sort} onSort={onSort} align="left" title="Breaking out = above the base high this month. Confirmed = last month closed above it and price is still above." />
+                  )}
+                  {isMonthly && (
+                    <SortableTh label="Base high" sortKey="mbBaseHigh" sort={sort} onSort={onSort} title="Highest monthly high before the breakout, and the month it was set" />
+                  )}
+                  {isMonthly && (
+                    <SortableTh label="Base length" sortKey="mbBaseMonths" sort={sort} onSort={onSort} title="Months between that high and the breakout" />
+                  )}
+                  {isMonthly && <SortableTh label="Depth" sortKey="mbBaseDepthPct" sort={sort} onSort={onSort} title="Deepest pullback from the base high during the base" />}
+                  {isMonthly && <SortableTh label="Above high" sortKey="mbAboveHighPct" sort={sort} onSort={onSort} title="Latest close vs the base high" />}
+                  {isMonthly && (
+                    <SortableTh label="Month vol" sortKey="mbVolRatio" sort={sort} onSort={onSort} title="Breakout-month volume vs the average of the 12 months before (projected if the month is in progress)" />
                   )}
                   {isShakeout && (
                     <SortableTh label="Status" sortKey="skSort" sort={sort} onSort={onSort} align="left" title="Grade from the evidence score — A = 5+ of 7, B = 3–4, C = under 3. Watch = broke the level but hasn't reclaimed it yet." />
@@ -1784,6 +1801,52 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                               −{fmt(r.riskPct, 1)}%
                             </span>
                           )}
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-left whitespace-nowrap" title={r.reason}>
+                          <span
+                            className="text-xs px-1.5 py-0.5 rounded"
+                            style={r.mbStatus === "Confirmed" ? { color: "var(--gain)", background: "var(--gain-dim)" } : { color: "var(--accent)", background: "var(--surface-2)" }}
+                          >
+                            {r.mbStatus}
+                          </span>
+                          {r.mbAllTimeHigh && (
+                            <span className="ml-1 text-[10px] font-semibold px-1 rounded" style={{ color: "var(--tier-low)", background: "var(--tier-low-dim)" }} title="Highest high in 5+ years of data">
+                              ATH
+                            </span>
+                          )}
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
+                          ₹{fmt(r.mbBaseHigh)}
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {r.mbBaseHighMonth}
+                          </span>
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
+                          {r.mbBaseMonths} mo
+                          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {(r.mbBaseMonths / 12).toFixed(1)} yrs
+                          </span>
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--text-muted)" }}>
+                          {fmt(r.mbBaseDepthPct, 1)}%
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--gain)" }}>
+                          +{fmt(r.mbAboveHighPct, 1)}%
+                        </td>
+                      )}
+                      {isMonthly && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: r.mbVolRatio >= 1.5 ? "var(--accent)" : "var(--text-muted)" }}>
+                          {r.mbVolRatio == null ? "—" : `${fmt(r.mbVolRatio)}×`}
                         </td>
                       )}
                       {isShakeout && (

@@ -9,6 +9,7 @@ import StockDepthPanel from "@/components/StockDepthPanel";
 import TechnicalView from "@/components/TechnicalView";
 import StockEvents from "@/components/StockEvents";
 import StockMasterPanel from "@/components/StockMasterPanel";
+import StockAnalysisPanel from "@/components/StockAnalysisPanel";
 import EventTag from "@/components/EventTag";
 import { StageJourneyPanel } from "@/components/StageJourney";
 
@@ -328,6 +329,7 @@ export default function StockInsightPage({ params }) {
           {/* ---- Upcoming / recent corporate events ---- */}
           <StockEvents symbol={sym} />
           <StockMasterPanel symbol={sym} />
+          <StockAnalysisPanel symbol={sym} />
 
           {/* ---- Price & levels ---- */}
           <div>

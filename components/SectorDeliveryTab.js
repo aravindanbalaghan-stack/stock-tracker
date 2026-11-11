@@ -125,7 +125,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
   );
 }
 
-function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel, showStage }) {
+function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel, showStage, isThemes }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -135,7 +135,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
       <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
-            <SortableTh label="Sector" sortKey="name" sort={sort} onSort={onSort} align="left" className="pl-4" />
+            <SortableTh label={isThemes ? "Theme" : "Sector"} sortKey="name" sort={sort} onSort={onSort} align="left" className="pl-4" />
             {showStage && (
               <th
                 className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-left"
@@ -146,7 +146,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
               </th>
             )}
             <SortableTh label={`Avg Chg % (${periodLabel})`} sortKey="avgChangePercent" sort={sort} onSort={onSort} />
-            <SortableTh label={`Sector Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} title="Volume-weighted: total delivered ÷ total traded across the sector's stocks over this period" />
+            <SortableTh label={`${isThemes ? "Theme" : "Sector"} Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} title="Volume-weighted: total delivered ÷ total traded across the sector's stocks over this period" />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} title="vs. average volume over a trailing 30-trading-day baseline" />
             <SortableTh label="Stocks" sortKey="matchedCount" sort={sort} onSort={onSort} title="Constituents with data in this period, out of the sector's full list" />
             <th className="py-2 pl-2 pr-4"></th>
@@ -166,15 +166,24 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                   <td className="py-2.5 pl-4 pr-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                      <Link
-                        href={`/sector/${encodeURIComponent(s.key)}`}
-                        className="text-sm font-medium hover:underline"
-                        style={{ color: "var(--text)" }}
-                        onClick={(e) => e.stopPropagation()}
-                        title={`Open ${s.name} — every stock, with accumulation and relative strength`}
-                      >
-                        {s.name}
-                      </Link>
+                      {isThemes ? (
+                        <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
+                          {s.name}
+                          <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {s.constituentCount} stocks
+                          </span>
+                        </span>
+                      ) : (
+                        <Link
+                          href={`/sector/${encodeURIComponent(s.key)}`}
+                          className="text-sm font-medium hover:underline"
+                          style={{ color: "var(--text)" }}
+                          onClick={(e) => e.stopPropagation()}
+                          title={`Open ${s.name} — every stock, with accumulation and relative strength`}
+                        >
+                          {s.name}
+                        </Link>
+                      )}
                     </div>
                   </td>
                   {showStage && (
@@ -275,7 +284,10 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
   );
 }
 
-export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket, period, asOfDate, showStage }) {
+export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket, period, asOfDate, showStage: showStageProp, group = "sectors" }) {
+  const isThemes = group === "themes";
+  // Composite stage is computed per built-in sector, not per theme.
+  const showStage = showStageProp && !isThemes;
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   // Filter for "sectors with accumulation above X%" — local to this
@@ -293,7 +305,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
     async function load() {
       try {
         const res = await fetch(
-          `/api/sector-delivery?period=${period}${bucket ? `&bucket=${bucket}` : ""}${asOfDate ? `&date=${asOfDate}` : ""}`
+          `/api/sector-delivery?period=${period}${bucket ? `&bucket=${bucket}` : ""}${asOfDate ? `&date=${asOfDate}` : ""}${isThemes ? "&group=themes" : ""}`
         );
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load sector delivery screen");
@@ -308,7 +320,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
       cancelled = true;
       clearInterval(id);
     };
-  }, [period, asOfDate, bucket]);
+  }, [period, asOfDate, bucket, isThemes]);
 
   // An attempt marker rather than deriving "should I fetch" from the
   // loading flag. Previously stageLoading was both a dependency AND set
@@ -437,7 +449,11 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
 
       {visibleSectors.length === 0 ? (
         <p className="text-sm mb-4" style={{ color: "var(--text-muted)" }}>
-          {bucket ? "No sectors in this bucket right now." : "No sectors match the current filter."}
+          {isThemes && !(data.sectors ?? []).length
+            ? "No themes yet — tag stocks with themes on the Sectors tab (+ Theme), or import a theme column on Stock Data."
+            : bucket
+            ? "No sectors in this bucket right now."
+            : `No ${isThemes ? "themes" : "sectors"} match the current filter.`}
         </p>
       ) : (
         <SectorTable
@@ -447,6 +463,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
           watchlistSymbols={watchlistSymbols}
           periodLabel={periodLabel}
           historyLabel={historyLabel}
+          isThemes={isThemes}
         />
       )}
 

@@ -8,6 +8,16 @@ import {
   lookbackDaysFor,
 } from "@/lib/deliveryMetrics";
 import { getResolvedSectorList } from "@/lib/sectorOverrides";
+import { getThemeIndex } from "@/lib/stockMaster";
+
+// Themes (tagged on the Sectors tab / imported on Stock Data) as groups
+// shaped exactly like sectors, so ?group=themes reuses every calculation.
+async function getThemeGroups() {
+  const { themes, bySymbol } = await getThemeIndex();
+  const members = new Map(themes.map((t) => [t.name, []]));
+  for (const [symbol, names] of Object.entries(bySymbol)) for (const n of names) members.get(n)?.push(symbol);
+  return themes.map((t) => ({ key: `theme:${t.name}`, name: t.name, symbols: members.get(t.name) ?? [] }));
+}
 import { fetchDebutBatch, withDebut } from "@/lib/debut";
 import { DELIVERY_BUCKETS, matchesBucket } from "@/lib/deliveryBuckets";
 
@@ -110,7 +120,8 @@ export async function GET(request) {
   try {
     // Base sector lists plus any stocks the user has added (see
     // lib/sectorOverrides.js), so manual additions show up here too.
-    const SECTOR_LIST = await getResolvedSectorList();
+    const group = searchParams.get("group") === "themes" ? "themes" : "sectors";
+    const SECTOR_LIST = group === "themes" ? await getThemeGroups() : await getResolvedSectorList();
 
     // "As of" support: only a plain YYYY-MM-DD is accepted, never a future
     // date. The window is fetched wider and sliced, rather than teaching
@@ -238,6 +249,7 @@ export async function GET(request) {
       dateAdjusted: !!asOfDate && asOfDate !== latest.date,
       period,
       bucket,
+      group,
       sectors: filteredSectors,
       tradingDaysUsed: days.length,
       criteria: { periodTradingDays, historyPeriods: HISTORY_PERIODS },

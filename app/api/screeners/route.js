@@ -27,7 +27,8 @@ import {
   istToday,
 } from "@/lib/nseLive";
 import { resolveWideUniverse } from "@/lib/nifty500";
-import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch } from "@/lib/screenerIndicators";
+import { fetchIndexOHLCV, fetchWeeklyOHLCVBatch, fetchMonthlyOHLCVBatch } from "@/lib/screenerIndicators";
+import { analyzeMonthlyBreakout, buildMonthly, MB } from "@/lib/monthlyBreakout";
 import { recordScreenSnapshot, getOccurrenceHistory } from "@/lib/screenerMembership";
 import { analyzePersonalLearning, PL } from "@/lib/personalLearning";
 import { pocketPivotStage1, pocketPivotStage2 } from "@/lib/pocketPivot";
@@ -900,6 +901,70 @@ async function runTrendlineBreakoutScreen({ days, universe, asOfCutoff, isLive, 
 }
 
 /**
+ * Monthly breakout tab — closes above a monthly high that has stood for
+ * 12+ months (lib/monthlyBreakout.js). Cheap bhavcopy pre-filter (near the
+ * top of its recent range, liquid), then 10 years of monthly bars from
+ * Yahoo for the survivors; the month in progress is rebuilt from NSE's
+ * daily files so as-of dates and holidays stay exact.
+ */
+const MONTHLY_SHORTLIST_CAP = 400;
+async function runMonthlyBreakoutScreen({ days, universe, isLive, recordMembership = false }) {
+  const latest = days[days.length - 1];
+  const candidates = universe.filter(({ series }) => {
+    const today = series[series.length - 1];
+    if (!today?.close || today.close < 20) return false;
+    const recent = series.slice(-20);
+    const turnover = recent.reduce((a, d) => a + (d.close ?? 0) * (d.volume ?? 0), 0) / Math.max(1, recent.length);
+    if (turnover / 1e7 < 2) return false; // ₹2 Cr/day
+    const maxHigh = Math.max(...series.map((d) => d.high ?? d.close ?? 0));
+    return today.close >= maxHigh * 0.85;
+  });
+  const shortlist = [...candidates]
+    .sort((a, b) => {
+      const at = a.series[a.series.length - 1];
+      const bt = b.series[b.series.length - 1];
+      return bt.volume * bt.close - at.volume * at.close;
+    })
+    .slice(0, MONTHLY_SHORTLIST_CAP);
+
+  const monthly = await fetchMonthlyOHLCVBatch(shortlist.map((c) => c.symbol), { concurrency: 20 });
+  const rows = [];
+  for (const { symbol, series } of shortlist) {
+    const hit = analyzeMonthlyBreakout(buildMonthly(monthly.get(symbol), series, latest.date));
+    if (!hit) continue;
+    const row = baseRow(symbol, series);
+    Object.assign(row, hit);
+    row.entryPrice = hit.mbBaseHigh;
+    row.entryDate = hit.mbBreakoutMonth;
+    rows.push(row);
+  }
+  if (isLive) for (const row of rows) row.isLive = true;
+  rows.sort((a, b) => a.mbStatusRank - b.mbStatusRank || b.mbBaseMonths - a.mbBaseMonths);
+
+  if (recordMembership) {
+    try {
+      await recordScreenSnapshot("monthly-breakout", latest.date, rows.map((r) => r.symbol));
+    } catch {
+      // Non-fatal.
+    }
+  }
+  return {
+    screen: "monthly-breakout",
+    label: SCREENS["monthly-breakout"].label,
+    description: SCREENS["monthly-breakout"].description,
+    asOf: latest.date,
+    windowFirstDate: days[0]?.date ?? null,
+    universeSize: universe.length,
+    resultCount: rows.length,
+    notes: [
+      `${candidates.length} liquid stocks within 15% of their 1-month high were checked against 10 years of monthly bars${candidates.length > MONTHLY_SHORTLIST_CAP ? ` (the ${MONTHLY_SHORTLIST_CAP} most liquid)` : ""}.`,
+      `Base must be at least ${MB.minBaseMonths} months old and ${MB.minDepthPct}–${MB.maxDepthPct}% deep; breakouts more than ${MB.maxAbovePct}% above the base high are left out.`,
+    ],
+    rows,
+  };
+}
+
+/**
  * Personal learning tab — weekly RSI > 50, above the 30-week MA, and
  * Relative Strength vs NIFTY 500 above 0, with bullish weekly candlestick
  * patterns attached (see lib/personalLearning.js). Weekly bars only, from
@@ -1064,6 +1129,11 @@ export async function GET(request) {
 
     if (screen === "weinstein") {
       const result = await runWeinsteinScreen({ days, universe, asOfCutoff, isLive, recordMembership });
+      return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
+    }
+
+    if (screen === "monthly-breakout") {
+      const result = withSince(await runMonthlyBreakoutScreen({ days, universe, isLive, recordMembership }));
       return Response.json({ ...result, requestedDate, dateAdjusted, live: liveInfo, isLive });
     }
 

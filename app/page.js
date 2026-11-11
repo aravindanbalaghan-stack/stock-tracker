@@ -19,6 +19,7 @@ import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } fr
 import { readIdentityCookie } from "@/lib/identity";
 import ChangePassword from "@/components/ChangePassword";
 import JournalTab from "@/components/JournalTab";
+import AnalysisTab from "@/components/AnalysisTab";
 import StockDataTab from "@/components/StockDataTab";
 import { marketIsOpen } from "@/lib/marketHours";
 
@@ -35,6 +36,7 @@ const TABS = [
   { id: "watchlist", label: "Watchlist" },
   { id: "holdings", label: "Holdings" },
   { id: "journal", label: "Journal" },
+  { id: "analysis", label: "Analysis" },
   { id: "market", label: "Market" },
   { id: "delivery", label: "Delivery" },
   { id: "trading", label: "Trading Suggestions" },
@@ -438,6 +440,7 @@ function PageInner() {
             myTop={myTop}
             myTopLoading={loading && quotes.length === 0}
             onOpenWatchlist={() => changeTab("watchlist")}
+            onOpenAnalysis={() => changeTab("analysis")}
           />
         )}
         {activeTab === "holdings" && <HoldingsTab />}
@@ -447,6 +450,7 @@ function PageInner() {
         )}
         {activeTab === "sectors" && <SectorManagerTab />}
         {activeTab === "journal" && <JournalTab />}
+        {activeTab === "analysis" && <AnalysisTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
         {activeTab === "data" && <StockDataTab />}
         {activeTab === "trading" && <TradingSuggestionsTab onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />}
         {activeTab === "screeners" && (

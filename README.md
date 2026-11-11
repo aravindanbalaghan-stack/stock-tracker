@@ -109,6 +109,22 @@ writes a Markdown file with the stats, breakdowns, every trade and a
 coaching prompt — upload it to any AI assistant. Also exports CSV / Excel /
 JSON and imports the same formats.
 
+## Analysis
+
+**Analysis** tab (next to Journal): one page per trading day — bias and
+levels for NIFTY / BANK NIFTY, market context, sectors and themes in focus,
+events, trade ideas (trigger / stop / target / thesis), a routine checklist
+you can edit, and a post-market review. A market snapshot (indices,
+breadth, best/worst sectors and themes) is saved with each day.
+
+Panel grades the analysis against what happened next: each bias call vs
+the index's next session (and next 5), each idea by whether it triggered
+and whether target or stop came first. The scorecard, 12-week calendar and
+observations sit on top. Ideas can be added from any stock's page, carried
+forward to the next day, or turned into a draft Journal trade; the Home tab
+shows today's plan. **Export → AI review pack** writes a Markdown file with
+the scorecard, breakdowns and every day, plus a coaching prompt.
+
 ## Events
 
 Upcoming results, dividends, bonuses, splits and other corporate actions
