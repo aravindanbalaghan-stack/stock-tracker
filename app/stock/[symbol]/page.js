@@ -8,6 +8,7 @@ import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/C
 import StockDepthPanel from "@/components/StockDepthPanel";
 import TechnicalView from "@/components/TechnicalView";
 import StockEvents from "@/components/StockEvents";
+import StockChart from "@/components/StockChart";
 import StockMasterPanel from "@/components/StockMasterPanel";
 import StockAnalysisPanel from "@/components/StockAnalysisPanel";
 import EventTag from "@/components/EventTag";
@@ -327,6 +328,9 @@ export default function StockInsightPage({ params }) {
       {data && (
         <div className="flex flex-col gap-6">
           {/* ---- Upcoming / recent corporate events ---- */}
+          {/* ---- Interactive chart with Panel's overlays ---- */}
+          <StockChart symbol={sym} />
+
           <StockEvents symbol={sym} />
           <StockMasterPanel symbol={sym} />
           <StockAnalysisPanel symbol={sym} />

@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { volumeDeliverySurge, enteringStage2WithAccumulation, fiftyTwoWeekHighs } from "@/lib/homeScans";
 import { getPicks, getPicksForDate, getPicksScreener } from "@/lib/picks";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 // They're requested separately so the quick one never waits on the slow one.
 export const maxDuration = 60;
 
-export async function GET(request) {
+async function compute(request) {
   const section = new URL(request.url).searchParams.get("section");
   try {
     let result;
@@ -31,4 +32,14 @@ export async function GET(request) {
       { status: 502 }
     );
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "home", vary: ["section"], cacheable: (sp) => ["surge", "stage2", "picks", "highs"].includes(sp.get("section")) || (sp.get("section") === "picks-screener" && !sp.get("date")) },
+    compute
+  );
 }

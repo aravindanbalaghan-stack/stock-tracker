@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import {
   computePeriodMetrics,
@@ -108,7 +109,7 @@ function buildSectorPeriodHistory(symbols, days, periodTradingDays, periods) {
   });
 }
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams } = new URL(request.url);
   const periodParam = searchParams.get("period");
   const dateParam = searchParams.get("date");
@@ -260,4 +261,14 @@ export async function GET(request) {
       { status: 502 }
     );
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "sector-delivery", vary: ["period", "bucket", "group"], cacheable: (sp) => !sp.get("date") },
+    compute
+  );
 }

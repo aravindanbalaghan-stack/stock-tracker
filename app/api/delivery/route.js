@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies } from "@/lib/nseSession";
 import { fetchMarketCapCr, getMarketCapsCr } from "@/lib/marketCap";
@@ -67,7 +68,7 @@ async function withScreenerMembership(rows) {
   });
 }
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams, origin } = new URL(request.url);
   const searchSymbol = searchParams.get("symbol");
   const periodParam = searchParams.get("period");
@@ -312,4 +313,14 @@ export async function GET(request) {
       { status: 502 }
     );
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "delivery", vary: ["period", "bucket"], cacheable: (sp) => !sp.get("date") && !sp.get("symbol") },
+    compute
+  );
 }

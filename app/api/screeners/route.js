@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { isTradingToday } from "@/lib/marketCalendar";
 import { getRecentBhavcopies, getBhavcopyNear } from "@/lib/nseBhavcopy";
 import { getMarketCapsCr } from "@/lib/marketCap";
@@ -1069,7 +1070,7 @@ function fmt2(n) {
   return n == null ? "—" : Math.round(n * 100) / 100;
 }
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams } = new URL(request.url);
   const screen = searchParams.get("screen");
   const dateParam = searchParams.get("date");
@@ -1216,4 +1217,14 @@ export async function GET(request) {
       { status: 502 }
     );
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "screeners", vary: ["screen"], cacheable: (sp) => !!sp.get("screen") && !sp.get("date") && !["1", "true"].includes(sp.get("live")) },
+    compute
+  );
 }

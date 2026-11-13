@@ -151,6 +151,35 @@ shows NSE closed. The calendar merges NSE's holiday list with a built-in
 list in `lib/marketHours.js` — add next year's dates there when NSE
 publishes them.
 
+## Instant tabs (nightly precompute)
+
+Every "latest session" view — all screeners, the Delivery views (buckets,
+sectors, themes, top 20s), Home's sections and picks, and Trading
+Suggestions — is computed once per session and stored in Redis
+(`lib/precompute.js`). The first open of a view per session computes and
+stores it; after that it's instant. Past dates and live (market-hours)
+views still compute on demand.
+
+A nightly job warms all of them so even the first open is instant:
+
+1. Vercel → Settings → Environment Variables → add `CRON_SECRET` (any
+   long random string), all environments.
+2. Redeploy. `vercel.json` schedules `/api/cron/precompute` at 20:00 IST
+   (14:30 UTC) Monday–Friday; Vercel sends the secret automatically.
+3. The header shows **Data ready · <date>** when it's done. Click it for
+   details or **Prepare now** to run it by hand.
+
+The job runs a few views at a time and hands over to a fresh invocation
+if it runs short of time, so it fits Vercel's function limits.
+
+## Stock chart
+
+The stock page has an interactive chart (TradingView lightweight-charts):
+daily or weekly candles, volume, moving averages, and Panel's own
+overlays — where its screeners fired, results/dividends/splits, your
+Journal entries and exits (plus stop/target of open trades), your
+Analysis ideas, study levels and your holding's average price.
+
 ## Set up storage and sign-in
 
 Panel needs two things on Vercel before Watchlist, Holdings, Top 5,

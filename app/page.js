@@ -18,6 +18,7 @@ import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadWatchlist, saveWatchlist, loadWatchlistMeta, saveWatchlistMeta } from "@/lib/watchlist";
 import { readIdentityCookie } from "@/lib/identity";
 import ChangePassword from "@/components/ChangePassword";
+import DataStatus from "@/components/DataStatus";
 import JournalTab from "@/components/JournalTab";
 import AnalysisTab from "@/components/AnalysisTab";
 import StockDataTab from "@/components/StockDataTab";
@@ -377,6 +378,7 @@ function PageInner() {
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span className="hidden md:inline">{identity}</span>
+              <DataStatus />
               <ChangePassword />
               <button onClick={handleLogout} style={{ color: "var(--text-faint)" }}>
                 Sign out

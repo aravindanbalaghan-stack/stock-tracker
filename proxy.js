@@ -56,6 +56,13 @@ export async function proxy(request) {
     return NextResponse.next();
   }
 
+  // Vercel Cron calls the nightly precompute with "Authorization: Bearer
+  // <CRON_SECRET>" (set CRON_SECRET in the project's environment variables).
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && pathname.startsWith("/api/cron/") && request.headers.get("authorization") === `Bearer ${cronSecret}`) {
+    return NextResponse.next();
+  }
+
   if (await validSession(request.cookies.get(SESSION_COOKIE)?.value, secret)) {
     return NextResponse.next();
   }

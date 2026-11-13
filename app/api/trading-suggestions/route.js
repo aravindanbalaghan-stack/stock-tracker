@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { fetchDailyOHLCVBatch, fetchIndexOHLCV } from "@/lib/screenerIndicators";
 import { analyzeSymbol, buildSection } from "@/lib/tradingSuggestions";
 import { getFnoUniverse, getBankNiftyLot } from "@/lib/fnoUniverse";
@@ -36,7 +37,7 @@ async function loadBankNifty() {
   return value;
 }
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams } = new URL(request.url);
   const section = searchParams.get("section") === "banknifty" ? "banknifty" : "stocks";
   const dateParam = searchParams.get("date");
@@ -67,4 +68,14 @@ export async function GET(request) {
   } catch (err) {
     return Response.json({ error: "Failed to build trading suggestions", detail: String(err?.message || err) }, { status: 502 });
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "trading-suggestions", vary: ["section", "bar"], cacheable: (sp) => !sp.get("date") },
+    compute
+  );
 }

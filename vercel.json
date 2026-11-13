@@ -1,1 +1,5 @@
-{}
+{
+  "crons": [
+    { "path": "/api/cron/precompute", "schedule": "30 14 * * 1-5" }
+  ]
+}

@@ -1,3 +1,4 @@
+import { serveCached } from "@/lib/precompute";
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { computePeriodMetrics, PERIOD_TRADING_DAYS, BASELINE_TRADING_DAYS, buildRecentPeriodHistory } from "@/lib/deliveryMetrics";
 import { getMarketCapsCr } from "@/lib/marketCap";
@@ -22,7 +23,7 @@ const TOP_N = 20;
 const HIST = { weekly: 10, monthly: 6 };
 const MAX_ASOF_TRADING_DAYS = 23;
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period") === "weekly" ? "weekly" : "monthly";
   const P = PERIOD_TRADING_DAYS[period];
@@ -94,4 +95,14 @@ export async function GET(request) {
   } catch (err) {
     return Response.json({ error: "Couldn't build the top delivery list", detail: String(err?.message || err) }, { status: 502 });
   }
+}
+
+// Latest-session requests are served from the daily precompute cache
+// (lib/precompute.js); past dates and live views compute as before.
+export async function GET(request) {
+  return serveCached(
+    request,
+    { name: "delivery-top", vary: ["period", "minVolRatio", "minTurnoverCr"], cacheable: (sp) => !sp.get("date") },
+    compute
+  );
 }
