@@ -5,6 +5,7 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import { usePersistentState } from "@/lib/usePersistentState";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
+import { volumeFigures } from "@/lib/liveVolume";
 
 function fmt(n, digits = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -182,6 +183,18 @@ function TopRankCell({ symbol, rank, slotHolders, onChange }) {
   );
 }
 
+// Where the volume figures come from: live feed, today's full session
+// (after the close, before NSE's file), or NSE's end-of-day file.
+function SourceTag({ vf }) {
+  if (!vf) return null;
+  const label = vf.source === "live" ? "live" : vf.source === "today" ? "today" : "EOD";
+  return (
+    <span className="block text-[10px]" style={{ color: vf.source === "live" ? "var(--gain)" : "var(--text-faint)" }} title={vf.asOf ? `Session ${vf.asOf}` : undefined}>
+      {label}
+    </span>
+  );
+}
+
 function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail, slotHolders, onTopRankChange }) {
   const prevPrice = useRef(quote.price);
   const [flash, setFlash] = useState(null);
@@ -247,13 +260,20 @@ function Row({ quote, meta, accumulation, onRemove, onNotesChange, onOpenDetail,
         </div>
       </td>
       <td className="py-3 px-2 text-right font-mono text-xs hidden lg:table-cell" style={{ color: "var(--text-muted)" }}>
-        {fmtVolume(quote.volume)}
+        {fmtVolume(quote._vf?.volume ?? quote.volume)}
+        <SourceTag vf={quote._vf} />
       </td>
       <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell" style={{ color: "var(--text-muted)" }}>
-        {fmtTurnover(accumulation?.turnoverCr)}
+        {quote._vf?.source !== "eod" && quote._vf?.turnoverCr != null ? "≈" : ""}
+        {fmtTurnover(quote._vf?.turnoverCr ?? null)}
       </td>
       <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell">
-        <VolRatioCell ratio={accumulation?.volumeRatio30d} />
+        <VolRatioCell ratio={quote._vf?.ratio ?? null} />
+        {quote._vf?.source === "live" && (
+          <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+            so far{quote._vf.projectedRatio != null ? ` · ~${quote._vf.projectedRatio.toFixed(1)}× day` : ""}
+          </span>
+        )}
       </td>
       <td className="py-3 px-2 text-right font-mono text-xs hidden md:table-cell">
         <DeliveryCell pct={accumulation?.deliveryPct} />
@@ -294,7 +314,18 @@ export default function WatchlistTable({
   const rows = quotes.map((q) => {
     const a = accumulation?.[q.symbol];
     const base = { ...q, topRank: meta?.[q.symbol]?.topRank ?? null };
-    return a ? { ...base, turnoverCr: a.turnoverCr, volumeRatio30d: a.volumeRatio30d, deliveryPct: a.deliveryPct } : base;
+    // Live during the session (and after the close until NSE's file lands),
+    // NSE end-of-day otherwise — see lib/liveVolume.js. Merged onto the row
+    // so sorting by these columns uses the same numbers that are shown.
+    const vf = volumeFigures(q, a, metricsAsOf);
+    return {
+      ...base,
+      _vf: vf,
+      volume: vf.volume ?? q.volume,
+      turnoverCr: vf.turnoverCr,
+      volumeRatio30d: vf.ratio,
+      deliveryPct: a?.deliveryPct ?? null,
+    };
   });
   const slotHolders = {};
   for (const q of quotes) {
@@ -389,7 +420,7 @@ export default function WatchlistTable({
                 sort={sort}
                 onSort={onSort}
                 className="hidden md:table-cell"
-                title={`Traded value for the session${sessionNote}`}
+                title="Traded value for the session — live (≈ price × volume) while NSE is open, NSE's end-of-day figure otherwise"
               />
               <SortableTh
                 label="Vol vs 30D"
@@ -397,7 +428,7 @@ export default function WatchlistTable({
                 sort={sort}
                 onSort={onSort}
                 className="hidden md:table-cell"
-                title={`Session volume ÷ average daily volume of the 30 sessions before it${sessionNote}`}
+                title="Volume ÷ the 30-session average. Live during the session (shown 'so far', with a rough full-day projection); NSE end-of-day otherwise"
               />
               <SortableTh
                 label="Deliv. %"

@@ -293,6 +293,8 @@ export async function GET(request) {
           journey,
           ma30: round(transition.ma30),
           ma30SlopePct: round(transition.slopePct),
+          // Why this stage — plain-language basis from stageFrom().
+          basis: transition.basis ?? null,
         };
       }
 

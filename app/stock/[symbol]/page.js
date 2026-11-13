@@ -450,6 +450,11 @@ export default function StockInsightPage({ params }) {
                       <p className="text-xs mt-1.5" style={{ color: "var(--text-muted)" }}>
                         30-week MA ₹{fmt(data.weinstein.ma30)}, {data.weinstein.ma30SlopePct >= 0 ? "+" : ""}
                         {fmt(data.weinstein.ma30SlopePct)}% over 4 weeks
+                        {data.weinstein.basis && (
+                          <span className="block mt-0.5" style={{ color: "var(--text-faint)" }}>
+                            Why: {data.weinstein.basis}
+                          </span>
+                        )}
                       </p>
                       {data.weinstein.journey && (
                         <div className="mt-3">

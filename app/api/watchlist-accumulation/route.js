@@ -17,6 +17,11 @@ export const dynamic = "force-dynamic";
 // volume baseline behind its OLDEST day too, plus slack for holidays.
 const BHAV_WINDOW = ACCUMULATION_WINDOW + BASELINE_TRADING_DAYS + 5;
 
+function avgVol(symbol, window) {
+  const v = window.map((d) => d.bySymbol.get(symbol)?.volume).filter((x) => typeof x === "number" && x > 0);
+  return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null;
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const symbolsParam = searchParams.get("symbols");
@@ -52,6 +57,14 @@ export async function GET(request) {
         turnoverCr: metrics?.turnoverCr ?? null,
         volumeRatio30d: metrics?.volumeRatio ?? null,
         deliveryPct: metrics?.deliveryPct ?? null,
+        // The latest session's own volume, and two 30-session averages:
+        //   avgVolume30     — the 30 sessions BEFORE the latest (what the
+        //                     latest session's "vs 30D" is measured against)
+        //   avgVolume30Live — the 30 sessions UP TO the latest, the right
+        //                     baseline for a live, still-forming session
+        latestVolume: latest.bySymbol.get(symbol)?.volume ?? null,
+        avgVolume30: avgVol(symbol, days.slice(-31, -1)),
+        avgVolume30Live: avgVol(symbol, days.slice(-30)),
       };
     }
 

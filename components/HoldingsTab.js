@@ -8,6 +8,7 @@ import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { loadHoldings, saveHoldingsLocal } from "@/lib/holdings";
 import { RangeBar } from "@/components/MyTopFive";
 import EditHoldingDialog from "@/components/EditHoldingDialog";
+import { volumeFigures, fmtVolume as fmtVol } from "@/lib/liveVolume";
 import { usePersistentState } from "@/lib/usePersistentState";
 
 // Same cadence as the Watchlist / Home's My Top 5 live prices.
@@ -90,6 +91,30 @@ function HoldingCard({ r, onRemove, onEdit }) {
         </div>
       </div>
 
+      <div className="text-[11px] flex items-baseline justify-between gap-2">
+        <span style={{ color: "var(--text-faint)" }}>
+          Volume
+          {r.vf?.source === "live" && <span style={{ color: "var(--gain)" }}> · live</span>}
+        </span>
+        <span className="font-mono" style={{ color: "var(--text)" }} title={r.vf?.asOf ? `Session ${r.vf.asOf}` : undefined}>
+          {fmtVol(r.vf?.volume ?? null)}{" "}
+          <span
+            style={{
+              color: r.vf?.ratio == null ? "var(--text-faint)" : r.vf.ratio >= 2 ? "var(--accent)" : r.vf.ratio >= 1 ? "var(--text-muted)" : "var(--text-faint)",
+            }}
+            title="Volume ÷ 30-session average daily volume"
+          >
+            ({r.vf?.ratio == null ? "— vs 30D" : `${r.vf.ratio.toFixed(2)}× 30D avg`}
+            {r.vf?.source === "live" ? " so far" : ""})
+          </span>
+          {r.vf?.projectedRatio != null && (
+            <span className="block text-right text-[10px]" style={{ color: "var(--text-faint)" }}>
+              on pace for ~{r.vf.projectedRatio.toFixed(1)}× today
+            </span>
+          )}
+        </span>
+      </div>
+
       <div className="grid grid-cols-3 gap-2 text-[11px]">
         <div>
           <p style={{ color: "var(--text-faint)" }}>Deliv. %</p>
@@ -100,7 +125,8 @@ function HoldingCard({ r, onRemove, onEdit }) {
         <div>
           <p style={{ color: "var(--text-faint)" }}>Turnover</p>
           <p className="font-mono" style={{ color: "var(--text-muted)" }}>
-            {fmtTurnover(r.accumulation?.turnoverCr)}
+            {r.vf?.source !== "eod" && r.vf?.turnoverCr != null ? "≈" : ""}
+            {fmtTurnover(r.vf?.turnoverCr ?? r.accumulation?.turnoverCr)}
           </p>
         </div>
         <div>
@@ -358,6 +384,7 @@ export default function HoldingsTab() {
   const [quotes, setQuotes] = useState({});
   const [sectors, setSectors] = useState({});
   const [accumulation, setAccumulation] = useState({});
+  const [accumAsOf, setAccumAsOf] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -454,6 +481,7 @@ export default function HoldingsTab() {
         setQuotes(quoteMap);
         setSectors(sectorJson.results ?? {});
         setAccumulation(accumJson.results ?? {});
+        setAccumAsOf(accumJson.asOf ?? null);
         setError(null);
       } catch (err) {
         if (!cancelled) setError(err.message || "Couldn't load holdings data");
@@ -543,6 +571,8 @@ export default function HoldingsTab() {
       dayPnl,
       sectorLabel: (sectors[h.symbol] ?? []).map((s) => s.name).join(", "),
       accumulation: accumulation[h.symbol],
+      // Live volume / turnover while NSE is open, end-of-day otherwise.
+      vf: volumeFigures(q, accumulation[h.symbol], accumAsOf),
     };
   });
 
