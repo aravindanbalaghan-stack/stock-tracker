@@ -194,6 +194,17 @@ Every data table sits in `components/ui/TableFrame.js`, which adds a sticky head
 
 Loading states are skeletons shaped like the content (`LoadingState` in `components/ui/Chrome.js`, `variant="table" | "cards" | "text"`). Numbers are formatted by one module, `lib/format.js` (`fmt`, `fmtPrice`, `fmtVolume`, `fmtTurnover`, `fmtCap`, `fmtPct`, `fmtSignedPct`), so ₹, crore, lakh and % look the same on every screen. Tabs and their shortcut keys are defined once in `lib/navigation.js`.
 
+## Market breadth, rotation, signal scorecard and custom screens
+
+All four run on one dataset: a split-adjusted daily history of every NSE stock (~320 sessions), built from NSE's own bhavcopy files (`lib/marketPanel.js`). Each session is fetched from NSE once and kept in Redis (`bars:v2:<date>`, ~45 KB compressed, ~15 MB in all). After you deploy, the first few loads (or the nightly job) fill the history newest-first; until it's complete, views show a "Building price history" note and the figures that need a long history appear as it fills. Splits and bonuses are adjusted using NSE's PREV_CLOSE on the ex-date.
+
+- **Market → Breadth** (`/api/breadth`): % of stocks above their 20/50/200-day averages, advancers vs decliners and the A/D line, McClellan oscillator, new 52-week highs vs lows, weekly Weinstein stage mix, sector-by-sector breadth, and a rule-of-thumb verdict with its reasons. Universe: top 500 by turnover (≈ NIFTY 500) or every stock trading ₹1 Cr+/day.
+- **Market → Rotation** (`/api/rotation`): a Relative Rotation Graph of your sectors or themes (equal-weight baskets) vs the top-500 basket, using the standard open approximation of JdK's RS-Ratio / RS-Momentum (3-week smoothing, 10-week normalisation).
+- **Screeners → Scorecard** (`/api/signal-scorecard`): every screen's picks graded 5, 10 and 20 sessions later (close to close, no stops or costs), against the equal-weight market over the same days. Picks are logged each time a screen runs for the latest session (`signals:v1:<screen>`); history from before this feature is recovered once from the per-stock log the app already kept.
+- **Screeners → Build your own** (`/api/custom-screener`, saved per account via `/api/custom-screens`): combine up to 12 conditions (price, moving averages, highs/lows, RSI, ATR, volume, turnover, delivery %, Weinstein stage), optionally filtered by sector, theme and market cap. Every run shows today's matches and a 6-month backtest graded the same way as the scorecard. Fields that say "prior" exclude the day being tested, so the backtest doesn't look ahead.
+
+The nightly precompute warms all of these. ⌘K can jump straight to each.
+
 ## Set up storage and sign-in
 
 Panel needs two things on Vercel before Watchlist, Holdings, Top 5,

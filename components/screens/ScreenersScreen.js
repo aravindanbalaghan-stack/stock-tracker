@@ -5,6 +5,8 @@ import WmaScreenTab from "@/components/WmaScreenTab";
 import ScreenerTab from "@/components/ScreenerTab";
 import LookbackTab from "@/components/LookbackTab";
 import PicksScreenerTab from "@/components/PicksScreenerTab";
+import ScorecardTab from "@/components/ScorecardTab";
+import CustomScreenerTab from "@/components/CustomScreenerTab";
 import { SubNav } from "@/components/ui/Chrome";
 import { useEffect } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
@@ -22,6 +24,8 @@ import {
 const MAIN_VIEWS = [
   ...MAIN_SCREEN_IDS.map((id) => ({ id, label: SCREENS[id].label })),
   { id: "picks", label: "Odds-ranked picks" },
+  { id: "custom", label: "Build your own" },
+  { id: "scorecard", label: "Scorecard" },
   { id: "archive", label: "Archive" },
 ];
 
@@ -40,6 +44,8 @@ function View({ view, archived, onAddToWatchlist, watchlistSymbols, onOpenDetail
   if (view === "breakouts") return <BreakoutsTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />;
   if (view === "wma") return <WmaScreenTab />;
   if (view === "lookback") return <LookbackTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />;
+  if (view === "scorecard") return <ScorecardTab />;
+  if (view === "custom") return <CustomScreenerTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />;
   if (view === "picks") return <PicksScreenerTab onAddToWatchlist={onAddToWatchlist} watchlistSymbols={watchlistSymbols} />;
   return (
     <ScreenerTab

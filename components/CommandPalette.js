@@ -171,7 +171,7 @@ export default function CommandPalette() {
 
     if (q) {
       SUB_VIEWS.forEach((sv) => {
-        const s = Math.max(score(sv.label, lq), score(`${sv.group} ${sv.label}`, lq) * 0.7);
+        const s = Math.max(score(sv.label, lq), score(`${sv.group} ${sv.label}`, lq) * 0.7, sv.keywords ? score(sv.keywords, lq) * 0.6 : 0);
         if (s)
           out.push({
             id: `v:${sv.tab}:${sv.view}:${sv.archiveView || ""}`,
@@ -217,7 +217,7 @@ export default function CommandPalette() {
     // holding the best match comes first ("pocket" → the Pocket pivot
     // screener, not a stock literally called POCKET); items inside a group
     // sort by match quality.
-    const ORDER = ["Recent", "Stocks", "Go to", "Screeners", "Delivery", "Actions"];
+    const ORDER = ["Recent", "Stocks", "Go to", "Market", "Screeners", "Delivery", "Actions"];
     const best = {};
     out.forEach((it) => {
       best[it.group] = Math.max(best[it.group] ?? 0, it.score);
