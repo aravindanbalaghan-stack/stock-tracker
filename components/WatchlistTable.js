@@ -6,19 +6,8 @@ import { usePersistentState } from "@/lib/usePersistentState";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 import { volumeFigures } from "@/lib/liveVolume";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (!n) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(n);
-}
+import { fmt, fmtVolume, fmtTurnover } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 // How many <SortableTh>/<th> cells the header row has — the date-group
 // separator row spans all of them. Kept as a named constant rather than a
@@ -133,13 +122,6 @@ function AccumulationCell({ status }) {
 }
 
 // Turnover in ₹ Cr, compact: 0.84 Cr / 12.3 Cr / 1,240 Cr.
-function fmtTurnover(cr) {
-  if (cr == null) return "—";
-  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
-  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
-  return `₹${cr.toFixed(2)} Cr`;
-}
-
 function VolRatioCell({ ratio }) {
   if (ratio == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
   const color = ratio >= 2 ? "var(--accent)" : ratio >= 1 ? "var(--text)" : "var(--text-faint)";
@@ -392,7 +374,7 @@ export default function WatchlistTable({
         </label>
       </div>
       <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-        <table className="w-full border-collapse">
+        <TableFrame name="watchlist-table"><table className="w-full border-collapse">
           <thead>
             <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
               <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -481,7 +463,7 @@ export default function WatchlistTable({
                   />
                 ))}
           </tbody>
-        </table>
+        </table></TableFrame>
       </div>
     </div>
   );

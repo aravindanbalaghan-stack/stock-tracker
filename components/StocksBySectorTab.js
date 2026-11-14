@@ -6,11 +6,9 @@ import SymbolLink from "@/components/SymbolLink";
 import SymbolSearchBox from "@/components/SymbolSearchBox";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function vol(n) {
   if (n == null) return "—";
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
@@ -307,7 +305,7 @@ export default function StocksBySectorTab() {
           <EmptyState>{q ? `No unclassified stock matching “${q}”.` : "Everything trading today is classified."}</EmptyState>
         ) : (
           <Panel flush>
-            <div className="table-scroll" style={{ maxHeight: "26rem" }}>
+            <TableFrame name="stocks-by-sector" style={{ maxHeight: "26rem" }}>
               <table className="w-full border-collapse table-sticky">
                 <thead>
                   <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -327,7 +325,7 @@ export default function StocksBySectorTab() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableFrame>
           </Panel>
         )}
         <p className="text-[11px] mt-2 leading-relaxed" style={{ color: "var(--text-faint)" }}>

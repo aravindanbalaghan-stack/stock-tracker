@@ -1,4 +1,5 @@
 import "./globals.css";
+import CommandPalette from "@/components/CommandPalette";
 
 export const metadata = {
   title: "Panel | NSE/BSE Watchlist",
@@ -16,7 +17,10 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <CommandPalette />
+      </body>
     </html>
   );
 }

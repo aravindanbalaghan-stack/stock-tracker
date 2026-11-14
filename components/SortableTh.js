@@ -26,6 +26,8 @@ export default function SortableTh({
         align === "right" ? "text-right" : "text-left"
       } ${className}`}
       style={{ color: active ? "var(--accent)" : "var(--text-faint)" }}
+      data-col={typeof label === "string" ? label : undefined}
+      aria-sort={active ? (entry.dir === "asc" ? "ascending" : "descending") : "none"}
       onClick={(e) => onSort(sortKey, e.shiftKey)}
       title={title || defaultTitle}
     >

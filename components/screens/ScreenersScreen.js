@@ -6,7 +6,9 @@ import ScreenerTab from "@/components/ScreenerTab";
 import LookbackTab from "@/components/LookbackTab";
 import PicksScreenerTab from "@/components/PicksScreenerTab";
 import { SubNav } from "@/components/ui/Chrome";
+import { useEffect } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { VIEW_EVENT } from "@/lib/navigation";
 import {
   SCREENS,
   CONFLUENCE_SCREEN,
@@ -58,6 +60,18 @@ export default function ScreenersScreen({ onAddToWatchlist, watchlistSymbols, on
   const view = MAIN_IDS.includes(stored) ? stored : MAIN_SCREEN_IDS[0];
   const archiveView = ARCHIVE_IDS.includes(storedArchive) ? storedArchive : "breakouts";
   const props = { onAddToWatchlist, watchlistSymbols, onOpenDetail };
+
+  // ⌘K "jump to screener" while this tab is already open.
+  useEffect(() => {
+    function onView(e) {
+      const sv = e.detail;
+      if (sv?.tab !== "screeners") return;
+      setView(sv.view);
+      if (sv.archiveView) setArchiveView(sv.archiveView);
+    }
+    window.addEventListener(VIEW_EVENT, onView);
+    return () => window.removeEventListener(VIEW_EVENT, onView);
+  }, [setView, setArchiveView]);
 
   return (
     <div>

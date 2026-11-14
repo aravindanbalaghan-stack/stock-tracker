@@ -10,11 +10,9 @@ import WatchlistAddButton from "@/components/WatchlistAddButton";
 import InfoNote from "@/components/InfoNote";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function signed(v, d = 2) {
   if (v == null) return "—";
   return `${v >= 0 ? "+" : ""}${fmt(v, d)}%`;
@@ -112,7 +110,7 @@ function EvidencePanel({ data }) {
         </p>
       )}
       {data.bars?.length > 0 && (
-        <div className="mt-3 table-scroll">
+        <TableFrame name="trading-suggestions" className="mt-3" tools={false}>
           <table className="text-xs border-collapse">
             <thead>
               <tr style={{ color: "var(--text-faint)" }}>
@@ -151,7 +149,7 @@ function EvidencePanel({ data }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
       <details className="mt-2">
         <summary className="text-xs cursor-pointer" style={{ color: "var(--accent)" }}>
@@ -248,7 +246,7 @@ function SuggestionTable({ rows, isIndex, onAddToWatchlist, watchlistSymbols }) 
   const [open, setOpen] = useState(null);
   return (
     <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <div className="table-scroll">
+      <TableFrame name="trading-suggestions-2">
         <table className="w-full border-collapse table-sticky">
           <thead>
             <tr className="text-left border-b text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
@@ -381,7 +379,7 @@ function SuggestionTable({ rows, isIndex, onAddToWatchlist, watchlistSymbols }) 
             })}
           </tbody>
         </table>
-      </div>
+      </TableFrame>
     </div>
   );
 }

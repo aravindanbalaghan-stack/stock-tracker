@@ -8,11 +8,9 @@ import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import SectorSyncPanel from "@/components/SectorSyncPanel";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function vol(n) {
   if (n == null) return "—";
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
@@ -241,7 +239,7 @@ export default function SectorPage({ params }) {
               Stocks — accumulation &amp; relative strength
             </SectionTitle>
             <Panel flush>
-              <div className="table-scroll">
+              <TableFrame name="sector">
                 <table className="w-full border-collapse table-sticky">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -342,7 +340,7 @@ export default function SectorPage({ params }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </Panel>
           </div>
 

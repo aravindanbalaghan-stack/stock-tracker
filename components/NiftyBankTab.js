@@ -6,18 +6,7 @@ import SortableTh from "@/components/SortableTh";
 import CollapsibleSection from "@/components/CollapsibleSection";
 import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, SectionTitle } from "@/components/ui/Chrome";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (n === null || n === undefined) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
+import { fmt, fmtVolume } from "@/lib/format";
 
 function fmtTimeIST(epochSeconds) {
   if (epochSeconds == null) return "—";

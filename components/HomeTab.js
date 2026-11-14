@@ -12,17 +12,9 @@ import { formatDayLabel } from "@/lib/periodLabel";
 import PicksSection from "@/components/PicksSection";
 import MyTopFive from "@/components/MyTopFive";
 import TodayPlanCard from "@/components/TodayPlanCard";
+import { fmt, fmtVolume } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
-function fmtVolume(n) {
-  if (n == null) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
 function Pct({ v, digits = 2 }) {
   if (v == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
   return (
@@ -115,7 +107,7 @@ function SurgeSection({ onAddToWatchlist, watchlistSymbols }) {
             <EmptyState>No stock met all three conditions on {session ? formatDayLabel(session.date) : "this session"}.</EmptyState>
           ) : (
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <div className="table-scroll">
+              <TableFrame name="home">
                 <table className="w-full border-collapse table-sticky">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -167,7 +159,7 @@ function SurgeSection({ onAddToWatchlist, watchlistSymbols }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </div>
           )}
         </>
@@ -264,7 +256,7 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
             </EmptyState>
           ) : (
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <div className="table-scroll">
+              <TableFrame name="home-2">
                 <table className="w-full border-collapse table-sticky">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -369,7 +361,7 @@ function Stage2Section({ onAddToWatchlist, watchlistSymbols }) {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </div>
           )}
         </>
@@ -477,7 +469,7 @@ function HighsSection({ onAddToWatchlist, watchlistSymbols }) {
             <EmptyState>No stock matches this filter as of {data.asOf}.</EmptyState>
           ) : (
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <div className="table-scroll">
+              <TableFrame name="home-3">
                 <table className="w-full border-collapse table-sticky">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -577,7 +569,7 @@ function HighsSection({ onAddToWatchlist, watchlistSymbols }) {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </div>
           )}
         </>

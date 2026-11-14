@@ -10,16 +10,12 @@ import { RangeBar } from "@/components/MyTopFive";
 import EditHoldingDialog from "@/components/EditHoldingDialog";
 import { volumeFigures, fmtVolume as fmtVol } from "@/lib/liveVolume";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { fmt, fmtVolume, fmtTurnover } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 // Same cadence as the Watchlist / Home's My Top 5 live prices.
 const QUOTE_REFRESH_MS = 12000;
 
-function fmtTurnover(cr) {
-  if (cr == null) return "—";
-  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
-  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
-  return `₹${cr.toFixed(2)} Cr`;
-}
 const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : "var(--loss)");
 
 // One holding, laid out like a Home → My Top 5 card, plus the position
@@ -176,17 +172,6 @@ const CARD_SORTS = [
   { key: "symbol", dir: "asc", label: "Symbol" },
 ];
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
-function fmtVolume(n) {
-  if (!n) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(n);
-}
 function Signed({ value, digits = 2, suffix = "%" }) {
   if (value === null || value === undefined) return <span style={{ color: "var(--text-faint)" }}>—</span>;
   const up = value >= 0;
@@ -636,7 +621,7 @@ export default function HoldingsTab() {
           </p>
         </div>
       ) : loading && Object.keys(quotes).length === 0 ? (
-        <LoadingState>Loading live prices…</LoadingState>
+        <LoadingState variant="cards">Loading live prices…</LoadingState>
       ) : (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-4 p-4 rounded-lg border" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
@@ -722,7 +707,7 @@ export default function HoldingsTab() {
             </div>
           ) : (
           <div className="rounded-lg border overflow-hidden overflow-x-auto" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-            <table className="w-full border-collapse">
+            <TableFrame name="holdings"><table className="w-full border-collapse">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
                   <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" className="pl-4" />
@@ -826,7 +811,7 @@ export default function HoldingsTab() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table></TableFrame>
           </div>
           )}
         </>

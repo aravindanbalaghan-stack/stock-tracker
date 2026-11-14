@@ -14,6 +14,7 @@ import SymbolLink from "@/components/SymbolLink";
 import { enrich, computeStats, insights, exportRows, EXPORT_COLUMNS, aiReviewPack } from "@/lib/journalStats";
 import { downloadTable, downloadText, parseTableFile } from "@/lib/tabularFile";
 import { usePersistentState } from "@/lib/usePersistentState";
+import TableFrame from "@/components/ui/TableFrame";
 
 const inr = (n, d = 0) =>
   n == null ? "—" : `${n < 0 ? "−" : ""}₹${Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d })}`;
@@ -413,7 +414,7 @@ export default function JournalTab() {
               Trades
             </SectionTitle>
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <div className="table-scroll">
+              <TableFrame name="journal">
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
@@ -472,7 +473,7 @@ export default function JournalTab() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </div>
           </div>
         </div>

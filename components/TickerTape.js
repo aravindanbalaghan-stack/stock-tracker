@@ -7,13 +7,9 @@
 
 import { useEffect, useState } from "react";
 import { marketIsOpen } from "@/lib/marketHours";
+import { fmt } from "@/lib/format";
 
 const REFRESH_MS = 30 * 1000;
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
 
 function TickerItem({ q }) {
   const up = (q.change ?? 0) >= 0;

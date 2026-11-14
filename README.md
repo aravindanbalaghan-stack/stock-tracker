@@ -180,6 +180,20 @@ overlays — where its screeners fired, results/dividends/splits, your
 Journal entries and exits (plus stop/target of open trades), your
 Analysis ideas, study levels and your holding's average price.
 
+## Command bar, shortcuts and tables
+
+**⌘K / Ctrl+K** (or `/`, or the search box in the header) opens the command bar:
+
+- type a ticker → its stock page (your watchlist and recently opened stocks first, then NSE/BSE search)
+- type a name → any tab, any screener (including Archive) or a Delivery view (Sectors, Themes, Top 20 Weekly/Monthly)
+- actions: Keyboard shortcuts, Reload data, Sign out
+
+Shortcuts (ignored while typing in a field): `g` then a key jumps to a tab: `g h` Home, `g w` Watchlist, `g p` Holdings, `g j` Journal, `g a` Analysis, `g m` Market, `g d` Delivery, `g t` Trading Suggestions, `g s` Screeners, `g e` Sectors, `g x` Stock Data. `?` lists them all.
+
+Every data table sits in `components/ui/TableFrame.js`, which adds a sticky header, a row count, **Columns** (hide/show, remembered per table on this device), a Comfortable/Compact density toggle, **Export** (exactly what's on screen, as Excel or CSV) and a card layout on phones. New tables: wrap the `<table>` in `<TableFrame name="unique-name">`.
+
+Loading states are skeletons shaped like the content (`LoadingState` in `components/ui/Chrome.js`, `variant="table" | "cards" | "text"`). Numbers are formatted by one module, `lib/format.js` (`fmt`, `fmtPrice`, `fmtVolume`, `fmtTurnover`, `fmtCap`, `fmtPct`, `fmtSignedPct`), so ₹, crore, lakh and % look the same on every screen. Tabs and their shortcut keys are defined once in `lib/navigation.js`.
+
 ## Set up storage and sign-in
 
 Panel needs two things on Vercel before Watchlist, Holdings, Top 5,

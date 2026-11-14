@@ -8,18 +8,8 @@ import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (n === null || n === undefined) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
+import { fmt, fmtVolume } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 // Same IST-anchored "now" reasoning as lib/nseBhavcopy.js — the section
 // dates come from NSE's IST trading calendar, so "Today"/"Yesterday" must
@@ -59,7 +49,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
   }
   return (
     <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-     <div className="table-scroll">
+     <TableFrame name="breakouts">
       <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -128,7 +118,7 @@ function SectionTable({ rows, sort, onSort, onAddToWatchlist, watchlistSymbols, 
           })}
         </tbody>
       </table>
-     </div>
+     </TableFrame>
     </div>
   );
 }

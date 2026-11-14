@@ -4,11 +4,7 @@
 // the average, reduces quantity), or correct the figures directly.
 
 import { useState } from "react";
-
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
+import { fmt } from "@/lib/format";
 
 const MODES = [
   { id: "buy", label: "Add shares" },

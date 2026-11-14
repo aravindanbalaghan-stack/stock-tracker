@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
+import TableFrame from "@/components/ui/TableFrame";
 
 // The master stock <-> sector list. Every sector calculation elsewhere in
 // the app (Sector Deliverability, the sector pages, a stock's "Sectors"
@@ -673,7 +674,7 @@ export default function SectorManagerTab() {
 
 
       <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-        <table className="w-full border-collapse">
+        <TableFrame name="sector-manager"><table className="w-full border-collapse">
           <thead>
             <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
               <th className="py-2 pl-4 pr-2 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
@@ -747,7 +748,7 @@ export default function SectorManagerTab() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></TableFrame>
       </div>
       {filtered.length > 500 && (
         <p className="mt-2 text-xs" style={{ color: "var(--text-faint)" }}>

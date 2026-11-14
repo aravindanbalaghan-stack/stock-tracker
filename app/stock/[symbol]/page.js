@@ -3,7 +3,8 @@
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import GlobalSearch from "@/components/GlobalSearch";
+import CommandTrigger from "@/components/CommandTrigger";
+import { pushRecentSymbol } from "@/lib/recentSymbols";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
 import TechnicalView from "@/components/TechnicalView";
@@ -13,11 +14,9 @@ import StockMasterPanel from "@/components/StockMasterPanel";
 import StockAnalysisPanel from "@/components/StockAnalysisPanel";
 import EventTag from "@/components/EventTag";
 import { StageJourneyPanel } from "@/components/StageJourney";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function vol(n) {
   if (n == null) return "—";
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
@@ -75,7 +74,7 @@ function AppearanceBucketCount({ id, count, detail, bucketLabel }) {
               ×
             </button>
           </div>
-          <div className="table-scroll" style={{ maxHeight: "16rem" }}>
+          <TableFrame name="stock" style={{ maxHeight: "16rem" }}>
             <table className="w-full border-collapse">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -124,7 +123,7 @@ function AppearanceBucketCount({ id, count, detail, bucketLabel }) {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
     </div>
@@ -169,10 +168,9 @@ function RangeBar({ low, high, price, position }) {
 }
 
 function SearchAnotherStock() {
-  const router = useRouter();
   return (
     <div className="shrink-0">
-      <GlobalSearch onSelect={(sym) => router.push(`/stock/${encodeURIComponent(sym)}`)} />
+      <CommandTrigger />
     </div>
   );
 }
@@ -230,6 +228,11 @@ export default function StockInsightPage({ params }) {
   const [accumGranularity, setAccumGranularity] = useState("daily");
   const [accumPage, setAccumPage] = useState(0);
   const ACCUM_ROWS_PER_PAGE = 20;
+
+  // Feeds the ⌘K command bar's "Recent" list.
+  useEffect(() => {
+    pushRecentSymbol(sym);
+  }, [sym]);
 
   useEffect(() => {
     let cancelled = false;
@@ -323,7 +326,7 @@ export default function StockInsightPage({ params }) {
       </div>
 
       {error && <ErrorState>{error}</ErrorState>}
-      {!data && !error && <LoadingState>Pulling price history, delivery data and filings…</LoadingState>}
+      {!data && !error && <LoadingState variant="cards">Pulling price history, delivery data and filings…</LoadingState>}
 
       {data && (
         <div className="flex flex-col gap-6">
@@ -743,7 +746,7 @@ export default function StockInsightPage({ params }) {
                     ))}
                   </div>
                 )}
-                <div className="table-scroll" style={{ maxHeight: "22rem" }}>
+                <TableFrame name="stock-2" style={{ maxHeight: "22rem" }}>
                   <table className="w-full border-collapse table-sticky">
                     <thead>
                       <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -813,7 +816,7 @@ export default function StockInsightPage({ params }) {
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableFrame>
                 {A.rows.length > ACCUM_ROWS_PER_PAGE && (
                   <div className="px-4 py-2.5 flex items-center justify-between border-t text-xs" style={{ borderColor: "var(--border)" }}>
                     <span style={{ color: "var(--text-faint)" }}>

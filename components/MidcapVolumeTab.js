@@ -6,19 +6,8 @@ import SortableTh from "@/components/SortableTh";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (!n) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1)}K`;
-  return String(n);
-}
+import { fmt, fmtVolume } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 export default function MidcapVolumeTab() {
   const [data, setData] = useState(null);
@@ -73,7 +62,7 @@ export default function MidcapVolumeTab() {
         </div>
       ) : (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-         <div className="table-scroll">
+         <TableFrame name="midcap-volume">
           <table className="w-full border-collapse table-sticky">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -112,7 +101,7 @@ export default function MidcapVolumeTab() {
               })}
             </tbody>
           </table>
-         </div>
+         </TableFrame>
         </div>
       )}
     </div>

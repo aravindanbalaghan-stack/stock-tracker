@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fmt } from "@/lib/format";
 
 // Replaces the old Research tab. Two things changed and both were
 // deliberate:
@@ -14,11 +15,6 @@ import { useEffect, useState } from "react";
 //     and an "accumulation signal" that duplicated the In-accumulation
 //     column already on Delivery Leaders. Both are dropped rather than
 //     carried over — see the note at the bottom of the drawer.
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
 
 function NewsList({ items, emptyLabel }) {
   if (!items || items.length === 0) {

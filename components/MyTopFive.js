@@ -6,20 +6,10 @@
 
 import SymbolLink from "@/components/SymbolLink";
 import { SectionTitle, LoadingState } from "@/components/ui/Chrome";
+import { fmt, fmtTurnover } from "@/lib/format";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : "var(--loss)");
 const signed = (v, d = 2) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${fmt(v, d)}%`);
-function fmtTurnover(cr) {
-  if (cr == null) return "—";
-  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
-  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
-  return `₹${cr.toFixed(2)} Cr`;
-}
-
 // Shared with the Holdings cards.
 export function RangeBar({ low, high, price }) {
   const ok = low != null && high != null && price != null && high > low;
@@ -121,7 +111,7 @@ export default function MyTopFive({ items, loading, onOpenWatchlist }) {
         My Top 5
       </SectionTitle>
       {loading && !items.some((i) => i.quote) && items.length > 0 ? (
-        <LoadingState>Loading live prices…</LoadingState>
+        <LoadingState variant="cards">Loading live prices…</LoadingState>
       ) : items.length === 0 ? (
         <div
           className="rounded-[var(--radius)] border border-dashed p-4 flex flex-wrap items-center justify-between gap-3"

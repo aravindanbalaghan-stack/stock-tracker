@@ -8,11 +8,9 @@ import SymbolLink from "@/components/SymbolLink";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function Signed({ value, digits = 2 }) {
   if (value == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
   return (
@@ -87,7 +85,7 @@ function BacktestPanel({ scenario, onAddToWatchlist, watchlistSymbols }) {
           No occurrences in this window.
         </p>
       ) : (
-        <div className="table-scroll">
+        <TableFrame name="movers">
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -135,7 +133,7 @@ function BacktestPanel({ scenario, onAddToWatchlist, watchlistSymbols }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
       {scenario.truncated && (
         <p className="mt-2 text-xs" style={{ color: "var(--text-faint)" }}>
@@ -176,7 +174,7 @@ function RepeatersPanel({ data, onAddToWatchlist, watchlistSymbols }) {
       )}
 
       {sorted.length > 0 && (
-        <div className="table-scroll">
+        <TableFrame name="movers-2">
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -234,7 +232,7 @@ function RepeatersPanel({ data, onAddToWatchlist, watchlistSymbols }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
     </Panel>
   );

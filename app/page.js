@@ -6,7 +6,8 @@ import AddStock from "@/components/AddStock";
 import WatchlistTable from "@/components/WatchlistTable";
 import TabBar from "@/components/TabBar";
 import { useRouter, useSearchParams } from "next/navigation";
-import GlobalSearch from "@/components/GlobalSearch";
+import CommandTrigger from "@/components/CommandTrigger";
+import { TABS } from "@/lib/navigation";
 import MarketScreen from "@/components/screens/MarketScreen";
 import DeliveryScreen from "@/components/screens/DeliveryScreen";
 import ScreenersScreen from "@/components/screens/ScreenersScreen";
@@ -32,19 +33,7 @@ const REFRESH_MS = 12000;
 // Screeners = breakouts + 30WMA. The old Research tab is gone — its
 // useful parts are now the stock detail drawer, opened from the header
 // search or any watchlist row.
-const TABS = [
-  { id: "home", label: "Home" },
-  { id: "watchlist", label: "Watchlist" },
-  { id: "holdings", label: "Holdings" },
-  { id: "journal", label: "Journal" },
-  { id: "analysis", label: "Analysis" },
-  { id: "market", label: "Market" },
-  { id: "delivery", label: "Delivery" },
-  { id: "trading", label: "Trading Suggestions" },
-  { id: "screeners", label: "Screeners" },
-  { id: "sectors", label: "Sectors" },
-  { id: "data", label: "Stock Data" },
-];
+// Tab list lives in lib/navigation.js (shared with the ⌘K command bar).
 
 function PageInner() {
   const [activeTab, setActiveTab] = useState("home");
@@ -367,14 +356,7 @@ function PageInner() {
         </div>
 
         <div className="flex items-center gap-3 flex-wrap">
-          <GlobalSearch
-            onSelect={(sym) =>
-              // Full insight page rather than the side drawer — the drawer
-              // only ever showed news and recent moves, while the page has
-              // the levels, holdings, accumulation table and depth.
-              router.push(`/stock/${encodeURIComponent(sym)}`)
-            }
-          />
+          <CommandTrigger />
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span className="hidden md:inline">{identity}</span>

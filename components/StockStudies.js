@@ -9,6 +9,7 @@
 import { useMemo, useState } from "react";
 import SymbolLink from "@/components/SymbolLink";
 import { Panel, SectionTitle } from "@/components/ui/Chrome";
+import TableFrame from "@/components/ui/TableFrame";
 
 const TIMEFRAMES = ["Monthly", "Weekly", "Daily", "Intraday"];
 const TRENDS = ["Up", "Sideways", "Down"];
@@ -482,7 +483,7 @@ export default function StockStudies({ date, studies, setStudies, entries, event
             All studies
           </SectionTitle>
           <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-            <div className="table-scroll">
+            <TableFrame name="stock-studies">
               <table className="w-full text-xs border-collapse">
                 <thead>
                   <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
@@ -514,7 +515,7 @@ export default function StockStudies({ date, studies, setStudies, entries, event
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableFrame>
           </div>
         </div>
       )}

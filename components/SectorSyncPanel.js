@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import { Panel } from "@/components/ui/Chrome";
-
-function fmtCap(cr) {
-  if (cr == null) return "—";
-  if (cr >= 100000) return `₹${(cr / 100000).toFixed(2)}L Cr`;
-  return `₹${cr.toLocaleString("en-IN")} Cr`;
-}
+import { fmtCap } from "@/lib/format";
 
 export default function SectorSyncPanel({ sectorKey, onApplied }) {
   const [preview, setPreview] = useState(null);

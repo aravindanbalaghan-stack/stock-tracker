@@ -7,7 +7,9 @@ import PeriodToggle from "@/components/PeriodToggle";
 import DatePicker from "@/components/DatePicker";
 import { ScreenHeader } from "@/components/ui/Chrome";
 import { DELIVERY_BUCKETS } from "@/lib/deliveryBuckets";
+import { useEffect } from "react";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { VIEW_EVENT } from "@/lib/navigation";
 
 // A "Sectors" tab (the full, unfiltered sector list — same as before the
 // bucket tabs existed) sits alongside one tab per delivery-% bucket (see
@@ -36,6 +38,15 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
   const [period, setPeriod] = usePersistentState("delivery.period", "daily");
   const [asOfDate, setAsOfDate] = usePersistentState("delivery.date", "");
   const [showStage, setShowStage] = usePersistentState("delivery.showStage", false);
+
+  // ⌘K "jump to Delivery · Themes" etc. while this tab is already open.
+  useEffect(() => {
+    function onView(e) {
+      if (e.detail?.tab === "delivery") setView(e.detail.view);
+    }
+    window.addEventListener(VIEW_EVENT, onView);
+    return () => window.removeEventListener(VIEW_EVENT, onView);
+  }, [setView]);
 
   const isSectors = view === "sectors" || view === "themes";
   const topTab = TOP_TABS.find((t) => t.id === view);

@@ -8,11 +8,9 @@ import InfoNote from "@/components/InfoNote";
 import { StageTag } from "@/components/StageJourney";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { StreakBadge, FirstShownCell } from "@/components/PickStreak";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function signed(v, d = 1) {
   if (v == null) return "—";
   return `${v >= 0 ? "+" : ""}${fmt(v, d)}%`;
@@ -253,7 +251,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
             <EmptyState>No stock passes this horizon&apos;s filters today.</EmptyState>
           ) : (
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <div className="table-scroll">
+              <TableFrame name="picks-section">
                 <table className="w-full border-collapse table-sticky">
                   <thead>
                     <tr className="text-left border-b text-[11px]" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
@@ -370,7 +368,7 @@ export default function PicksSection({ onAddToWatchlist, watchlistSymbols }) {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </TableFrame>
             </div>
           )}
 

@@ -2,11 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
+import { fmt } from "@/lib/format";
 
 // Indices we have a constituent list for — only these get the "top 5
 // stocks in this index" expand/drill-down.

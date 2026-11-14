@@ -1,16 +1,5 @@
 "use client";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (n === null || n === undefined) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
+import { fmt, fmtVolume } from "@/lib/format";
 
 // "07-14" for a single day, "07-01–07-05" for a multi-day bucket (Weekly/
 // Monthly) — falls back to whatever `date` holds if start/end aren't

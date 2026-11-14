@@ -6,11 +6,8 @@ import SortableTh from "@/components/SortableTh";
 import { ScreenHeader, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { DebutHeaderCells, DebutCells } from "@/components/DebutCells";
 import SymbolLink from "@/components/SymbolLink";
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 export default function WmaScreenTab() {
   const [data, setData] = useState(null);
@@ -69,7 +66,7 @@ export default function WmaScreenTab() {
         </div>
       ) : (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-         <div className="table-scroll">
+         <TableFrame name="wma-screen">
           <table className="w-full border-collapse table-sticky">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -99,7 +96,7 @@ export default function WmaScreenTab() {
               })}
             </tbody>
           </table>
-         </div>
+         </TableFrame>
         </div>
       )}
 

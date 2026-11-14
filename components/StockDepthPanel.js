@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fmt } from "@/lib/format";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function qty(n) {
   if (n == null) return "—";
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;

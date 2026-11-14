@@ -14,6 +14,8 @@ import SymbolLink from "@/components/SymbolLink";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { PrevStageCell, StageChangesCell, InvalidationCell, StageJourneyPanel } from "@/components/StageJourney";
+import { fmt, fmtVolume, fmtTurnover, fmtCap } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 function todayIST() {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -25,24 +27,6 @@ function earliestSelectable() {
   const d = new Date();
   d.setDate(d.getDate() - 31);
   return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-}
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtVolume(n) {
-  if (n === null || n === undefined) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
-
-function fmtCap(cr) {
-  if (cr == null) return "—";
-  if (cr >= 100000) return `₹${(cr / 100000).toFixed(2)}L Cr`;
-  return `₹${fmt(cr, 0)} Cr`;
 }
 
 // Same delivery-% shading as the Delivery screens, so the colour means the
@@ -433,13 +417,6 @@ function TrendlineBreakoutPanel({ row }) {
 }
 
 // Turnover in ₹ Cr, compact: 0.84 Cr / 12.3 Cr / 1,240 Cr.
-function fmtTurnover(cr) {
-  if (cr == null) return "—";
-  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
-  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
-  return `₹${cr.toFixed(2)} Cr`;
-}
-
 export default function ScreenerTab({ screen, archived = false, onAddToWatchlist, watchlistSymbols, onOpenDetail }) {
   // Turnover is shown on the front-row screens; archived ones keep their
   // original columns.
@@ -949,7 +926,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
           className="rounded-[var(--radius)] border overflow-hidden"
           style={{ borderColor: "var(--border)", background: "var(--surface)" }}
         >
-          <div className="table-scroll">
+          <TableFrame name="screener">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -1985,7 +1962,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                 })}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
     </div>

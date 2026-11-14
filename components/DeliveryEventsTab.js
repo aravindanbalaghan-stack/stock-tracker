@@ -13,11 +13,9 @@ import { EMPTY_NUMERIC_FILTERS, appendNumericParams } from "@/lib/rowFilters";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function vol(n) {
   if (n == null) return "—";
   if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
@@ -296,7 +294,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
           className="rounded-[var(--radius)] border overflow-hidden"
           style={{ borderColor: "var(--border)", background: "var(--surface)" }}
         >
-          <div className="table-scroll">
+          <TableFrame name="delivery-events">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -362,7 +360,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
     </div>

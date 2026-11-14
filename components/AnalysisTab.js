@@ -16,6 +16,7 @@ import { EMOTIONS } from "@/lib/journalStats";
 import { scorecard, insights, dayRows, ideaRows, studyRows, DAY_COLUMNS, IDEA_COLUMNS, STUDY_COLUMNS, aiReviewPack, ideaWon } from "@/lib/analysisStats";
 import { downloadTable, downloadText, parseTableFile } from "@/lib/tabularFile";
 import { isNonTradingDate } from "@/lib/marketHours";
+import TableFrame from "@/components/ui/TableFrame";
 
 const todayIST = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 const INDEXES = [
@@ -766,7 +767,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                   No ideas for this day yet. Add one above, or from any stock&apos;s page with “Add to today&apos;s analysis”.
                 </p>
               ) : (
-                <div className="table-scroll">
+                <TableFrame name="analysis">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="text-left" style={{ color: "var(--text-faint)" }}>
@@ -847,7 +848,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                       <option key={x} value={x} />
                     ))}
                   </datalist>
-                </div>
+                </TableFrame>
               )}
             </Panel>
             </div>
@@ -927,7 +928,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
             <div>
               <SectionTitle>All days</SectionTitle>
               <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-                <div className="table-scroll">
+                <TableFrame name="analysis-2">
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
@@ -974,7 +975,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                       })}
                     </tbody>
                   </table>
-                </div>
+                </TableFrame>
               </div>
             </div>
           )}

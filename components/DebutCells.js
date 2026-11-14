@@ -1,16 +1,12 @@
 "use client";
 
 import SortableTh from "@/components/SortableTh";
+import { fmt } from "@/lib/format";
 
 // The two listing-debut columns, shared so every screen renders them
 // identically. See lib/debut.js for what the numbers mean — in
 // particular, that the debut price is the listing-day open (not the IPO
 // issue price) and is split/bonus-adjusted.
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
 
 export const DEBUT_OPEN_TITLE =
   "Price at which the stock opened on its first day of trading. Split/bonus-adjusted, so it won't match the original headline price for older listings.";

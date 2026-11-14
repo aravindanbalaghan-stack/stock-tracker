@@ -13,28 +13,12 @@ import { EMPTY_NUMERIC_FILTERS, applyNumericFilters, hasActiveNumericFilters } f
 import SymbolLink from "@/components/SymbolLink";
 import { periodCoverageLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { fmt, fmtVolume, fmtCap } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
 
-
-function fmt(n, digits = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-function fmtCap(cr) {
-  if (cr == null) return "—";
-  if (cr >= 100000) return `₹${(cr / 100000).toFixed(2)}L Cr`;
-  return `₹${fmt(cr, 0)} Cr`;
-}
-
-function fmtVolume(n) {
-  if (n === null || n === undefined) return "—";
-  if (n >= 1e7) return `${(n / 1e7).toFixed(2)}Cr`;
-  if (n >= 1e5) return `${(n / 1e5).toFixed(2)}L`;
-  return n.toLocaleString("en-IN");
-}
 
 function deliveryTier(pct) {
   if (pct == null) return null;
@@ -228,7 +212,7 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
 
   return (
     <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-     <div className="table-scroll">
+     <TableFrame name="delivery">
       <table className="w-full border-collapse table-sticky">
         <thead>
           <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -376,7 +360,7 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
           })}
         </tbody>
       </table>
-     </div>
+     </TableFrame>
     </div>
   );
 }

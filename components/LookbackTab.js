@@ -22,11 +22,8 @@ import InfoNote from "@/components/InfoNote";
 import { ScreenHeader, SectionTitle, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { formatDayLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
-
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
 function SinceCell({ pct }) {
   if (pct == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
@@ -111,7 +108,7 @@ function ShakeoutTable({ date, latestDate, onAddToWatchlist, watchlistSymbols })
         <EmptyState>No stock qualified for Shakeout on {formatDayLabel(data.asOf)}.</EmptyState>
       ) : (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <div className="table-scroll">
+          <TableFrame name="lookback">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -210,7 +207,7 @@ function ShakeoutTable({ date, latestDate, onAddToWatchlist, watchlistSymbols })
                 })}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
     </section>
@@ -240,7 +237,7 @@ function PicksList({ hid, h, date, isPast, onAddToWatchlist, watchlistSymbols })
           Not recorded for this session.
         </p>
       ) : (
-        <div className="table-scroll">
+        <TableFrame name="lookback-2">
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -286,7 +283,7 @@ function PicksList({ hid, h, date, isPast, onAddToWatchlist, watchlistSymbols })
               ))}
             </tbody>
           </table>
-        </div>
+        </TableFrame>
       )}
     </div>
   );

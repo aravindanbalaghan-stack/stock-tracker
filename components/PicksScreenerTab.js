@@ -16,23 +16,14 @@ import { StreakBadge, FirstShownCell } from "@/components/PickStreak";
 import { useSortableRows } from "@/lib/useSortableRows";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { formatDayLabel } from "@/lib/periodLabel";
+import { fmt, fmtTurnover } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function signed(v, d = 1) {
   if (v == null) return "—";
   return `${v >= 0 ? "+" : ""}${fmt(v, d)}%`;
 }
 const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : "var(--loss)");
-function fmtTurnover(cr) {
-  if (cr == null) return "—";
-  if (cr >= 1000) return `₹${Math.round(cr).toLocaleString("en-IN")} Cr`;
-  if (cr >= 10) return `₹${cr.toFixed(1)} Cr`;
-  return `₹${cr.toFixed(2)} Cr`;
-}
-
 const HORIZON_TABS = [
   { id: "short", label: "Short term" },
   { id: "mid", label: "Mid term" },
@@ -160,7 +151,7 @@ export default function PicksScreenerTab({ onAddToWatchlist, watchlistSymbols })
         <EmptyState>No stock passed the {h?.label?.toLowerCase() ?? ""} gate on {formatDayLabel(data.date)}.</EmptyState>
       ) : (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <div className="table-scroll">
+          <TableFrame name="picks-screener">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -260,7 +251,7 @@ export default function PicksScreenerTab({ onAddToWatchlist, watchlistSymbols })
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
     </div>

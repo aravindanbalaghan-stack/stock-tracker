@@ -97,11 +97,69 @@ export function EmptyState({ children }) {
   );
 }
 
-// Loading state, so every screen waits in the same way.
-export function LoadingState({ children }) {
+// A single shimmering placeholder bar.
+export function Skeleton({ width = "100%", height = 12, className = "", style = {} }) {
+  return <span aria-hidden="true" className={`skeleton block ${className}`} style={{ width, height, ...style }} />;
+}
+
+// Placeholder shaped like a table: header strip + rows of uneven bars,
+// so the page doesn't jump when the real table lands.
+export function TableSkeleton({ rows = 8, cols = 6 }) {
+  const widths = ["70%", "55%", "80%", "45%", "65%", "50%", "75%", "60%"];
   return (
-    <div className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-      {children}
+    <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <div className="flex gap-4 px-3 py-2.5 border-b" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+        {Array.from({ length: cols }, (_, c) => (
+          <Skeleton key={c} width={c === 0 ? "14%" : `${70 / (cols - 1)}%`} height={9} />
+        ))}
+      </div>
+      {Array.from({ length: rows }, (_, r) => (
+        <div key={r} className="flex gap-4 px-3 py-3 border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+          {Array.from({ length: cols }, (_, c) => (
+            <div key={c} style={{ width: c === 0 ? "14%" : `${70 / (cols - 1)}%` }}>
+              <Skeleton width={widths[(r + c) % widths.length]} height={c === 0 ? 12 : 10} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Placeholder shaped like a row of cards (Top 5, Holdings).
+export function CardSkeleton({ count = 3 }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="rounded-[var(--radius)] border p-4 space-y-3" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+          <Skeleton width="40%" height={14} />
+          <Skeleton width="65%" height={22} />
+          <Skeleton width="90%" height={8} />
+          <Skeleton width="75%" height={8} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Loading state, so every screen waits in the same way: a skeleton in the
+// shape of what's coming, with the explanatory text underneath (useful when
+// a scan takes a while and the user wants to know why).
+export function LoadingState({ children, variant = "table", rows = 8, cols = 6 }) {
+  return (
+    <div role="status" aria-live="polite" className="space-y-2">
+      {variant === "cards" ? <CardSkeleton /> : variant === "text" ? (
+        <div className="space-y-2 py-2">
+          <Skeleton width="60%" /> <Skeleton width="85%" /> <Skeleton width="45%" />
+        </div>
+      ) : (
+        <TableSkeleton rows={rows} cols={cols} />
+      )}
+      {children && (
+        <p className="text-xs text-center pt-1" style={{ color: "var(--text-faint)" }}>
+          {children}
+        </p>
+      )}
     </div>
   );
 }

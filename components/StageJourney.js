@@ -1,15 +1,11 @@
 "use client";
+import { fmt } from "@/lib/format";
 
 // Shared rendering for a stock's stage "journey" (see stageJourney() in
 // lib/stageAnalysis.js): the stage it was in before, every dip out of the
 // current stage and back, and the weekly close that would end it.
 // Used by the Stage 2 / Wyckoff / Weinstein screeners and the stock page
 // so the same facts read the same way everywhere.
-
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 
 function fmtDate(iso) {
   if (!iso) return "—";

@@ -126,14 +126,104 @@ body {
 }
 
 /* Keyboard focus stays visible everywhere — the app is dense enough that
-   losing your place while tabbing is genuinely disorienting. */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 3px;
+   losing your place while tabbing is genuinely disorienting.
+   In the base layer so a component can opt out with Tailwind's
+   focus-visible:outline-none (utilities outrank base). */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 }
 
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Design system additions ─────────────────────────────────────────── */
+
+/* Numbers in every table line up digit-for-digit. */
+td, th { font-variant-numeric: tabular-nums; }
+
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
+/* Skeleton loaders. */
+.skeleton {
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 40%, var(--surface-2) 80%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton { animation: none; }
+}
+
+/* Keyboard hint chips (⌘K, g h …). */
+kbd, .kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* TableFrame: the shared wrapper every data table sits in. */
+.tf-scroll { overflow: auto; max-height: 70vh; }
+.tf-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+}
+.tf-scroll tbody tr { transition: background-color 80ms; }
+.tf-scroll tbody tr:hover { background: var(--accent-wash); }
+
+/* Compact density. */
+.tf-compact td, .tf-compact th {
+  padding-top: 3px !important;
+  padding-bottom: 3px !important;
+}
+
+/* Phone layout: each row becomes a card, each cell a label/value line.
+   Labels come from the column headers (TableFrame copies them onto the
+   cells as data-label). */
+@media (max-width: 640px) {
+  .tf-cards .tf-scroll { max-height: none; }
+  .tf-cards table, .tf-cards tbody { display: block; width: 100%; }
+  .tf-cards thead { display: none; }
+  .tf-cards tbody tr {
+    display: block;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tf-cards tbody tr[data-tf-span] { padding: 6px 12px; background: var(--surface-2); }
+  .tf-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 3px 0 !important;
+    border: 0 !important;
+    text-align: right;
+  }
+  .tf-cards tbody td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    color: var(--text-faint);
+    text-align: left;
+    white-space: nowrap;
+  }
+  .tf-cards tbody td:first-child { font-size: 15px; padding-bottom: 6px !important; }
+  .tf-cards tbody td:first-child::before,
+  .tf-cards tbody td[data-label=""]::before,
+  .tf-cards tbody tr[data-tf-span] td::before { content: none; }
+}

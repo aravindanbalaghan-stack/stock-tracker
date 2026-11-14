@@ -13,6 +13,7 @@ import { ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { useSortableRows } from "@/lib/useSortableRows";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { formatDayLabel } from "@/lib/periodLabel";
+import TableFrame from "@/components/ui/TableFrame";
 
 const fmt = (n, d = 2) => (n == null || Number.isNaN(n) ? "—" : n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d }));
 const cr = (n) => (n == null ? "—" : n >= 1000 ? `₹${Math.round(n).toLocaleString("en-IN")} Cr` : n >= 10 ? `₹${n.toFixed(1)} Cr` : `₹${n.toFixed(2)} Cr`);
@@ -104,7 +105,7 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
         <EmptyState>No stock met both bars this {label} — try a lower volume or turnover threshold.</EmptyState>
       ) : (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <div className="table-scroll">
+          <TableFrame name="delivery-top">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -180,7 +181,7 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
 

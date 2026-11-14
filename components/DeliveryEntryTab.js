@@ -10,11 +10,9 @@ import DatePicker from "@/components/DatePicker";
 import SectorAssign from "@/components/SectorAssign";
 import { ScreenHeader, Panel, ErrorState, LoadingState, EmptyState } from "@/components/ui/Chrome";
 import { usePersistentState } from "@/lib/usePersistentState";
+import { fmt } from "@/lib/format";
+import TableFrame from "@/components/ui/TableFrame";
 
-function fmt(n, d = 2) {
-  if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d });
-}
 function Signed({ value, digits = 2 }) {
   if (value == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
   return (
@@ -333,7 +331,7 @@ export default function DeliveryEntryTab({ onAddToWatchlist, watchlistSymbols })
           className="rounded-[var(--radius)] border overflow-hidden"
           style={{ borderColor: "var(--border)", background: "var(--surface)" }}
         >
-          <div className="table-scroll">
+          <TableFrame name="delivery-entry">
             <table className="w-full border-collapse table-sticky">
               <thead>
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
@@ -458,7 +456,7 @@ export default function DeliveryEntryTab({ onAddToWatchlist, watchlistSymbols })
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableFrame>
         </div>
       )}
 
