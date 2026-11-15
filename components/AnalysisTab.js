@@ -16,6 +16,7 @@ import { EMOTIONS } from "@/lib/journalStats";
 import { scorecard, insights, dayRows, ideaRows, studyRows, DAY_COLUMNS, IDEA_COLUMNS, STUDY_COLUMNS, aiReviewPack, ideaWon } from "@/lib/analysisStats";
 import { downloadTable, downloadText, parseTableFile } from "@/lib/tabularFile";
 import { isNonTradingDate } from "@/lib/marketHours";
+import { currentEvening, nextTradingDay, prevTradingDay, dayLabel } from "@/lib/planDate";
 import TableFrame from "@/components/ui/TableFrame";
 
 const todayIST = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
@@ -281,6 +282,49 @@ function Snapshot({ snap }) {
   );
 }
 
+
+// What you planned for the session you're reviewing, and how it went —
+// right above the review so you can write "what happened vs your view".
+function PlanRecap({ entry, date }) {
+  if (!entry) {
+    return (
+      <p className="text-xs mb-2" style={{ color: "var(--text-faint)" }}>
+        No plan was saved for {dayLabel(date)}.
+      </p>
+    );
+  }
+  const biasBits = INDEXES.map((ix) => {
+    const g = entry.biasGrade?.[ix.id];
+    if (!entry.bias?.[ix.id]) return null;
+    return (
+      <span key={ix.id} className="mr-3">
+        {ix.label}: <b>{entry.bias[ix.id]}</b>
+        {g?.move1 != null && (
+          <span style={{ color: g.correct1 ? "var(--gain)" : "var(--loss)" }}>
+            {" "}
+            ({signed(g.move1)} {g.correct1 ? "✓" : "✗"})
+          </span>
+        )}
+      </span>
+    );
+  }).filter(Boolean);
+  const ideas = entry.ideas ?? [];
+  const counts = ideas.reduce((m, i) => ((m[i.outcome?.status ?? "Waiting"] = (m[i.outcome?.status ?? "Waiting"] ?? 0) + 1), m), {});
+  return (
+    <div className="mb-2 rounded-[var(--radius-sm)] border px-3 py-2 text-xs" style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-muted)" }}>
+      <span className="uppercase tracking-wider text-[10px] mr-2" style={{ color: "var(--text-faint)" }}>
+        Your plan for {dayLabel(date)}
+      </span>
+      {biasBits.length ? biasBits : <span className="mr-3">no index view</span>}
+      {ideas.length > 0 && (
+        <span>
+          · {ideas.length} idea{ideas.length === 1 ? "" : "s"}: {Object.entries(counts).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(", ")}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------
 
 // Lets an evening plan be dated for the session it's about (Friday night →
@@ -295,14 +339,20 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
   const [entries, setEntries] = useState(null);
   const [prefs, setPrefs] = useState({ checklist: [] });
   const [error, setError] = useState(null);
-  const [date, setDateRaw] = useState(todayIST());
+  // The page is "the evening of" a trading day — when you sit down after
+  // the close. It edits two entries: that day's REVIEW (After the close)
+  // and the NEXT trading day's PLAN (Before the open), which is graded on
+  // that next session. Before 15:30 it opens on the previous trading day's
+  // evening, so a morning top-up still edits today's plan.
+  const [date, setDateRaw] = useState(() => currentEvening());
   const setDate = (d) => {
-    setDateRaw(d);
+    setDateRaw(isNonTradingDate(d) ? prevTradingDay(d) : d);
     setMsg(null);
   };
-  // Unsaved edits for one date. Switching date (or saving) drops them, and
-  // the editor falls back to the saved — graded — version of that day.
-  const [edit, setEdit] = useState({ date: null, draft: null });
+  const planDate = nextTradingDay(date);
+  // Unsaved edits, per entry. Switching evening (or saving) drops them, and
+  // the editor falls back to the saved — graded — versions.
+  const [edit, setEdit] = useState({ plan: null, review: null });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
   const [snap, setSnap] = useState({ date: null, data: null });
@@ -346,11 +396,18 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
       .catch(() => {});
   }, []);
 
+  // Plan for the next session.
+  const savedPlan = entries?.find((e) => e.date === planDate) ?? null;
+  const base = entries ? savedPlan ?? blankEntry(planDate, prefs.checklist) : null;
+  const draft = edit.plan?.date === planDate ? edit.plan.draft : base;
+  // Review of this evening's session (also holds that day's stock studies).
   const saved = entries?.find((e) => e.date === date) ?? null;
-  const base = entries ? saved ?? blankEntry(date, prefs.checklist) : null;
-  const draft = edit.date === date ? edit.draft : base;
-  const dirty = edit.date === date;
-  const resetEdits = () => setEdit({ date: null, draft: null });
+  const reviewBase = entries ? saved ?? blankEntry(date, prefs.checklist) : null;
+  const reviewDraft = edit.review?.date === date ? edit.review.draft : reviewBase;
+  const planDirty = edit.plan?.date === planDate;
+  const reviewDirty = edit.review?.date === date;
+  const dirty = planDirty || reviewDirty;
+  const resetEdits = () => setEdit({ plan: null, review: null });
 
   // Market snapshot for the day (saved snapshot first, else live).
   useEffect(() => {
@@ -379,27 +436,38 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
   const s = useMemo(() => (entries ? scorecard(entries, prefs.checklist) : null), [entries, prefs.checklist]);
   const notes = s ? insights(s) : [];
 
-  const set = (path, value) => {
+  const editIn = (which, d, fallback) => (path, value) => {
     setEdit((prev) => {
-      const next = structuredClone(prev.date === date ? prev.draft : base);
+      const cur = prev[which]?.date === d ? prev[which].draft : fallback;
+      const next = structuredClone(cur);
       let o = next;
       for (let i = 0; i < path.length - 1; i++) o = o[path[i]] ??= {};
       o[path[path.length - 1]] = value;
-      return { date, draft: next };
+      return { ...prev, [which]: { date: d, draft: next } };
     });
   };
+  const set = editIn("plan", planDate, base); // Before the open → next session
+  const setReview = editIn("review", date, reviewBase); // After the close → this session
 
   async function save() {
     setSaving(true);
     setMsg(null);
     try {
-      const entry = { ...draft, snapshot: draft.snapshot ?? snapshot ?? null };
-      const res = await fetch("/api/analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry }) });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j?.error || "Couldn't save");
+      // The evening's snapshot (the session's close) is stored with both:
+      // it's what the market looked like when you wrote them.
+      const toSave = [];
+      if (reviewDirty) toSave.push({ ...reviewDraft, snapshot: reviewDraft.snapshot ?? snapshot ?? null });
+      if (planDirty) toSave.push({ ...draft, snapshot: draft.snapshot ?? snapshot ?? null });
+      for (const entry of toSave) {
+        const res = await fetch("/api/analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry }) });
+        const j = await res.json();
+        if (!res.ok) throw new Error(j?.error || "Couldn't save");
+      }
       await load();
-      resetEdits(); // show the saved, graded version
-      setMsg("Saved.");
+      resetEdits(); // show the saved, graded versions
+      setMsg(
+        `Saved ${[reviewDirty && `review of ${dayLabel(date)}`, planDirty && `plan for ${dayLabel(planDate)}`].filter(Boolean).join(" and ")}.`
+      );
     } catch (err) {
       setMsg(err.message);
     } finally {
@@ -438,7 +506,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
   }
 
   function carryForward() {
-    const prev = (entries ?? []).filter((e) => e.date < date).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
+    const prev = (entries ?? []).filter((e) => e.date < planDate && e.ideas?.length).sort((a, b) => (a.date < b.date ? 1 : -1))[0];
     if (!prev) return setMsg("No earlier entry to carry ideas from.");
     const have = new Set(draft.ideas.map((i) => i.symbol));
     const live = prev.ideas.filter((i) => ["Waiting", "Open"].includes(i.outcome?.status) && !have.has(i.symbol));
@@ -466,7 +534,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
           timeframe: idea.timeframe,
           entryDate: todayIST(),
           entryReason: idea.thesis,
-          quickNotes: [{ text: `From my ${date} analysis: ${idea.thesis || `${idea.direction} ${idea.symbol}`}` }],
+          quickNotes: [{ text: `From my plan for ${planDate}: ${idea.thesis || `${idea.direction} ${idea.symbol}`}` }],
         },
       }),
     });
@@ -525,10 +593,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
     setEditChecklist(false);
   }
 
-  const holiday = isNonTradingDate(date);
+  const holiday = false; // the evening is always a trading day now
   const eventsToday = Object.entries(events)
     .filter(([sym]) => watchlistSymbols.includes(sym))
-    .flatMap(([sym, list]) => list.filter((e) => e.date >= date && e.date <= shiftTradingDay(shiftTradingDay(date, 1), 1)).map((e) => `${sym}: ${e.type} (${e.date}) — ${e.title}`));
+    .flatMap(([sym, list]) => list.filter((e) => e.date >= planDate && e.date <= nextTradingDay(planDate)).map((e) => `${sym}: ${e.type} (${e.date}) — ${e.title}`));
   const sel = { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" };
 
   return (
@@ -568,35 +636,36 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
               <button type="button" onClick={() => setDate(shiftTradingDay(date, -1))} className="px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Previous trading day">
                 ←
               </button>
-              <input type="date" value={date} max={plusDaysIso(todayIST(), 4)} onChange={(e) => e.target.value && setDate(e.target.value)} className="rounded px-2 py-1 text-sm border" style={sel} title="The session this view is about — pick the next trading day if you plan the evening before" />
-              <button type="button" onClick={() => setDate(shiftTradingDay(date, 1))} disabled={date >= todayIST()} className="px-2 py-1 rounded border disabled:opacity-30" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Next trading day">
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>Evening of</span>
+              <input type="date" value={date} max={currentEvening()} onChange={(e) => e.target.value && setDate(e.target.value)} className="rounded px-2 py-1 text-sm border" style={sel} aria-label="Evening of" title="The trading day you're reviewing; the plan below is for the next trading day" />
+              <button type="button" onClick={() => setDate(shiftTradingDay(date, 1))} disabled={date >= currentEvening()} className="px-2 py-1 rounded border disabled:opacity-30" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Next trading day">
                 →
               </button>
-              {date !== todayIST() && (
-                <button type="button" onClick={() => setDate(todayIST())} className="px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--accent)" }}>
-                  Today
+              {date !== currentEvening() && (
+                <button type="button" onClick={() => setDate(currentEvening())} className="px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--accent)" }}>
+                  Latest
                 </button>
               )}
               <span className="ml-1">
-                {saved ? `Saved ${new Date(saved.updatedAt).toLocaleString("en-IN", { dateStyle: "short", timeStyle: "short" })}` : "Not saved yet"}
-                {holiday && <span style={{ color: "var(--tier-mid)" }}> · market closed this day</span>}
+                Review of <b style={{ color: "var(--text-muted)" }}>{dayLabel(date)}</b> {saved?.review || saved?.worked ? "✓" : "· not written"} · Plan for{" "}
+                <b style={{ color: "var(--text-muted)" }}>{dayLabel(planDate)}</b> {savedPlan ? "✓" : "· not written"}
               </span>
             </div>
             <div className="flex items-center gap-2">
               {msg && <span className="text-xs" style={{ color: "var(--text-muted)" }}>{msg}</span>}
-              {saved && (
+              {savedPlan && (
                 <button
                   type="button"
                   onClick={async () => {
-                    if (!window.confirm(`Delete your analysis for ${date}?`)) return;
-                    await fetch(`/api/analysis?date=${date}`, { method: "DELETE" });
+                    if (!window.confirm(`Delete your plan for ${dayLabel(planDate)}?`)) return;
+                    await fetch(`/api/analysis?date=${planDate}`, { method: "DELETE" });
                     resetEdits();
                     load();
                   }}
                   className="text-xs px-2.5 py-1.5 rounded border"
                   style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
                 >
-                  Delete day
+                  Delete plan
                 </button>
               )}
               <button type="button" onClick={save} disabled={saving || !dirty} className="text-xs px-4 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
@@ -608,7 +677,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
           <SubNav
             items={[
               { id: "day", label: "Market & ideas" },
-              { id: "studies", label: `Stock studies${draft.studies?.length ? ` (${draft.studies.length})` : ""}` },
+              { id: "studies", label: `Stock studies${reviewDraft.studies?.length ? ` (${reviewDraft.studies.length})` : ""}` },
             ]}
             active={view}
             onChange={setView}
@@ -617,8 +686,8 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
           {view === "studies" ? (
             <StockStudies
               date={date}
-              studies={draft.studies ?? []}
-              setStudies={(list) => set(["studies"], list)}
+              studies={reviewDraft.studies ?? []}
+              setStudies={(list) => setReview(["studies"], list)}
               entries={entries}
               events={events}
               selectedId={studyId}
@@ -678,9 +747,42 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
             </Panel>
             </div>
 
+          <div>
+            <SectionTitle meta="your notes on the session that just closed">After the close — review of {dayLabel(date)}</SectionTitle>
+            <PlanRecap entry={saved} date={date} />
+            <Panel>
+              <div className="grid gap-3 md:grid-cols-2">
+                <L label="What happened vs your view" className="md:col-span-2">
+                  <textarea rows={2} value={reviewDraft.review} onChange={(e) => setReview(["review"], e.target.value)} className={inputCls} style={field} />
+                </L>
+                <L label="What worked">
+                  <textarea rows={2} value={reviewDraft.worked} onChange={(e) => setReview(["worked"], e.target.value)} className={inputCls} style={field} />
+                </L>
+                <L label="What I missed">
+                  <textarea rows={2} value={reviewDraft.missed} onChange={(e) => setReview(["missed"], e.target.value)} className={inputCls} style={field} />
+                </L>
+                <L label="Lesson for next session" className="md:col-span-2">
+                  <input value={reviewDraft.lessons} onChange={(e) => setReview(["lessons"], e.target.value)} className={inputCls} style={field} />
+                </L>
+                <L label="State of mind">
+                  <Chips options={EMOTIONS} value={reviewDraft.mood} onChange={(v) => setReview(["mood"], v)} tone="var(--tier-low)" />
+                </L>
+                <L label={`Rate your plan for ${dayLabel(date)}`}>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <button key={n} type="button" onClick={() => setReview(["rating"], reviewDraft.rating === n ? null : n)} className="w-8 h-8 rounded border text-sm" style={reviewDraft.rating >= n ? { borderColor: "var(--accent)", color: "var(--accent)", background: "var(--surface-3)" } : { borderColor: "var(--border)", color: "var(--text-faint)" }}>
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                </L>
+              </div>
+            </Panel>
+          </div>
+
           {/* Pre-market */}
             <div>
-            <SectionTitle>Before the open — your view</SectionTitle>
+            <SectionTitle meta={`graded on ${dayLabel(planDate)}'s session`}>Before the open — plan for {dayLabel(planDate)}</SectionTitle>
             <Panel>
               <div className="grid gap-4 md:grid-cols-2">
                 {INDEXES.map((ix) => (
@@ -693,7 +795,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                           style={{ color: draft.biasGrade[ix.id].correct1 ? "var(--gain)" : "var(--loss)" }}
                           title={`Your ${draft.biasGrade[ix.id].bias} call graded on ${ix.label}'s move from the previous close to the close of ${draft.biasGrade[ix.id].nextDate}. Bullish is right if it closed up, Bearish if it closed down, Neutral if it moved less than ±0.5%.`}
                         >
-                          {draft.biasGrade[ix.id].nextDate === date ? "on the day" : `${draft.biasGrade[ix.id].nextDate} session`} {signed(draft.biasGrade[ix.id].move1)} → {draft.biasGrade[ix.id].correct1 ? "✓ right" : "✗ wrong"}
+                          {draft.biasGrade[ix.id].nextDate === planDate ? "on the day" : `${draft.biasGrade[ix.id].nextDate} session`} {signed(draft.biasGrade[ix.id].move1)} → {draft.biasGrade[ix.id].correct1 ? "✓ right" : "✗ wrong"}
                         </span>
                       )}
                     </p>
@@ -776,7 +878,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
               </div>
               {draft.ideas.length === 0 ? (
                 <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-                  No ideas for this day yet. Add one above, or from any stock&apos;s page with “Add to today&apos;s analysis”.
+                  No ideas for {dayLabel(planDate)} yet. Add one above, or from any stock&apos;s page with “+ Add to my plan”.
                 </p>
               ) : (
                 <TableFrame name="analysis">
@@ -836,7 +938,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                                   Log trade
                                 </button>
                                 {onAddToWatchlist && i.symbol && !watchlistSymbols.includes(i.symbol) && (
-                                  <button type="button" onClick={() => onAddToWatchlist(i.symbol, `Analysis ${date}`)} className="text-[10px] px-1.5 py-0.5 rounded border mr-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+                                  <button type="button" onClick={() => onAddToWatchlist(i.symbol, `Plan ${planDate}`)} className="text-[10px] px-1.5 py-0.5 rounded border mr-1" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
                                     + Watch
                                   </button>
                                 )}
@@ -899,37 +1001,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                 )}
               </Panel>
             </div>
-            <div>
-              <SectionTitle>After the close — review</SectionTitle>
-              <Panel>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <L label="What happened vs your view" className="md:col-span-2">
-                    <textarea rows={2} value={draft.review} onChange={(e) => set(["review"], e.target.value)} className={inputCls} style={field} />
-                  </L>
-                  <L label="What worked">
-                    <textarea rows={2} value={draft.worked} onChange={(e) => set(["worked"], e.target.value)} className={inputCls} style={field} />
-                  </L>
-                  <L label="What I missed">
-                    <textarea rows={2} value={draft.missed} onChange={(e) => set(["missed"], e.target.value)} className={inputCls} style={field} />
-                  </L>
-                  <L label="Lesson for tomorrow" className="md:col-span-2">
-                    <input value={draft.lessons} onChange={(e) => set(["lessons"], e.target.value)} className={inputCls} style={field} />
-                  </L>
-                  <L label="State of mind">
-                    <Chips options={EMOTIONS} value={draft.mood} onChange={(v) => set(["mood"], v)} tone="var(--tier-low)" />
-                  </L>
-                  <L label="Rate your analysis today">
-                    <div className="flex gap-1">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <button key={n} type="button" onClick={() => set(["rating"], draft.rating === n ? null : n)} className="w-8 h-8 rounded border text-sm" style={draft.rating >= n ? { borderColor: "var(--accent)", color: "var(--accent)", background: "var(--surface-3)" } : { borderColor: "var(--border)", color: "var(--text-faint)" }}>
-                          ★
-                        </button>
-                      ))}
-                    </div>
-                  </L>
-                </div>
-              </Panel>
-            </div>
+
             </div>
 
             </>

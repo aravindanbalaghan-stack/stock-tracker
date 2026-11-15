@@ -1,3 +1,4 @@
+import { currentPlanDate } from "@/lib/planDate";
 import { getSessionUser } from "@/lib/auth";
 import {
   getEntries,
@@ -61,7 +62,11 @@ export async function GET(request) {
     // Home tab card: the latest day only, ungraded (fast).
     if (searchParams.get("summary") === "1") {
       const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
-      return Response.json({ today, latest: entries[0] ?? null, days: entries.length });
+      // The plan that matters now: today's before 15:30, the next trading
+      // day's after the close (written the evening before).
+      const planDate = currentPlanDate();
+      const plan = entries.find((x) => x.date === planDate && (x.ideas?.length || Object.values(x.bias ?? {}).some(Boolean))) ?? null;
+      return Response.json({ today, planDate, plan, latest: entries[0] ?? null, days: entries.length });
     }
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     if (symbol) {
@@ -87,7 +92,9 @@ export async function POST(request) {
       return Response.json({ imported: n });
     }
     if (body.idea) {
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "") ? body.date : new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+      // An idea added from a stock page joins the current plan (tomorrow's
+      // after the close, today's before it).
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "") ? body.date : currentPlanDate();
       return Response.json({ entry: await addIdea(user, date, body.idea) });
     }
     return Response.json({ entry: await upsertEntry(user, body.entry) });

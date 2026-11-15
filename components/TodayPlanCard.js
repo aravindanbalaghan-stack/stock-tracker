@@ -6,7 +6,8 @@
 import { useEffect, useState } from "react";
 import SymbolLink from "@/components/SymbolLink";
 import { SectionTitle } from "@/components/ui/Chrome";
-import { marketIsOpen, isTradingDayToday } from "@/lib/marketHours";
+import { marketIsOpen } from "@/lib/marketHours";
+import { dayLabel } from "@/lib/planDate";
 
 const TONE = { Bullish: "var(--gain)", Bearish: "var(--loss)", Neutral: "var(--accent)" };
 
@@ -19,8 +20,12 @@ export default function TodayPlanCard({ onOpenAnalysis }) {
       .catch(() => setData(null));
   }, []);
   if (!data) return null;
-  const e = data.latest;
-  const isToday = e?.date === data.today;
+  // The plan for the session that matters now (see lib/planDate.js); if
+  // it isn't written yet, prompt for it and show the last one for context.
+  const e = data.plan ?? data.latest;
+  const isToday = !!data.plan;
+  const forDay = dayLabel(data.planDate ?? data.today);
+  const tomorrow = data.planDate && data.planDate > data.today;
 
   return (
     <section>
@@ -31,16 +36,16 @@ export default function TodayPlanCard({ onOpenAnalysis }) {
           </button>
         }
       >
-        {isToday ? "Today's plan" : "Your plan"}
+        {isToday ? `${tomorrow ? "Plan for" : "Today's plan ·"} ${forDay}` : "Your plan"}
       </SectionTitle>
-      {!e || (!isToday && isTradingDayToday()) ? (
+      {!e || !isToday ? (
         <div className="rounded-[var(--radius)] border border-dashed p-4 flex flex-wrap items-center justify-between gap-3" style={{ borderColor: "var(--border)" }}>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
             {e ? `Last analysis: ${e.date}. ` : ""}
-            {marketIsOpen() ? "Market's open — " : ""}write today&apos;s view: bias, levels and ideas. Panel grades it against what the market does next.
+            {marketIsOpen() ? "Market's open — " : ""}write your plan for {forDay}: bias, levels and ideas. Panel grades it on that session.
           </p>
           <button type="button" onClick={onOpenAnalysis} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
-            Write today&apos;s analysis
+            Write the plan for {forDay}
           </button>
         </div>
       ) : (

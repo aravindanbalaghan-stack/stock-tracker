@@ -195,7 +195,7 @@ body {
 /* Numbers in every table line up digit-for-digit. */
 td, th { font-variant-numeric: tabular-nums; }
 
-input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+input[type="checkbox"], input[type="radio"], input[type="range"], progress { accent-color: var(--accent); }
 
 /* Skeleton loaders. */
 .skeleton {

@@ -343,7 +343,7 @@ function StudyEditor({ st, date, update, remove, history, events, onAddIdea, onL
           </div>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => onAddIdea(st)} className="text-[11px] px-2 py-1 rounded border" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
-              Add to today&apos;s ideas
+              Add to next session&apos;s plan
             </button>
             <button type="button" onClick={() => onLogTrade(st)} className="text-[11px] px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
               Log trade

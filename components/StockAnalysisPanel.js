@@ -2,9 +2,10 @@
 
 // Stock page → Your analysis: every idea you've written on this stock in
 // the Analysis tab, with how it played out, and a quick form to add one to
-// today's analysis.
+// current plan (the next session's after the close — see lib/planDate.js).
 
 import { useEffect, useState } from "react";
+import { currentPlanDate, dayLabel } from "@/lib/planDate";
 import Link from "next/link";
 import { SectionTitle, Panel } from "@/components/ui/Chrome";
 
@@ -42,7 +43,7 @@ export default function StockAnalysisPanel({ symbol, price }) {
       body: JSON.stringify({ idea: { symbol, ...form } }),
     });
     if (res.ok) {
-      setMsg("Added to today's analysis.");
+      setMsg(`Added to your plan for ${dayLabel(currentPlanDate())}.`);
       setOpen(false);
       setForm({ direction: "Long", entry: "", stop: "", target: "", setup: "", thesis: "" });
       load();
@@ -59,7 +60,7 @@ export default function StockAnalysisPanel({ symbol, price }) {
         meta={
           <span className="flex items-center gap-3">
             <button type="button" onClick={() => setOpen((v) => !v)} className="hover:underline" style={{ color: "var(--accent)" }}>
-              {open ? "Cancel" : "+ Add to today's analysis"}
+              {open ? "Cancel" : "+ Add to my plan"}
             </button>
             <Link href="/?tab=analysis" className="hover:underline" style={{ color: "var(--text-faint)" }}>
               Analysis tab
