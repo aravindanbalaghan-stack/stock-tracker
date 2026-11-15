@@ -114,7 +114,7 @@ export default function SymbolSearchBox({
             <button
               type="button"
               onClick={() => pick(query.trim().toUpperCase())}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--hover)]"
               style={{ color: "var(--text)" }}
             >
               Use “{query.trim().toUpperCase()}” anyway
@@ -125,7 +125,7 @@ export default function SymbolSearchBox({
               type="button"
               key={`${r.symbol}-${r.exchange}`}
               onClick={() => pick(r.symbol)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-white/5 text-left"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-[var(--hover)] text-left"
             >
               <span className="flex flex-col min-w-0">
                 <span className="font-mono" style={{ color: "var(--text)" }}>

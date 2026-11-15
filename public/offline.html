@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Panel — offline</title>
+<style>
+  :root { color-scheme: dark light; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #080b13; color: #e6ebf5; padding: 24px; }
+  @media (prefers-color-scheme: light) { body { background: #f6f7fb; color: #141a29; } p { color: #4a5470; } }
+  main { max-width: 360px; text-align: center; }
+  img { width: 72px; height: 72px; }
+  h1 { font-size: 20px; margin: 16px 0 6px; }
+  p { color: #8e9ab3; line-height: 1.5; margin: 0 0 18px; }
+  button { font: inherit; padding: 9px 18px; border-radius: 8px; border: 0; background: #e0b455; color: #1a1406; font-weight: 600; cursor: pointer; }
+</style>
+</head>
+<body>
+<main>
+  <img src="/icons/icon-192.png" alt="" />
+  <h1>You're offline</h1>
+  <p>Panel needs a connection for live prices and screens. It'll pick up where you left off once you're back online.</p>
+  <button onclick="location.reload()">Try again</button>
+</main>
+</body>
+</html>

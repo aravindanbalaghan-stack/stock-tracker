@@ -1341,7 +1341,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                   return (
                     <Fragment key={r.symbol}>
                     <tr
-                      className={`border-b last:border-b-0 ${expandable ? "cursor-pointer hover:bg-white/5" : ""}`}
+                      className={`border-b last:border-b-0 ${expandable ? "cursor-pointer hover:bg-[var(--hover)]" : ""}`}
                       style={{ borderColor: "var(--border)" }}
                       onClick={expandable ? () => setExpanded(isOpen ? null : r.symbol) : undefined}
                       title={

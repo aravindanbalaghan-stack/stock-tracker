@@ -51,7 +51,7 @@ export default function ChangePassword() {
               {msg.text}
             </span>
           )}
-          <button type="submit" disabled={busy} className="rounded px-2 py-1.5 text-xs font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+          <button type="submit" disabled={busy} className="rounded px-2 py-1.5 text-xs font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
             {busy ? "Saving…" : "Change password"}
           </button>
         </form>

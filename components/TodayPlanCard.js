@@ -39,7 +39,7 @@ export default function TodayPlanCard({ onOpenAnalysis }) {
             {e ? `Last analysis: ${e.date}. ` : ""}
             {marketIsOpen() ? "Market's open — " : ""}write today&apos;s view: bias, levels and ideas. Panel grades it against what the market does next.
           </p>
-          <button type="button" onClick={onOpenAnalysis} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+          <button type="button" onClick={onOpenAnalysis} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
             Write today&apos;s analysis
           </button>
         </div>

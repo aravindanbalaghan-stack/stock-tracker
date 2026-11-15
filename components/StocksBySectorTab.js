@@ -206,7 +206,7 @@ export default function StocksBySectorTab() {
               return (
                 <Fragment key={s.key}>
                   <tr
-                    className="border-b cursor-pointer hover:bg-white/5"
+                    className="border-b cursor-pointer hover:bg-[var(--hover)]"
                     style={{ borderColor: "var(--border)" }}
                     onClick={() => toggle(s.key)}
                   >

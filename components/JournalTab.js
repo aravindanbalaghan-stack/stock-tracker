@@ -249,7 +249,7 @@ export default function JournalTab() {
               Import
             </button>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.json" className="hidden" onChange={(e) => onImport(e.target.files?.[0])} />
-            <button type="button" onClick={() => setEditing({})} className="text-xs px-3 py-1 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            <button type="button" onClick={() => setEditing({})} className="text-xs px-3 py-1 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
               + New trade
             </button>
           </div>
@@ -302,7 +302,7 @@ export default function JournalTab() {
                         >
                           Delete
                         </button>
-                        <button type="button" onClick={() => setEditing(d)} className="text-[11px] px-2.5 py-1 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+                        <button type="button" onClick={() => setEditing(d)} className="text-[11px] px-2.5 py-1 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
                           Complete trade
                         </button>
                       </div>
@@ -427,7 +427,7 @@ export default function JournalTab() {
                   </thead>
                   <tbody>
                     {listed.map((t) => (
-                      <tr key={t.id} className="border-b last:border-b-0 cursor-pointer hover:bg-white/[0.02]" style={{ borderColor: "var(--border)" }} onClick={() => setEditing(t)}>
+                      <tr key={t.id} className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover-soft)]" style={{ borderColor: "var(--border)" }} onClick={() => setEditing(t)}>
                         <td className="py-2 pl-4 pr-2 font-mono whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
                           {t.entryDate}
                         </td>

@@ -72,7 +72,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
           setBusy(false);
           return;
         }
-        await onRemove(holding.symbol);
+        await onRemove(holding.symbol, p != null ? { price: p, date } : null);
         onClose();
         return;
       }
@@ -95,9 +95,12 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "var(--scrim)" }} onClick={onClose}>
       <div className="min-h-full flex justify-center px-4 py-6">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Edit ${holding.symbol} holding`}
         className="w-full max-w-sm my-auto rounded-lg border p-4 flex flex-col gap-3"
         style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }}
         onClick={(e) => e.stopPropagation()}
@@ -181,7 +184,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
           <button type="button" onClick={onClose} className="text-xs px-3 py-1.5 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
             Cancel
           </button>
-          <button type="button" onClick={save} disabled={busy} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+          <button type="button" onClick={save} disabled={busy} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
             {busy ? "Saving…" : "Save"}
           </button>
         </div>

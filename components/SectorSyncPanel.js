@@ -100,7 +100,7 @@ export default function SectorSyncPanel({ sectorKey, onApplied }) {
           onClick={runPreview}
           disabled={loading}
           className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-          style={{ background: "var(--accent)", color: "var(--surface)" }}
+          style={{ background: "var(--accent)", color: "var(--on-accent)" }}
         >
           {loading ? "Comparing…" : "Compare with Zerodha"}
         </button>
@@ -179,7 +179,7 @@ export default function SectorSyncPanel({ sectorKey, onApplied }) {
                 {preview.missing.map((m) => (
                   <label
                     key={m.symbol}
-                    className="flex items-center gap-2.5 px-3 py-1.5 border-b last:border-b-0 cursor-pointer hover:bg-white/5"
+                    className="flex items-center gap-2.5 px-3 py-1.5 border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover)]"
                     style={{ borderColor: "var(--border)" }}
                   >
                     <input
@@ -205,7 +205,7 @@ export default function SectorSyncPanel({ sectorKey, onApplied }) {
                 onClick={apply}
                 disabled={applying || selected.size === 0}
                 className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-                style={{ background: "var(--accent)", color: "var(--surface)" }}
+                style={{ background: "var(--accent)", color: "var(--on-accent)" }}
               >
                 {applying ? "Adding…" : `Add ${selected.size} to ${preview.name}`}
               </button>

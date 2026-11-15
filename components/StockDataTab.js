@@ -21,7 +21,7 @@ function Btn({ children, primary, ...props }) {
       type="button"
       {...props}
       className="text-xs px-3 py-1.5 rounded border font-medium disabled:opacity-40"
-      style={primary ? { background: "var(--accent)", color: "var(--bg)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--text)" }}
+      style={primary ? { background: "var(--accent)", color: "var(--on-accent)", borderColor: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--text)" }}
     >
       {children}
     </button>

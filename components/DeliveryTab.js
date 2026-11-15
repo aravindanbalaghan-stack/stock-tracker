@@ -261,7 +261,7 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
             return (
               <Fragment key={r.symbol}>
                 <tr
-                  className="border-b last:border-b-0 cursor-pointer hover:bg-white/5"
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover)]"
                   style={{ borderColor: "var(--border)" }}
                   onClick={() => setExpanded(isExpanded ? null : r.symbol)}
                 >
@@ -563,7 +563,7 @@ function DeliverySearchBox({ onPick, query, setQuery }) {
             <button
               type="button"
               onClick={handleManualSearch}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5"
+              className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--hover)]"
               style={{ color: "var(--text)" }}
             >
               Search “{query.trim().toUpperCase()}” anyway
@@ -574,7 +574,7 @@ function DeliverySearchBox({ onPick, query, setQuery }) {
               type="button"
               key={`${r.symbol}-${r.exchange}`}
               onClick={() => pick(r.symbol)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-white/5"
+              className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--hover)]"
             >
               <span className="flex flex-col text-left">
                 <span className="font-mono" style={{ color: "var(--text)" }}>{r.symbol}</span>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { createChart, LineSeries, HistogramSeries, LineStyle } from "lightweight-charts";
+import { useThemeVersion } from "@/lib/theme";
 
 // Small time-series chart for the breadth views. Same library and styling
 // as the stock chart, so every chart in Panel looks alike.
@@ -18,6 +19,7 @@ const colorOf = (c) => (c?.startsWith("--") ? cssVar(c, "#8493ad") : c);
 
 export default function LineChart({ series, refLines = [], height = 220, percent = false, ariaLabel }) {
   const box = useRef(null);
+  const themeV = useThemeVersion(); // redraw with the new colours on theme change
   useEffect(() => {
     if (!box.current) return;
     const grid = cssVar("--border", "#1f2942");
@@ -62,6 +64,6 @@ export default function LineChart({ series, refLines = [], height = 220, percent
       ro.disconnect();
       chart.remove();
     };
-  }, [series, refLines, height, percent]);
+  }, [series, refLines, height, percent, themeV]);
   return <div ref={box} style={{ height }} role="img" aria-label={ariaLabel} />;
 }

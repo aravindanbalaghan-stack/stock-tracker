@@ -7,6 +7,7 @@
 // price. Every overlay can be toggled; the choices are remembered.
 // Rendering: TradingView's lightweight-charts (Apache-2.0).
 
+import { useThemeVersion } from "@/lib/theme";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries, createSeriesMarkers, LineStyle, CrosshairMode } from "lightweight-charts";
 import { SectionTitle } from "@/components/ui/Chrome";
@@ -116,6 +117,7 @@ export default function StockChart({ symbol }) {
   const data = loaded.key === symbol ? loaded.data : null;
   const error = loaded.key === symbol ? loaded.error : null;
 
+  const themeV = useThemeVersion(); // chart colours follow the theme
   useEffect(() => {
     let alive = true;
     fetch(`/api/chart?symbol=${encodeURIComponent(symbol)}`)
@@ -265,7 +267,7 @@ export default function StockChart({ symbol }) {
     chart.subscribeCrosshairMove((p) => setHover(p?.time ? byTime.get(p.time) ?? null : null));
 
     return () => chart.remove();
-  }, [bars, data, on, range, weekly]);
+  }, [bars, data, on, range, weekly, themeV]);
 
   const last = bars[bars.length - 1];
   const shown = hover ?? (last ? { ...last, prev: bars[bars.length - 2]?.close } : null);

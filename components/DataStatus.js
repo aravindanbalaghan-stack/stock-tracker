@@ -76,7 +76,7 @@ export default function DataStatus() {
             onClick={runNow}
             disabled={s.running || kicked}
             className="mt-3 text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40"
-            style={{ background: "var(--accent)", color: "var(--bg)" }}
+            style={{ background: "var(--accent)", color: "var(--on-accent)" }}
           >
             {s.running ? "Preparing…" : kicked ? "Started" : "Prepare now"}
           </button>

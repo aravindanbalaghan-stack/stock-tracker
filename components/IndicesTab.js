@@ -57,7 +57,7 @@ function IndexRow({ item, rank }) {
   return (
     <div className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
       <div
-        className={`flex items-center justify-between px-4 py-3 ${drillable ? "cursor-pointer hover:bg-white/5" : ""}`}
+        className={`flex items-center justify-between px-4 py-3 ${drillable ? "cursor-pointer hover:bg-[var(--hover)]" : ""}`}
         onClick={toggle}
       >
         <div className="flex items-center gap-3">

@@ -115,7 +115,7 @@ export default function SectorAssign({ symbol, sectors, onAssigned, compact = fa
                 type="button"
                 disabled={busy}
                 onClick={() => assign(o.key)}
-                className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5 disabled:opacity-50"
+                className="w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--hover)] disabled:opacity-50"
                 style={{ color: "var(--text)" }}
               >
                 {o.name}

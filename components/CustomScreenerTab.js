@@ -374,7 +374,7 @@ export default function CustomScreenerTab({ onAddToWatchlist, watchlistSymbols }
             <button
               type="button"
               className="text-sm font-medium px-4 py-1.5 rounded-[var(--radius-sm)]"
-              style={{ background: "var(--accent)", color: "#1a1406" }}
+              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
               onClick={() => execute()}
               disabled={run.status === "running" || !conditions.length}
             >

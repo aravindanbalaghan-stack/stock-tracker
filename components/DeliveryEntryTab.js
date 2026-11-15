@@ -271,7 +271,7 @@ export default function DeliveryEntryTab({ onAddToWatchlist, watchlistSymbols })
         }
         disabled={backtestMode && !splitDate}
         className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium mb-0.5 disabled:opacity-40"
-        style={{ background: "var(--accent)", color: "var(--surface)" }}
+        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
       >
         {backtestMode ? "Run backtest" : "Rerun study"}
       </button>

@@ -12,6 +12,16 @@ import { volumeFigures, fmtVolume as fmtVol } from "@/lib/liveVolume";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { fmt, fmtVolume, fmtTurnover } from "@/lib/format";
 import TableFrame from "@/components/ui/TableFrame";
+import { SubNav } from "@/components/ui/Chrome";
+import PortfolioAnalytics from "@/components/PortfolioAnalytics";
+import PositionSizer from "@/components/PositionSizer";
+import { VIEW_EVENT } from "@/lib/navigation";
+
+const SECTIONS = [
+  { id: "positions", label: "Positions" },
+  { id: "analytics", label: "Analytics" },
+  { id: "sizing", label: "Position sizing" },
+];
 
 // Same cadence as the Watchlist / Home's My Top 5 live prices.
 const QUOTE_REFRESH_MS = 12000;
@@ -286,7 +296,7 @@ function AddHoldingForm({ onAdd, existingSymbols }) {
                 type="button"
                 key={`${r.symbol}-${r.exchange}`}
                 onClick={() => pick(r.symbol)}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-white/5"
+                className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--hover)]"
               >
                 <span className="font-mono" style={{ color: "var(--text)" }}>
                   {r.symbol}
@@ -349,7 +359,7 @@ function AddHoldingForm({ onAdd, existingSymbols }) {
         type="submit"
         disabled={submitting}
         className="rounded px-3 py-1.5 text-sm font-medium"
-        style={{ background: "var(--accent)", color: "var(--bg)" }}
+        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
       >
         {submitting ? "Adding…" : "Add holding"}
       </button>
@@ -531,8 +541,15 @@ export default function HoldingsTab() {
     if (json?.entries) setHoldings(json.entries);
   }
 
-  async function handleRemove(symbol) {
-    fetch(`/api/holdings?symbol=${encodeURIComponent(symbol)}`, { method: "DELETE" }).catch(() => {});
+  // sale = { price, date } when the whole position was sold (logged as a
+  // closed trade so its realised profit stays in Analytics).
+  async function handleRemove(symbol, sale) {
+    const q = new URLSearchParams({ symbol });
+    if (sale?.price) {
+      q.set("sellPrice", sale.price);
+      if (sale.date) q.set("sellDate", sale.date);
+    }
+    fetch(`/api/holdings?${q}`, { method: "DELETE" }).catch(() => {});
     setHoldings((prev) => prev.filter((h) => h.symbol !== symbol));
   }
 
@@ -563,6 +580,16 @@ export default function HoldingsTab() {
 
   const { sorted, sort, onSort } = useSortableRows(rows, "currentValue", "desc");
   const [view, setView] = usePersistentState("holdings.view", "cards");
+  const [storedSection, setSection] = usePersistentState("holdings.section", "positions");
+  const section = SECTIONS.some((x) => x.id === storedSection) ? storedSection : "positions";
+  // ⌘K "Portfolio analytics" / "Position sizing" while this tab is open.
+  useEffect(() => {
+    function onView(e) {
+      if (e.detail?.tab === "holdings") setSection(e.detail.view);
+    }
+    window.addEventListener(VIEW_EVENT, onView);
+    return () => window.removeEventListener(VIEW_EVENT, onView);
+  }, [setSection]);
   const [editing, setEditing] = useState(null);
   const editingHolding = editing ? holdings.find((h) => h.symbol === editing) : null;
   const [cardSortKey, setCardSortKey] = usePersistentState("holdings.cardSort", "currentValue");
@@ -591,6 +618,7 @@ export default function HoldingsTab() {
   return (
     <div>
       <ScreenHeader
+        actions={<SubNav items={SECTIONS} active={section} onChange={setSection} />}
         title="Holdings"
         meta={
           holdings.length > 0
@@ -599,6 +627,12 @@ export default function HoldingsTab() {
         }
       />
 
+      {section === "analytics" ? (
+        <PortfolioAnalytics onSaveHolding={handleEdit} />
+      ) : section === "sizing" ? (
+        <PositionSizer onAdd={handleAdd} />
+      ) : (
+      <>
       <AddHoldingForm onAdd={handleAdd} existingSymbols={holdings.map((h) => h.symbol)} />
 
       {error && (
@@ -825,6 +859,9 @@ export default function HoldingsTab() {
           onRemove={handleRemove}
           onClose={() => setEditing(null)}
         />
+      )}
+
+      </>
       )}
 
       <p className="mt-4 text-xs" style={{ color: "var(--text-faint)" }}>

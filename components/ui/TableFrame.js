@@ -68,6 +68,9 @@ function cellValue(text) {
 function scan(table) {
   const headRow = table.querySelector("thead tr:last-child");
   const ths = headRow ? Array.from(headRow.children) : [];
+  // Screen readers announce the column name with each cell when headers
+  // say what they head.
+  for (const th of table.querySelectorAll("thead th")) if (!th.hasAttribute("scope")) th.setAttribute("scope", "col");
   const labels = ths.map(headerLabel);
   let rows = 0;
   for (const tr of table.querySelectorAll("tbody > tr")) {

@@ -75,7 +75,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
             return (
               <Fragment key={c.symbol}>
                 <tr
-                  className="border-b last:border-b-0 cursor-pointer hover:bg-white/5"
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover)]"
                   style={{ borderColor: "var(--border)" }}
                   onClick={() => setExpandedSymbol(isExpanded ? null : c.symbol)}
                 >
@@ -149,7 +149,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
             return (
               <Fragment key={s.key}>
                 <tr
-                  className="border-b last:border-b-0 cursor-pointer hover:bg-white/5"
+                  className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover)]"
                   style={{ borderColor: "var(--border)" }}
                   onClick={() => setExpanded(isExpanded ? null : s.key)}
                 >

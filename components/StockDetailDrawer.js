@@ -106,7 +106,7 @@ export default function StockDetailDrawer({ symbol, onClose, onAddToWatchlist, i
     <div className="fixed inset-0 z-50 flex justify-end">
       <div
         className="absolute inset-0"
-        style={{ background: "rgba(4, 6, 12, 0.6)" }}
+        style={{ background: "var(--scrim)" }}
         onClick={onClose}
         aria-hidden="true"
       />

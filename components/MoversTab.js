@@ -286,7 +286,7 @@ export default function MoversTab({ onAddToWatchlist, watchlistSymbols }) {
         type="button"
         onClick={() => setApplied(Number(windowDays) || 66)}
         className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium mb-0.5"
-        style={{ background: "var(--accent)", color: "var(--surface)" }}
+        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
       >
         Apply
       </button>

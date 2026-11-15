@@ -591,7 +591,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                   Delete day
                 </button>
               )}
-              <button type="button" onClick={save} disabled={saving || !dirty} className="text-xs px-4 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+              <button type="button" onClick={save} disabled={saving || !dirty} className="text-xs px-4 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
                 {saving ? "Saving…" : dirty ? "Save (Ctrl+S)" : "Saved"}
               </button>
             </div>
@@ -755,7 +755,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                   className={`${inputCls} flex-1 min-w-[16rem]`}
                   style={field}
                 />
-                <button type="button" onClick={addIdeaFromText} disabled={!ideaText.trim()} className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+                <button type="button" onClick={addIdeaFromText} disabled={!ideaText.trim()} className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
                   Add idea
                 </button>
                 <button type="button" onClick={carryForward} className="text-xs px-3 py-1.5 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} title="Copy ideas still waiting or open from your last entry">
@@ -944,7 +944,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                         const g = (id) => e.biasGrade?.[id];
                         const res = e.ideas.map((i) => ideaWon(i.outcome)).filter((x) => x != null);
                         return (
-                          <tr key={e.date} onClick={() => setDate(e.date)} className="border-b last:border-b-0 cursor-pointer hover:bg-white/[0.02]" style={{ borderColor: "var(--border)", background: e.date === date ? "var(--surface-2)" : undefined }}>
+                          <tr key={e.date} onClick={() => setDate(e.date)} className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover-soft)]" style={{ borderColor: "var(--border)", background: e.date === date ? "var(--surface-2)" : undefined }}>
                             <td className="py-2 pl-4 pr-2 font-mono" style={{ color: "var(--text)" }}>
                               {e.date}
                             </td>
@@ -993,7 +993,7 @@ function ChecklistEditor({ items, onSave }) {
       <p className="text-[10px]" style={{ color: "var(--text-faint)" }}>
         One item per line.
       </p>
-      <button type="button" onClick={() => onSave(text.split("\n").map((x) => x.trim()).filter(Boolean))} className="self-start text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+      <button type="button" onClick={() => onSave(text.split("\n").map((x) => x.trim()).filter(Boolean))} className="self-start text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
         Save checklist
       </button>
     </div>

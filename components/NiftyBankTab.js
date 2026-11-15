@@ -374,7 +374,7 @@ function BacktestSection() {
           onClick={runBacktest}
           disabled={loading}
           className="rounded px-4 py-1.5 text-sm font-medium disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--surface)" }}
+          style={{ background: "var(--accent)", color: "var(--on-accent)" }}
         >
           {loading ? "Running…" : "Run backtest"}
         </button>
@@ -575,7 +575,7 @@ function SwingHighsSection() {
           onClick={run}
           disabled={loading}
           className="rounded px-4 py-1.5 text-sm font-medium disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--surface)" }}
+          style={{ background: "var(--accent)", color: "var(--on-accent)" }}
         >
           {loading ? "Running…" : "Find swing highs"}
         </button>

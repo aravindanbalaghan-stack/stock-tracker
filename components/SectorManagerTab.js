@@ -68,7 +68,7 @@ function AddSectorControl({ symbol, allSectors, onAdd, busy }) {
                 onAdd(symbol, s.key);
                 setOpen(false);
               }}
-              className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5"
+              className="w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--hover)]"
               style={{ color: "var(--text)" }}
             >
               {s.name}
@@ -174,7 +174,7 @@ function AddStockControl({ allSectors, onAdd }) {
                   setQuery(r.symbol);
                   setOpen(false);
                 }}
-                className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-white/5"
+                className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-[var(--hover)]"
               >
                 <span className="font-mono" style={{ color: "var(--text)" }}>
                   {r.symbol}
@@ -210,7 +210,7 @@ function AddStockControl({ allSectors, onAdd }) {
         type="submit"
         disabled={busy}
         className="rounded px-3 py-1.5 text-sm font-medium"
-        style={{ background: "var(--accent)", color: "var(--bg)" }}
+        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
       >
         {busy ? "Adding…" : "Add"}
       </button>
@@ -299,12 +299,12 @@ function AddThemeControl({ symbol, current, allThemes, onAdd, busy }) {
           />
           <div className="max-h-52 overflow-auto">
             {canCreate && (
-              <button type="button" onClick={() => add(text.trim())} className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5" style={{ color: "var(--accent)" }}>
+              <button type="button" onClick={() => add(text.trim())} className="w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--hover)]" style={{ color: "var(--accent)" }}>
                 + Create “{text.trim()}”
               </button>
             )}
             {options.map((t) => (
-              <button key={t.name} type="button" onClick={() => add(t.name)} className="w-full text-left px-2 py-1.5 text-xs hover:bg-white/5" style={{ color: "var(--text)" }}>
+              <button key={t.name} type="button" onClick={() => add(t.name)} className="w-full text-left px-2 py-1.5 text-xs hover:bg-[var(--hover)]" style={{ color: "var(--text)" }}>
                 {t.name} <span style={{ color: "var(--text-faint)" }}>({t.count})</span>
               </button>
             ))}

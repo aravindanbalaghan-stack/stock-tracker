@@ -205,6 +205,23 @@ All four run on one dataset: a split-adjusted daily history of every NSE stock (
 
 The nightly precompute warms all of these. ⌘K can jump straight to each.
 
+## Portfolio analytics, position sizing, alerts, app install, themes
+
+**Holdings → Analytics** (`/api/portfolio`) shows, as of the last close: value, unrealised / realised / last-session P&L, open risk to your stops (% of capital), allocation by sector, theme, market-cap bucket and stage, concentration ("behaves like N equal stocks"), beta, volatility, 6-month drawdown, a 1-in-20 bad day, how much your holdings move together, and a time-weighted performance line vs the market rebuilt from your buy/sell history. "Needs attention" flags holdings at their stop, in Stage 4, or over your position / sector / open-risk limits. Set a stop on each holding right in the table (or pick a suggested one). Selling a whole position now logs it as a closed trade so realised profit is kept.
+
+**Holdings → Position sizing**: enter a symbol, entry and stop (suggested stops: 2×ATR, 10-day low, 20/50-day average, 30-week average) and get the share count from your rules: shares = capital × risk % ÷ (entry − stop), capped by your max-position %, checked against sector and total-risk limits, optionally scaled by the Breadth verdict (Mixed ¾, Risk-off ½). Your rules (capital, risk per trade, limits) are saved per account.
+
+**Alerts** (bell in the header, `+ Alert` on a stock page, or ⌘K → Alerts): price above/below, day move %, volume surge, crossing the 50-day or 30-week average, stage change; new picks in a screener; breadth verdict change; plus automatic alerts when a holding hits its stop or target or enters Stage 4. They land in the in-app inbox and, if set up, as phone/desktop notifications and Telegram messages. Checked:
+- every evening after the close (Vercel cron, `/api/cron/alerts?mode=eod`);
+- every 2 minutes during market hours while Panel is open in a tab;
+- optionally every 5 minutes during market hours with Panel closed: create a free job at cron-job.org calling `https://<your-app>/api/cron/alerts?mode=live` with header `Authorization: Bearer <CRON_SECRET>`, schedule `*/5 9-15 * * 1-5` in Asia/Kolkata.
+
+Push notifications need a VAPID key pair. Run `npx web-push generate-vapid-keys` once and add to Vercel → Environment Variables: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` (`mailto:you@example.com`). Then on each device: open Panel → bell → Delivery → Turn on notifications. On iPhone/iPad, first add Panel to the home screen (Safari → Share → Add to Home Screen) and open it from there — iOS only allows notifications for installed web apps. Telegram (optional): create a bot with @BotFather, set `TELEGRAM_BOT_TOKEN`, then enter your chat id under Delivery.
+
+**Install as an app**: "Install app" appears in the header in Chrome/Edge/Android; on iOS use Share → Add to Home Screen. Panel then opens full-screen with its own icon, and shows an offline page if there's no connection (prices are never served from cache).
+
+**Light theme & accessibility**: the theme button in the header (or ⌘K → Switch theme) cycles System → Light → Dark; System follows your device. All text colours meet WCAG AA contrast in both themes. Also: a "Skip to content" link for keyboard users, visible focus rings, labelled icon buttons and dialogs, column headers announced by screen readers, and reduced motion when your device asks for it.
+
 ## Set up storage and sign-in
 
 Panel needs two things on Vercel before Watchlist, Holdings, Top 5,

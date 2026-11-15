@@ -7,7 +7,7 @@ export default function TabBar({ tabs, active, onChange }) {
   return (
     <nav
       className="sticky top-0 z-20 border-b backdrop-blur"
-      style={{ borderColor: "var(--border)", background: "rgba(8, 11, 19, 0.85)" }}
+      style={{ borderColor: "var(--border)", background: "var(--header-bg)" }}
       aria-label="Main"
     >
       <div className="flex gap-0.5 overflow-x-auto px-4 md:px-8">

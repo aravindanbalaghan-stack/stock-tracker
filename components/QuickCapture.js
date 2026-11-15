@@ -131,16 +131,16 @@ export default function QuickCapture({ trades, onSaveTrade }) {
               <button type="button" disabled={busy} onClick={addNoteToOpen} className="text-xs px-3 py-1.5 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
                 Just add as a note
               </button>
-              <button type="button" disabled={busy} onClick={closeOpenTrade} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+              <button type="button" disabled={busy} onClick={closeOpenTrade} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
                 Close my {openMatch.symbol} trade at ₹{parsed.exitPrice}
               </button>
             </>
           ) : openMatch ? (
-            <button type="button" disabled={busy || !text.trim()} onClick={addNoteToOpen} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            <button type="button" disabled={busy || !text.trim()} onClick={addNoteToOpen} className="text-xs px-3 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
               Add note to open {openMatch.symbol} trade
             </button>
           ) : (
-            <button type="button" disabled={busy || !text.trim()} onClick={saveDraft} className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            <button type="button" disabled={busy || !text.trim()} onClick={saveDraft} className="text-xs px-3 py-1.5 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
               {busy ? "Saving…" : "Save note"}
             </button>
           )}

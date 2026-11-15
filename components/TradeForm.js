@@ -134,9 +134,9 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
     // min-h-full wrapper centres it when it fits, and `my-auto` (not
     // items-center) means a tall form starts at the top instead of being
     // pushed above the viewport where it can't be scrolled to.
-    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "var(--scrim)" }} onClick={onClose}>
       <div className="min-h-full flex justify-center px-3 py-6">
-      <div className="w-full max-w-3xl my-auto rounded-lg border p-4 flex flex-col gap-4" style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }} onClick={(e) => e.stopPropagation()}>
+      <div role="dialog" aria-modal="true" aria-label="Trade" className="w-full max-w-3xl my-auto rounded-lg border p-4 flex flex-col gap-4" style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-baseline justify-between">
           <h3 className="font-display text-lg" style={{ color: "var(--text)" }}>
             {initial?.draft ? `Complete ${initial.symbol || "trade"}` : initial?.id ? `Edit ${initial.symbol}` : "New trade"}
@@ -243,7 +243,7 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
           </span>
           <span className="flex gap-2">
             <button type="button" onClick={onClose} className="text-xs px-3 py-1.5 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>Cancel</button>
-            <button type="button" onClick={save} disabled={busy} className="text-xs px-4 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>{busy ? "Saving…" : "Save trade"}</button>
+            <button type="button" onClick={save} disabled={busy} className="text-xs px-4 py-1.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>{busy ? "Saving…" : "Save trade"}</button>
           </span>
         </div>
       </div>

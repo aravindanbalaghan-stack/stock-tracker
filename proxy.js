@@ -13,7 +13,9 @@ const SESSION_COOKIE = "panel_session";
 // Reachable without a session:
 // - /login, /api/login: the sign-in screen and endpoint.
 // - /admin, /api/admin: gated by their own ADMIN_KEY.
-const PUBLIC_PATHS = ["/login", "/api/login", "/admin", "/api/admin"];
+// The app manifest, service worker, icons and offline page must load
+// before sign-in, or the browser can't offer "Install app".
+const PUBLIC_PATHS = ["/login", "/api/login", "/admin", "/api/admin", "/manifest.webmanifest", "/sw.js", "/icons", "/offline.html"];
 
 function b64urlToBytes(s) {
   const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);

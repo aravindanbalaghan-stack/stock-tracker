@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { TABS, SUB_VIEWS, tabHref, presetSubView, PALETTE_EVENT } from "@/lib/navigation";
 import { loadRecentSymbols } from "@/lib/recentSymbols";
 import { loadWatchlist } from "@/lib/watchlist";
+import { openAlerts } from "@/components/AlertsBell";
+import { applyTheme, readThemePref } from "@/lib/theme";
 
 // ⌘K / Ctrl+K command bar, mounted once for the whole app (app/layout.js).
 //
@@ -187,7 +189,16 @@ export default function CommandPalette() {
       });
     }
 
+    const onStock = pathname?.startsWith("/stock/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : null;
     const actions = [
+      ...(onStock ? [{ id: "a:alert-sym", label: `Create an alert for ${onStock}`, hint: "Price, MA cross, stage…", run: () => openAlerts({ symbol: onStock }) }] : []),
+      { id: "a:alerts", label: "Alerts", hint: "Inbox, your alerts, notifications", run: () => openAlerts() },
+      {
+        id: "a:theme",
+        label: "Switch theme",
+        hint: "System → Light → Dark",
+        run: () => applyTheme({ system: "light", light: "dark", dark: "system" }[readThemePref()] ?? "system"),
+      },
       { id: "a:help", label: "Keyboard shortcuts", hint: "?", run: () => setHelp(true), keep: true },
       { id: "a:reload", label: "Reload data", hint: "Refresh this page", run: () => window.location.reload() },
       {
@@ -217,7 +228,7 @@ export default function CommandPalette() {
     // holding the best match comes first ("pocket" → the Pocket pivot
     // screener, not a stock literally called POCKET); items inside a group
     // sort by match quality.
-    const ORDER = ["Recent", "Stocks", "Go to", "Market", "Screeners", "Delivery", "Actions"];
+    const ORDER = ["Recent", "Stocks", "Go to", "Holdings", "Market", "Screeners", "Delivery", "Actions"];
     const best = {};
     out.forEach((it) => {
       best[it.group] = Math.max(best[it.group] ?? 0, it.score);
@@ -227,7 +238,7 @@ export default function CommandPalette() {
       .map((it, i) => ({ ...it, i }))
       .sort((a, b) => groupRank(a.group) - groupRank(b.group) || (q ? b.score - a.score : 0) || a.i - b.i)
       .slice(0, 40);
-  }, [q, local, remote, router, goStock]);
+  }, [q, local, remote, router, goStock, pathname]);
 
   const sel = Math.min(active, Math.max(0, items.length - 1));
 
@@ -265,7 +276,7 @@ export default function CommandPalette() {
   return (
     <div
       className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]"
-      style={{ background: "rgba(4, 6, 12, 0.66)", backdropFilter: "blur(3px)" }}
+      style={{ background: "var(--scrim)", backdropFilter: "blur(3px)" }}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) hide();
       }}

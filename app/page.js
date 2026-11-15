@@ -7,6 +7,9 @@ import WatchlistTable from "@/components/WatchlistTable";
 import TabBar from "@/components/TabBar";
 import { useRouter, useSearchParams } from "next/navigation";
 import CommandTrigger from "@/components/CommandTrigger";
+import ThemeToggle from "@/components/ThemeToggle";
+import AlertsBell from "@/components/AlertsBell";
+import InstallButton from "@/components/InstallButton";
 import { TABS } from "@/lib/navigation";
 import MarketScreen from "@/components/screens/MarketScreen";
 import DeliveryScreen from "@/components/screens/DeliveryScreen";
@@ -355,8 +358,13 @@ function PageInner() {
           </span>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <CommandTrigger />
+          <span className="flex items-center gap-1.5">
+            {identity && <AlertsBell />}
+            <ThemeToggle />
+            <InstallButton />
+          </span>
           {identity && (
             <div className="flex items-center gap-2 text-xs" style={{ color: "var(--text-muted)" }}>
               <span className="hidden md:inline">{identity}</span>
@@ -372,7 +380,7 @@ function PageInner() {
 
       <TabBar tabs={TABS} active={activeTab} onChange={changeTab} />
 
-      <main className="flex-1 px-4 md:px-8 py-6">
+      <main id="main" tabIndex={-1} className="flex-1 px-4 md:px-8 py-6 focus:outline-none">
         {activeTab === "watchlist" && (
           <>
             <ScreenHeader

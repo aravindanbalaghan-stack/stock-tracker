@@ -4,6 +4,8 @@ import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CommandTrigger from "@/components/CommandTrigger";
+import ThemeToggle from "@/components/ThemeToggle";
+import AlertsBell, { openAlerts } from "@/components/AlertsBell";
 import { pushRecentSymbol } from "@/lib/recentSymbols";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
@@ -167,10 +169,22 @@ function RangeBar({ low, high, price, position }) {
   );
 }
 
-function SearchAnotherStock() {
+function SearchAnotherStock({ symbol }) {
   return (
-    <div className="shrink-0">
+    <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
       <CommandTrigger />
+      {symbol && (
+        <button
+          type="button"
+          onClick={() => openAlerts({ symbol })}
+          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[var(--radius-sm)] border text-xs transition-colors hover:border-[var(--border-strong)]"
+          style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--surface)" }}
+        >
+          + Alert
+        </button>
+      )}
+      <AlertsBell />
+      <ThemeToggle />
     </div>
   );
 }
@@ -260,7 +274,7 @@ export default function StockInsightPage({ params }) {
   const A = data?.accumulation;
 
   return (
-    <div className="min-h-screen px-4 md:px-8 py-6">
+    <main id="main" tabIndex={-1} className="min-h-screen px-4 md:px-8 py-6 focus:outline-none">
       <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
         <BackButton />
@@ -322,7 +336,7 @@ export default function StockInsightPage({ params }) {
         </div>
         </div>
 
-        <SearchAnotherStock />
+        <SearchAnotherStock symbol={sym} />
       </div>
 
       {error && <ErrorState>{error}</ErrorState>}
@@ -866,6 +880,6 @@ export default function StockInsightPage({ params }) {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

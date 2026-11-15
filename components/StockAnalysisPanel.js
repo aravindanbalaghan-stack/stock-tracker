@@ -80,7 +80,7 @@ export default function StockAnalysisPanel({ symbol, price }) {
             <input type="number" value={form.stop} onChange={set("stop")} placeholder="Stop" className="rounded px-2 py-1.5 text-sm border font-mono" style={field} />
             <input type="number" value={form.target} onChange={set("target")} placeholder="Target" className="rounded px-2 py-1.5 text-sm border font-mono" style={field} />
             <input value={form.setup} onChange={set("setup")} placeholder="Setup" className="rounded px-2 py-1.5 text-sm border" style={field} />
-            <button type="button" onClick={add} className="rounded px-3 py-1.5 text-xs font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+            <button type="button" onClick={add} className="rounded px-3 py-1.5 text-xs font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
               Add idea
             </button>
             <input value={form.thesis} onChange={set("thesis")} placeholder="Why — one line" className="col-span-2 md:col-span-6 rounded px-2 py-1.5 text-sm border" style={field} />

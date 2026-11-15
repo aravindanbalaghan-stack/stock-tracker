@@ -196,7 +196,7 @@ export default function DeliveryEventsTab({ onAddToWatchlist, watchlistSymbols }
           })
         }
         className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium"
-        style={{ background: "var(--accent)", color: "var(--surface)" }}
+        style={{ background: "var(--accent)", color: "var(--on-accent)" }}
       >
         Apply
       </button>

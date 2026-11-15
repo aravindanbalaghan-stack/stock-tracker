@@ -109,7 +109,7 @@ function AutoReadings({ a, onUse, loading, onLoad, symbol }) {
           <button type="button" onClick={onLoad} disabled={loading} className="text-[11px] hover:underline" style={{ color: "var(--text-faint)" }}>
             {loading ? "Refreshing…" : "Refresh"}
           </button>
-          <button type="button" onClick={onUse} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--bg)" }} title="Fill empty fields of the study from these readings">
+          <button type="button" onClick={onUse} className="text-[11px] px-2 py-0.5 rounded font-medium" style={{ background: "var(--accent)", color: "var(--on-accent)" }} title="Fill empty fields of the study from these readings">
             Use these
           </button>
         </span>
@@ -446,7 +446,7 @@ export default function StockStudies({ date, studies, setStudies, entries, event
                 className="rounded px-2 py-1 text-xs border w-28 font-mono"
                 style={field}
               />
-              <button type="button" onClick={add} disabled={!newSym.trim()} className="text-xs px-2.5 py-1 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--bg)" }}>
+              <button type="button" onClick={add} disabled={!newSym.trim()} className="text-xs px-2.5 py-1 rounded font-medium disabled:opacity-40" style={{ background: "var(--accent)", color: "var(--on-accent)" }}>
                 + New study
               </button>
             </span>
@@ -496,7 +496,7 @@ export default function StockStudies({ date, studies, setStudies, entries, event
                 </thead>
                 <tbody>
                   {shownHistory.slice(0, 200).map((h) => (
-                    <tr key={`${h.date}-${h.id}`} onClick={() => onOpen(h.date, h.id)} className="border-b last:border-b-0 cursor-pointer hover:bg-white/[0.02]" style={{ borderColor: "var(--border)" }}>
+                    <tr key={`${h.date}-${h.id}`} onClick={() => onOpen(h.date, h.id)} className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover-soft)]" style={{ borderColor: "var(--border)" }}>
                       <td className="py-2 pl-4 pr-2 font-mono" style={{ color: "var(--text-muted)" }}>{h.date}</td>
                       <td className="py-2 px-2 font-mono" style={{ color: "var(--text)" }}>{h.symbol}</td>
                       <td className="py-2 px-2" style={{ color: TONE[h.verdict] ?? "var(--text-faint)" }}>{h.verdict || "—"}</td>

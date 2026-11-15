@@ -45,7 +45,7 @@ function Card({ item }) {
           <span className="flex items-center gap-1.5">
             <span
               className="text-[10px] font-semibold font-mono px-1.5 py-0.5 rounded"
-              style={{ background: "var(--accent)", color: "var(--bg)" }}
+              style={{ background: "var(--accent)", color: "var(--on-accent)" }}
             >
               #{item.rank}
             </span>

@@ -18,10 +18,10 @@ const TAILS = [
   { id: "12", label: "12 wks" },
 ];
 const Q = {
-  Leading: { color: "var(--gain)", wash: "rgba(53,199,123,0.06)", hint: "Strong and getting stronger" },
-  Weakening: { color: "var(--tier-mid)", wash: "rgba(224,180,85,0.06)", hint: "Still strong, but losing momentum" },
-  Lagging: { color: "var(--loss)", wash: "rgba(239,83,80,0.06)", hint: "Weak and getting weaker" },
-  Improving: { color: "var(--tier-low)", wash: "rgba(75,159,212,0.06)", hint: "Still weak, but gaining momentum" },
+  Leading: { color: "var(--gain)", wash: "color-mix(in srgb, var(--gain) 7%, transparent)", hint: "Strong and getting stronger" },
+  Weakening: { color: "var(--tier-mid)", wash: "color-mix(in srgb, var(--tier-mid) 7%, transparent)", hint: "Still strong, but losing momentum" },
+  Lagging: { color: "var(--loss)", wash: "color-mix(in srgb, var(--loss) 7%, transparent)", hint: "Weak and getting weaker" },
+  Improving: { color: "var(--tier-low)", wash: "color-mix(in srgb, var(--tier-low) 7%, transparent)", hint: "Still weak, but gaining momentum" },
 };
 
 function useRotation(group) {

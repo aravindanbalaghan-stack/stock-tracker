@@ -1,5 +1,5 @@
 import { getSessionUser } from "@/lib/auth";
-import { getHoldings, saveHoldings, addHolding, removeHolding, updateHolding } from "@/lib/holdingsStore";
+import { getHoldings, saveHoldings, addHolding, removeHolding, updateHolding, recordClosedTrade } from "@/lib/holdingsStore";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +79,12 @@ export async function PATCH(request) {
     }
     if (body.buyDate !== undefined) patch.buyDate = body.buyDate || null;
     if (typeof body.notes === "string") patch.notes = body.notes.slice(0, 2000);
+    for (const f of ["stopLoss", "target"]) {
+      if (body[f] === undefined) continue;
+      const v = body[f] === null || body[f] === "" ? null : Number(body[f]);
+      if (v !== null && !(v > 0)) return Response.json({ error: `${f === "stopLoss" ? "Stop-loss" : "Target"} must be a positive price` }, { status: 400 });
+      patch[f] = v;
+    }
     if (body.historyEntry && typeof body.historyEntry === "object") {
       const h = body.historyEntry;
       patch.historyEntry = {
@@ -102,6 +108,13 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get("symbol");
     if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
+    // ?sellPrice=…&sellDate=… means "sold the whole position" (not just
+    // removed): log it so its realised profit stays in Portfolio analytics.
+    const sellPrice = searchParams.get("sellPrice");
+    if (sellPrice) {
+      const held = (await getHoldings(identity))?.find((h) => h.symbol === symbol.trim().toUpperCase());
+      if (held) await recordClosedTrade(identity, held, { price: sellPrice, date: searchParams.get("sellDate") });
+    }
     const result = await removeHolding(identity, symbol);
     return Response.json({ storage: "server", ...result });
   } catch (err) {
