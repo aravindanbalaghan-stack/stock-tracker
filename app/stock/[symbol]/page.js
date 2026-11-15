@@ -13,7 +13,7 @@ import StockChart from "@/components/StockChart";
 import StockMasterPanel from "@/components/StockMasterPanel";
 import StockAnalysisPanel from "@/components/StockAnalysisPanel";
 import EventTag from "@/components/EventTag";
-import { StageJourneyPanel } from "@/components/StageJourney";
+import { StageJourneyPanel, StageLedger } from "@/components/StageJourney";
 import { fmt } from "@/lib/format";
 import TableFrame from "@/components/ui/TableFrame";
 
@@ -445,7 +445,7 @@ export default function StockInsightPage({ params }) {
                           {data.weinstein.stageLabel}
                         </span>
                         <span className="text-xs" style={{ color: "var(--text-faint)" }}>
-                          {data.weinstein.weeksInStage} week{data.weinstein.weeksInStage === 1 ? "" : "s"} in this
+                          {data.weinstein.weeksInStage} weekly close{data.weinstein.weeksInStage === 1 ? "" : "s"} in this
                           stage
                           {data.weinstein.transitionDate ? ` · confirmed on the weekly close of ${data.weinstein.transitionDate}` : ""}
                         </span>
@@ -462,6 +462,7 @@ export default function StockInsightPage({ params }) {
                       {data.weinstein.journey && (
                         <div className="mt-3">
                           <StageJourneyPanel journey={data.weinstein.journey} />
+                          <StageLedger rows={data.weinstein.ledger} />
                         </div>
                       )}
                     </div>

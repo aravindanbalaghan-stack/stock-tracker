@@ -2,7 +2,7 @@ import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
 import { getSessionCookies, nseApiFetchWithCookies } from "@/lib/nseSession";
 import { fetchDailyOHLCV, fetchIndexOHLCV, sma, ema, toWeeklyBars } from "@/lib/screenerIndicators";
 import { getSectorsForSymbol } from "@/lib/sectorOverrides";
-import { analyzeStage2, classifyStageTransition, stageJourney, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
+import { analyzeStage2, classifyStageTransition, stageJourney, stageLedger, WEINSTEIN_STAGE_INFO } from "@/lib/stageAnalysis";
 import {
   computeMetrics,
   ACCUMULATION_DELIVERY_THRESHOLD,
@@ -284,7 +284,9 @@ export async function GET(request) {
           stage: transition.stage,
           stageLabel: info.name,
           tone: info.tone,
-          weeksInStage: transition.weeksInStage,
+          // Weekly closes in the current unbroken run, counting the first
+          // one — the same count the journey panel shows.
+          weeksInStage: journey?.streak.weeks ?? transition.weeksInStage + 1,
           isEntering: transition.isEntering,
           transitionWeekKey: transition.transitionWeekKey,
           // The session whose weekly close confirmed the change.
@@ -295,6 +297,7 @@ export async function GET(request) {
           ma30SlopePct: round(transition.slopePct),
           // Why this stage — plain-language basis from stageFrom().
           basis: transition.basis ?? null,
+          ledger: stageLedger(weekly, { weeks: 12 }),
         };
       }
 

@@ -194,14 +194,20 @@ export function StageJourneyPanel({ journey, anchorNote, extra }) {
         ))}
       </div>
 
+      {/* The headline date is the start of the CURRENT unbroken run — the
+          first weekly close of this stage after the last close that wasn't.
+          That's what "it entered Stage N on…" means on a chart. The episode
+          date (which folds in dips of ≤3 weeks) is shown second, labelled. */}
       <Row label="Current stage">
         <StageTag stage={stage} withName /> since the weekly close of{" "}
-        <span style={{ color: "var(--text)" }}>{fmtDate(episode.enteredOn)}</span> ({weeksText(episode.weeks)}
-        {episode.openStart ? " or more" : ""})
+        <span style={{ color: "var(--text)" }}>{fmtDate(streak.enteredOn)}</span> ({weeksText(streak.weeks)}
+        {!streakDiffers && episode.openStart ? " or more" : ""})
         {anchorNote ? <span style={{ color: "var(--text-faint)" }}> · {anchorNote}</span> : null}
         {streakDiffers && (
           <span className="block mt-0.5" style={{ color: "var(--text-faint)" }}>
-            Current unbroken run: since {fmtDate(streak.enteredOn)} ({weeksText(streak.weeks)})
+            It was also Stage {stage} from {fmtDate(episode.enteredOn)}, apart from the short dip
+            {interruptions.length === 1 ? "" : "s"} below — {weeksText(episode.weeks)}
+            {episode.openStart ? " or more" : ""} counting {interruptions.length === 1 ? "it" : "them"}.
           </span>
         )}
       </Row>
@@ -221,7 +227,7 @@ export function StageJourneyPanel({ journey, anchorNote, extra }) {
       <Row label="Changes since entering">
         {interruptions.length === 0 ? (
           <span>
-            None — every weekly close since {fmtDate(episode.enteredOn)} was Stage {stage}.
+            None — every weekly close since {fmtDate(streak.enteredOn)} was Stage {stage}.
           </span>
         ) : (
           <ul className="flex flex-col gap-1">
@@ -274,5 +280,78 @@ export function StageJourneyPanel({ journey, anchorNote, extra }) {
 
       {extra}
     </div>
+  );
+}
+
+/**
+ * Week-by-week audit of the stage rule (stageLedger() in lib/stageAnalysis):
+ * every input and the stage it produced, so a date can be checked against
+ * a chart line by line.
+ */
+export function StageLedger({ rows }) {
+  if (!rows?.length) return null;
+  const cell = "py-1 px-2 text-right font-mono";
+  return (
+    <details className="mt-3 group">
+      <summary className="cursor-pointer text-xs select-none" style={{ color: "var(--text-muted)" }}>
+        Week-by-week check — the last {rows.length} weekly closes and the stage each one gave
+      </summary>
+      <div className="mt-2 overflow-x-auto">
+        <table className="w-full border-collapse text-[11px]">
+          <thead>
+            <tr className="text-left uppercase tracking-wider" style={{ color: "var(--text-faint)" }}>
+              <th className="py-1 px-2">Week ending</th>
+              <th className="py-1 px-2 text-right">Close</th>
+              <th className="py-1 px-2 text-right" title="Simple average of the last 30 weekly closes, including this one — what the stage uses">
+                30-wk MA
+              </th>
+              <th className="py-1 px-2 text-right" title="Change in the 30-week MA over 4 weeks; beyond ±0.5% counts as rising/falling">
+                MA 4-wk
+              </th>
+              <th className="py-1 px-2 text-right" title="30-week WEIGHTED MA, for comparison with charts that label their line 'WMA'">
+                30-wk WMA
+              </th>
+              <th className="py-1 px-2">Stage</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...rows].reverse().map((r) => (
+              <tr
+                key={r.weekEnd}
+                className="border-t"
+                style={{ borderColor: "var(--border)", background: r.changed ? "var(--surface-3)" : undefined }}
+                title={r.basis}
+              >
+                <td className="py-1 px-2 font-mono" style={{ color: "var(--text-muted)" }}>
+                  {r.weekEnd}
+                  {r.inProgress && <span style={{ color: "var(--text-faint)" }}> (so far)</span>}
+                </td>
+                <td className={cell} style={{ color: "var(--text)" }}>{fmt(r.close)}</td>
+                <td className={cell} style={{ color: r.aboveMa ? "var(--gain)" : "var(--loss)" }}>
+                  {fmt(r.ma30)} {r.aboveMa ? "▲" : "▼"}
+                </td>
+                <td className={cell} style={{ color: r.slope4Pct > 0.5 ? "var(--gain)" : r.slope4Pct < -0.5 ? "var(--loss)" : "var(--text-faint)" }}>
+                  {r.slope4Pct >= 0 ? "+" : ""}
+                  {fmt(r.slope4Pct)}%
+                </td>
+                <td className={cell} style={{ color: r.aboveWma == null ? "var(--text-faint)" : r.aboveWma ? "var(--gain)" : "var(--loss)" }}>
+                  {r.wma30 == null ? "—" : `${fmt(r.wma30)} ${r.aboveWma ? "▲" : "▼"}`}
+                </td>
+                <td className="py-1 px-2">
+                  <StageTag stage={r.stage} />
+                  {r.changed && <span className="ml-1" style={{ color: "var(--text-faint)" }}>changed</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] leading-relaxed" style={{ color: "var(--text-faint)" }}>
+        ▲/▼ = the week closed above/below that average. Stage 4 needs a close below a <em>falling</em> 30-week MA (down more
+        than 0.5% over 4 weeks); Stage 2 needs a close above a rising one. Panel uses the simple 30-week average, as Weinstein
+        did. If your chart&apos;s &ldquo;30 WMA&rdquo; is a weighted average, compare against the WMA column — in a decline it
+        sits lower than the simple MA, so price crosses it a week or two later. Hover a row for the rule that decided it.
+      </p>
+    </details>
   );
 }

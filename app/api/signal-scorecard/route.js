@@ -21,7 +21,7 @@ async function compute(request) {
   const fresh = sp.get("fresh") !== "0";
   const periodKey = sp.get("period") in PERIODS ? sp.get("period") : "all";
   try {
-    const backfill = await backfillSignalLogs().catch((e) => ({ error: String(e?.message || e) }));
+    const backfill = await backfillSignalLogs().catch((e) => ({ done: false, error: String(e?.message || e) }));
     const [panel, ids] = await Promise.all([loadPanel(), listSignalScreens()]);
     const logs = await getSignalLogs(ids);
     const bench = makeBench(panel);
@@ -34,6 +34,10 @@ async function compute(request) {
         if (!byT.size) return null;
         const g = gradeSignals(panel, byT, { fresh, bench, sinceT });
         const loggedDates = Object.keys(logs[id] ?? {}).sort();
+        // When nothing is graded yet, say when the first grade lands: the
+        // oldest pick in the panel plus 5 sessions.
+        const ts = [...byT.keys()].sort((a, b) => a - b);
+        const firstGradeT = ts.length ? ts[0] + 5 : null;
         return {
           id,
           label: labelOf(id),
@@ -44,14 +48,28 @@ async function compute(request) {
           totalSignals: g.signals.length,
           open: g.open,
           stats: g.stats,
+          firstGradeDue: firstGradeT != null && firstGradeT >= T ? `${firstGradeT - T + 1} more session${firstGradeT - T + 1 === 1 ? "" : "s"}` : null,
           signals: g.signals.slice(0, RECENT_SIGNALS),
         };
       })
       .filter(Boolean)
       .sort((a, b) => (b.stats[10]?.avgExcess ?? -999) - (a.stats[10]?.avgExcess ?? -999));
 
+    const meta = panelMeta(panel);
+    if (!backfill?.done) {
+      // Don't let the cache pin a scorecard built from a half-imported log.
+      meta.incomplete = true;
+      meta.note = [
+        meta.note,
+        backfill?.error
+          ? `Couldn't import earlier picks yet (${backfill.error}). It retries on the next load.`
+          : `Importing earlier screener picks: ${backfill?.scanned ?? 0} stocks read so far. It continues on each load and in the nightly job; scores fill in as it goes.`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
     return Response.json({
-      ...panelMeta(panel),
+      ...meta,
       fresh,
       period: periodKey,
       horizons: HORIZONS,

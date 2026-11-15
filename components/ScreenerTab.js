@@ -304,12 +304,17 @@ const STATUS_TONE = {
 
 function IpoStatusCell({ row }) {
   const tone = STATUS_TONE[row.ipoStatusTone] ?? STATUS_TONE.muted;
-  const warn = row.ipoWarnings?.length ? row.ipoWarnings.join("\n") : null;
+  const warn = [...(row.ipoWarnings ?? []), ...(row.ipoNotes ?? [])].join("\n") || null;
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <span className="text-xs px-1.5 py-0.5 rounded" style={tone}>
         {row.ipoStatus ?? "—"}
       </span>
+      {row.ipoStatusRank <= 3 && row.volumeConfirmed && (
+        <span className="text-[10px] px-1 rounded" style={{ color: "var(--gain)", background: "var(--gain-dim)" }} title={`This week's volume is ${row.weekVolumeRatio}× the base average`}>
+          vol ✓
+        </span>
+      )}
       {row.issuePrice == null && (
         <span className="text-[10px]" style={{ color: "var(--text-faint)" }} title="IPO price unavailable — status uses the listing-day high only">
           no IPO ₹
@@ -448,7 +453,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
   // Personal learning: whether condition 3 (a bullish pattern) is required.
   const [plPatternFilter, setPlPatternFilter] = usePersistentState("screener.plPatternFilter", "required");
   const [ppFilter, setPpFilter] = usePersistentState("screener.ppFilter", "all");
-  const [ipoFilter, setIpoFilter] = usePersistentState("screener.ipoFilter", "all");
+  const [ipoFilter, setIpoFilter] = usePersistentState("screener.ipoFilter.v2", "crossing");
   const [skFilter, setSkFilter] = usePersistentState("screener.skFilter", "all");
 
   // Identity of the query itself, separate from the refresh counter. When
@@ -538,8 +543,12 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
       ? filteredRows?.filter((r) => r.ppGrade === "A")
       : isPocket && ppFilter !== "all"
       ? filteredRows?.filter((r) => r.ppType === ppFilter)
+      : isIpo && ipoFilter === "crossing"
+      ? filteredRows?.filter((r) => r.ipoStatusRank <= 3)
+      : isIpo && ipoFilter === "breakout"
+      ? filteredRows?.filter((r) => r.ipoStatusRank === 1)
       : isIpo && ipoFilter === "actionable"
-      ? filteredRows?.filter((r) => r.ipoStatusRank <= 4)
+      ? filteredRows?.filter((r) => r.ipoStatusRank <= 5)
       : isIpo && ipoFilter === "above-high"
       ? filteredRows?.filter((r) => r.aboveListingDayHigh)
       : isIpo && ipoFilter === "above-ipo"
@@ -765,8 +774,10 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
             className="rounded-[var(--radius-sm)] px-2 py-1 text-xs border"
             style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
           >
+            <option value="crossing">Crossing this week (default)</option>
+            <option value="breakout">Breakouts above listing-day high only</option>
+            <option value="actionable">Crossing or approaching</option>
             <option value="all">All matches</option>
-            <option value="actionable">Crossing or approaching only</option>
             <option value="above-high">Above listing-day high</option>
             <option value="above-ipo">Above IPO price</option>
           </select>
@@ -918,7 +929,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
             : isShakeout
             ? `No stock in an uptrend had a fresh shakeout below its base low or 50 DMA that it has since reclaimed, as of ${data.asOf}.`
             : isIpo
-            ? `No recent listing was crossing or within 5% of its IPO price or listing-day high as of ${data.asOf}.`
+            ? ipoFilter === "crossing" || ipoFilter === "breakout" ? `No recent listing crossed its listing-day high, listing-day open or IPO price on this week's close (as of ${data.asOf}). Switch Show to "Crossing or approaching" to see the ones getting close.` : `No recent listing was crossing or within 5% of its IPO price or listing-day high as of ${data.asOf}.`
             : `No stocks cleared this screen on ${data.asOf}.`}
         </EmptyState>
       ) : (
@@ -1209,12 +1220,30 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                   )}
                   {isIpo && (
                     <SortableTh
+                      label="vs Day-1 Open"
+                      sortKey="vsListingOpenPct"
+                      sort={sort}
+                      onSort={onSort}
+                      title="Close against the listing-day open (the debut price)"
+                    />
+                  )}
+                  {isIpo && (
+                    <SortableTh
+                      label="Wk vol ×"
+                      sortKey="weekVolumeRatio"
+                      sort={sort}
+                      onSort={onSort}
+                      title="This week's average daily volume vs the base's (listing day excluded). 1.4×+ usually confirms a breakout."
+                    />
+                  )}
+                  {isIpo && (
+                    <SortableTh
                       label="Status"
                       sortKey="ipoStatusRank"
                       sort={sort}
                       onSort={onSort}
                       align="left"
-                      title="Crossing = closed above the level within the last 5 sessions. Approaching = within 5% below. Holding above = above for more than 5 sessions."
+                      title="Weekly: Breakout / Crossing = this week's close is above the level and last week's close was at or below it. Approaching = within 5% below. Holding above = crossed in an earlier week. vol ✓ = this week's volume ≥ 1.4× the base average. ⚠ = hover for cautions."
                     />
                   )}
                   {isPocket && (
@@ -1743,6 +1772,19 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
                       {isIpo && (
                         <td className="py-2.5 px-2 text-right">
                           <PctPill pct={r.vsListingHighPct} sub={r.crossedListingHighOn ? `crossed ${r.crossedListingHighOn}` : null} />
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-right">
+                          <PctPill pct={r.vsListingOpenPct} sub={r.crossedListingOpenOn ? `crossed ${r.crossedListingOpenOn}` : null} />
+                        </td>
+                      )}
+                      {isIpo && (
+                        <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: r.volumeConfirmed ? "var(--gain)" : "var(--text-muted)" }}>
+                          {r.weekVolumeRatio == null ? "—" : `${fmt(r.weekVolumeRatio)}×`}
+                          {r.weeksSinceListing != null && (
+                            <div className="text-[10px]" style={{ color: "var(--text-faint)" }}>{r.weeksSinceListing} wks listed</div>
+                          )}
                         </td>
                       )}
                       {isIpo && (

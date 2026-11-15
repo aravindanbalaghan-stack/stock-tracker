@@ -129,7 +129,14 @@ export default function ScorecardTab() {
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-2 text-right font-mono text-xs">{s.totalSignals}</td>
+                        <td className="py-2 px-2 text-right font-mono text-xs">
+                          {s.totalSignals}
+                          {!s.stats[5]?.n && s.totalSignals > 0 && (
+                            <div className="text-[10px] font-sans whitespace-nowrap" style={{ color: "var(--text-faint)" }} title="Picks are graded once they are 5 sessions old">
+                              {s.firstGradeDue ? `first grade in ${s.firstGradeDue}` : "too recent to grade"}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-2 px-2 text-right font-mono text-xs">{pct(s.stats[5]?.winRate)}</td>
                         <td className="py-2 px-2 text-right font-mono text-xs">{pct(s.stats[10]?.winRate)}</td>
                         <td className="py-2 px-2 text-right">{sig(s.stats[10]?.avg)}</td>

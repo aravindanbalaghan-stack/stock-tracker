@@ -411,8 +411,8 @@ async function runScreen({ screen, days, universe, asOfCutoff, isLive = false, r
           issue: issuePrices?.get(symbol) ?? null,
         });
         if (!ipo) continue;
-        // Only stocks above, or within 5% of, the IPO price or the
-        // listing-day high — the ones crossing or about to.
+        // Stocks below every level (and more than 5% under the listing-day
+        // high and IPO price) aren't doing anything this screen looks for.
         if (ipo.ipoStatusRank === IPO_STATUS.BELOW.rank) continue;
         Object.assign(row, ipo);
       }
