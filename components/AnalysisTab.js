@@ -156,8 +156,8 @@ function Scorecard({ s, notes, entries, onPick }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-2">
-        {cell("NIFTY bias", s.bias.nifty.accuracyNextDay != null ? `${s.bias.nifty.accuracyNextDay}%` : "—", `right next session · ${s.bias.nifty.calls} calls`, acc(s.bias.nifty.accuracyNextDay))}
-        {cell("BANK NIFTY bias", s.bias.bankNifty.accuracyNextDay != null ? `${s.bias.bankNifty.accuracyNextDay}%` : "—", `right next session · ${s.bias.bankNifty.calls} calls`, acc(s.bias.bankNifty.accuracyNextDay))}
+        {cell("NIFTY bias", s.bias.nifty.accuracyNextDay != null ? `${s.bias.nifty.accuracyNextDay}%` : "—", `right on the day · ${s.bias.nifty.calls} calls`, acc(s.bias.nifty.accuracyNextDay))}
+        {cell("BANK NIFTY bias", s.bias.bankNifty.accuracyNextDay != null ? `${s.bias.bankNifty.accuracyNextDay}%` : "—", `right on the day · ${s.bias.bankNifty.calls} calls`, acc(s.bias.bankNifty.accuracyNextDay))}
         {cell("Idea win rate", s.ideas.winRate != null ? `${s.ideas.winRate}%` : "—", `target before stop · ${s.ideas.resolved} resolved`, acc(s.ideas.winRate))}
         {cell("Avg idea", s.ideas.avgReturnPct != null ? signed(s.ideas.avgReturnPct) : "—", s.ideas.avgR != null ? `${s.ideas.avgR}R · ${s.ideas.open} open` : `${s.ideas.open} open`, s.ideas.avgReturnPct >= 0 ? "var(--gain)" : "var(--loss)")}
         {cell("Triggered", s.ideas.triggerRate != null ? `${s.ideas.triggerRate}%` : "—", `${s.ideas.triggered} of ${s.ideas.total} ideas`)}
@@ -206,7 +206,7 @@ function Scorecard({ s, notes, entries, onPick }) {
             </ul>
           ) : (
             <p className="text-xs" style={{ color: "var(--text-faint)" }}>
-              Observations appear once a few days are graded. Bias calls are checked against the index&apos;s next session; ideas against
+              Observations appear once a few days are graded. Bias calls are checked against the index&apos;s move in the session of the entry&apos;s date (previous close → that day&apos;s close); ideas against
               whether target or stop came first.
             </p>
           )}
@@ -282,6 +282,14 @@ function Snapshot({ snap }) {
 }
 
 // ---------------------------------------------------------------------
+
+// Lets an evening plan be dated for the session it's about (Friday night →
+// Monday), since a view is graded on the session of its date.
+function plusDaysIso(iso, n) {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] }) {
   const [entries, setEntries] = useState(null);
@@ -560,7 +568,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
               <button type="button" onClick={() => setDate(shiftTradingDay(date, -1))} className="px-2 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Previous trading day">
                 ←
               </button>
-              <input type="date" value={date} max={todayIST()} onChange={(e) => e.target.value && setDate(e.target.value)} className="rounded px-2 py-1 text-sm border" style={{ ...sel, colorScheme: "dark" }} />
+              <input type="date" value={date} max={plusDaysIso(todayIST(), 4)} onChange={(e) => e.target.value && setDate(e.target.value)} className="rounded px-2 py-1 text-sm border" style={sel} title="The session this view is about — pick the next trading day if you plan the evening before" />
               <button type="button" onClick={() => setDate(shiftTradingDay(date, 1))} disabled={date >= todayIST()} className="px-2 py-1 rounded border disabled:opacity-30" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Next trading day">
                 →
               </button>
@@ -680,8 +688,12 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                     <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
                       {ix.label}
                       {draft.biasGrade?.[ix.id]?.move1 != null && (
-                        <span className="ml-2 font-normal" style={{ color: draft.biasGrade[ix.id].correct1 ? "var(--gain)" : "var(--loss)" }}>
-                          next session {signed(draft.biasGrade[ix.id].move1)} → {draft.biasGrade[ix.id].correct1 ? "✓ right" : "✗ wrong"}
+                        <span
+                          className="ml-2 font-normal"
+                          style={{ color: draft.biasGrade[ix.id].correct1 ? "var(--gain)" : "var(--loss)" }}
+                          title={`Your ${draft.biasGrade[ix.id].bias} call graded on ${ix.label}'s move from the previous close to the close of ${draft.biasGrade[ix.id].nextDate}. Bullish is right if it closed up, Bearish if it closed down, Neutral if it moved less than ±0.5%.`}
+                        >
+                          {draft.biasGrade[ix.id].nextDate === date ? "on the day" : `${draft.biasGrade[ix.id].nextDate} session`} {signed(draft.biasGrade[ix.id].move1)} → {draft.biasGrade[ix.id].correct1 ? "✓ right" : "✗ wrong"}
                         </span>
                       )}
                     </p>

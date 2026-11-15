@@ -499,7 +499,7 @@ export default function TradingSuggestionsTab({ onAddToWatchlist, watchlistSymbo
           max={latest || undefined}
           onChange={(e) => setDate(e.target.value === latest ? "" : e.target.value)}
           className="rounded-[var(--radius-sm)] px-2 py-1 text-sm border"
-          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)", colorScheme: "dark" }}
+          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
         />
       </label>
       <button
