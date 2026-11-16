@@ -15,10 +15,12 @@ import TableFrame from "@/components/ui/TableFrame";
 import { SubNav } from "@/components/ui/Chrome";
 import PortfolioAnalytics from "@/components/PortfolioAnalytics";
 import PositionSizer from "@/components/PositionSizer";
+import ClosedHoldings from "@/components/ClosedHoldings";
 import { VIEW_EVENT } from "@/lib/navigation";
 
 const SECTIONS = [
   { id: "positions", label: "Positions" },
+  { id: "closed", label: "Closed" },
   { id: "analytics", label: "Analytics" },
   { id: "sizing", label: "Position sizing" },
 ];
@@ -523,7 +525,7 @@ export default function HoldingsTab() {
   // Edit / add shares / sell shares (EditHoldingDialog). Applied locally
   // straight away, then saved to the account.
   async function handleEdit(symbol, patch) {
-    const { historyEntry, ...fields } = patch;
+    const { historyEntry, sale: _sale, ...fields } = patch; // sale: why you sold (logged server-side)
     setHoldings((prev) =>
       prev.map((h) =>
         h.symbol === symbol
@@ -541,15 +543,15 @@ export default function HoldingsTab() {
     if (json?.entries) setHoldings(json.entries);
   }
 
-  // sale = { price, date } when the whole position was sold (logged as a
-  // closed trade so its realised profit stays in Analytics).
+  // sale = { price, date, reason, note, followedPlan, emotions } when the
+  // whole position was sold — logged on Holdings → Closed with why.
   async function handleRemove(symbol, sale) {
     const q = new URLSearchParams({ symbol });
-    if (sale?.price) {
-      q.set("sellPrice", sale.price);
-      if (sale.date) q.set("sellDate", sale.date);
-    }
-    fetch(`/api/holdings?${q}`, { method: "DELETE" }).catch(() => {});
+    fetch(`/api/holdings?${q}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sale ? { sale } : {}),
+    }).catch(() => {});
     setHoldings((prev) => prev.filter((h) => h.symbol !== symbol));
   }
 
@@ -627,7 +629,9 @@ export default function HoldingsTab() {
         }
       />
 
-      {section === "analytics" ? (
+      {section === "closed" ? (
+        <ClosedHoldings />
+      ) : section === "analytics" ? (
         <PortfolioAnalytics onSaveHolding={handleEdit} />
       ) : section === "sizing" ? (
         <PositionSizer onAdd={handleAdd} />

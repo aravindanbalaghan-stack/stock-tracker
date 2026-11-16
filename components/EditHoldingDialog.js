@@ -5,6 +5,7 @@
 
 import { useState } from "react";
 import { fmt } from "@/lib/format";
+import SellReasonFields from "@/components/SellReasonFields";
 
 const MODES = [
   { id: "buy", label: "Add shares" },
@@ -34,6 +35,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
   const [editQty, setEditQty] = useState(String(holding.quantity));
   const [editAvg, setEditAvg] = useState(holding.avgPrice != null ? String(holding.avgPrice) : "");
   const [editDate, setEditDate] = useState(holding.buyDate ?? "");
+  const [why, setWhy] = useState({ reason: null, followedPlan: null, emotions: [], note: "" });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -63,6 +65,8 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
       } else if (mode === "sell") {
         if (!(q > 0)) throw new Error("Enter how many shares you sold");
         if (q > oldQty) throw new Error(`You only hold ${oldQty}`);
+        if (p == null || !(p > 0)) throw new Error("Enter the price you sold at — it's needed for the profit on Holdings → Closed");
+        if (!why.reason) throw new Error("Pick why you're selling — it's what makes Holdings → Closed useful later");
       } else {
         if (!(Number(editQty) > 0)) throw new Error("Quantity must be greater than 0");
       }
@@ -72,7 +76,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
           setBusy(false);
           return;
         }
-        await onRemove(holding.symbol, p != null ? { price: p, date } : null);
+        await onRemove(holding.symbol, { price: p, date, ...why });
         onClose();
         return;
       }
@@ -86,6 +90,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
           mode === "edit"
             ? { type: "edit", quantity: Number(editQty), price: editAvg === "" ? null : Number(editAvg), date: today }
             : { type: mode, quantity: q, price: p, date },
+        ...(mode === "sell" ? { sale: why } : {}),
       });
       onClose();
     } catch (err) {
@@ -101,7 +106,7 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
         role="dialog"
         aria-modal="true"
         aria-label={`Edit ${holding.symbol} holding`}
-        className="w-full max-w-sm my-auto rounded-lg border p-4 flex flex-col gap-3"
+        className={`w-full ${mode === "sell" ? "max-w-lg" : "max-w-sm"} my-auto rounded-lg border p-4 flex flex-col gap-3`}
         style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -157,6 +162,16 @@ export default function EditHoldingDialog({ holding, currentPrice, onSave, onRem
             )}
             {mode === "buy" && <span className="block mt-0.5" style={{ color: "var(--text-faint)" }}>The average price is recalculated from both buys.</span>}
           </div>
+        )}
+
+        {mode === "sell" && (
+          <SellReasonFields
+            value={why}
+            onChange={(v) => {
+              setWhy(v);
+              setError(null);
+            }}
+          />
         )}
 
         {holding.history?.length > 0 && (

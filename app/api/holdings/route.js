@@ -1,5 +1,6 @@
 import { getSessionUser } from "@/lib/auth";
-import { getHoldings, saveHoldings, addHolding, removeHolding, updateHolding, recordClosedTrade } from "@/lib/holdingsStore";
+import { getHoldings, saveHoldings, addHolding, removeHolding, updateHolding } from "@/lib/holdingsStore";
+import { recordSale } from "@/lib/salesLog";
 
 export const dynamic = "force-dynamic";
 
@@ -94,7 +95,19 @@ export async function PATCH(request) {
         date: typeof h.date === "string" ? h.date : null,
       };
     }
+    // A partial sell is logged (with why) for Holdings → Closed, using the
+    // position as it was before the sale.
+    const before =
+      patch.historyEntry?.type === "sell" ? (await getHoldings(identity))?.find((h) => h.symbol === String(symbol).trim().toUpperCase()) : null;
     const result = await updateHolding(identity, symbol, patch);
+    if (before) {
+      await recordSale(identity, before, {
+        ...(body.sale ?? {}),
+        quantity: patch.historyEntry.quantity,
+        price: patch.historyEntry.price,
+        date: patch.historyEntry.date,
+      }).catch(() => {});
+    }
     return Response.json({ storage: "server", ...result });
   } catch (err) {
     return Response.json({ error: String(err?.message || err) }, { status: 400 });
@@ -108,12 +121,14 @@ export async function DELETE(request) {
     const { searchParams } = new URL(request.url);
     const symbol = searchParams.get("symbol");
     if (!symbol) return Response.json({ error: "A symbol is required" }, { status: 400 });
-    // ?sellPrice=…&sellDate=… means "sold the whole position" (not just
-    // removed): log it so its realised profit stays in Portfolio analytics.
-    const sellPrice = searchParams.get("sellPrice");
-    if (sellPrice) {
+    // A sale of the whole position (not just "remove"): log it with why,
+    // for Holdings → Closed. Details come in the JSON body (sale) or, from
+    // older clients, as ?sellPrice=&sellDate=.
+    const body = await request.json().catch(() => null);
+    const sale = body?.sale ?? (searchParams.get("sellPrice") ? { price: searchParams.get("sellPrice"), date: searchParams.get("sellDate") } : null);
+    if (sale) {
       const held = (await getHoldings(identity))?.find((h) => h.symbol === symbol.trim().toUpperCase());
-      if (held) await recordClosedTrade(identity, held, { price: sellPrice, date: searchParams.get("sellDate") });
+      if (held) await recordSale(identity, held, { ...sale, quantity: held.quantity });
     }
     const result = await removeHolding(identity, symbol);
     return Response.json({ storage: "server", ...result });
