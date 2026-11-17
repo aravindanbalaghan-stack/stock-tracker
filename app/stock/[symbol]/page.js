@@ -1,5 +1,6 @@
 "use client";
 
+import CapBadge from "@/components/CapBadge";
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -292,6 +293,7 @@ export default function StockInsightPage({ params }) {
             )}
           </div>
           <p className="text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: "var(--text-faint)" }}>
+            <CapBadge symbol={sym} />
             {data?.industry && (
               <span
                 className="px-1.5 py-0.5 rounded border"
@@ -329,8 +331,7 @@ export default function StockInsightPage({ params }) {
           )}
           {data && data.sectors?.length === 0 && (
             <p className="text-[11px] mt-1.5" style={{ color: "var(--text-faint)" }}>
-              Not in any of the app&apos;s sector lists — those are hand-maintained, so you can add this
-              stock from any sector page.
+              Not in any of the app&apos;s sector lists.
             </p>
           )}
         </div>

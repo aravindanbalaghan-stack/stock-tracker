@@ -38,7 +38,8 @@ export default function DataStatus() {
 
   if (!s) return null;
   const ready = !s.running && s.runSession === s.session && s.finishedAt;
-  const color = s.running ? "var(--accent)" : ready ? (s.failed.length ? "var(--tier-mid)" : "var(--gain)") : "var(--text-faint)";
+  const behind = s.behind ?? [];
+  const color = s.running ? "var(--accent)" : ready ? (s.failed.length || behind.length ? "var(--tier-mid)" : "var(--gain)") : "var(--text-faint)";
   const label = s.running ? `Preparing ${s.done}/${s.total}` : ready ? `Data ready · ${fmtDay(s.session)}` : `Not prepared for ${fmtDay(s.session)}`;
 
   async function runNow() {
@@ -64,6 +65,11 @@ export default function DataStatus() {
           <p>
             Prepared {s.done} of {s.total}
             {s.failed.length > 0 && <span style={{ color: "var(--tier-mid)" }}> · {s.failed.length} failed (they&apos;ll compute on first open): {s.failed.slice(0, 4).join(", ")}{s.failed.length > 4 ? "…" : ""}</span>}
+            {behind.length > 0 && (
+              <span style={{ color: "var(--tier-mid)" }}>
+                {" "}· {behind.length} still on the previous session (NSE hadn&apos;t published yet) — they show the older data instantly and update in the background
+              </span>
+            )}
           </p>
           {!s.cronConfigured && (
             <p className="mt-2" style={{ color: "var(--tier-mid)" }}>

@@ -1,14 +1,12 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import SymbolLink from "@/components/SymbolLink";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
-import SectorSyncPanel from "@/components/SectorSyncPanel";
-import { fmt } from "@/lib/format";
+import { fmt, fmtTurnover } from "@/lib/format";
 import TableFrame from "@/components/ui/TableFrame";
 
 function vol(n) {
@@ -44,72 +42,6 @@ function Stat({ label, value, sub }) {
   );
 }
 
-function AddStockForm({ sectorKey, onAdded }) {
-  const [symbol, setSymbol] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState(null);
-
-  async function submit(e) {
-    e.preventDefault();
-    const clean = symbol.trim().toUpperCase();
-    if (!clean) return;
-    setBusy(true);
-    setMsg(null);
-    try {
-      const res = await fetch("/api/sector-overrides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sector: sectorKey, symbol: clean }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Couldn't add that stock");
-      if (json.added) {
-        setSymbol("");
-        setMsg({ tone: "good", text: `${clean} added — it will appear in this sector everywhere in the app.` });
-        onAdded?.();
-      } else {
-        setMsg({ tone: "neutral", text: json.message });
-      }
-    } catch (err) {
-      setMsg({ tone: "bad", text: err.message });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <div>
-      <form onSubmit={submit} className="flex items-center gap-2 flex-wrap">
-        <input
-          value={symbol}
-          onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-          placeholder="Add a symbol, e.g. TATACHEM"
-          className="rounded-[var(--radius-sm)] px-2.5 py-1.5 text-sm font-mono border w-56"
-          style={{ background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" }}
-        />
-        <button
-          type="submit"
-          disabled={busy || !symbol.trim()}
-          className="rounded-[var(--radius-sm)] px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-          style={{ background: "var(--accent)", color: "var(--surface)" }}
-        >
-          {busy ? "Adding…" : "Add to sector"}
-        </button>
-      </form>
-      {msg && (
-        <p
-          className="text-xs mt-2"
-          style={{
-            color: msg.tone === "bad" ? "var(--loss)" : msg.tone === "good" ? "var(--gain)" : "var(--text-muted)",
-          }}
-        >
-          {msg.text}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function BackButton() {
   const router = useRouter();
   return (
@@ -135,13 +67,12 @@ export default function SectorPage({ params }) {
   const sectorKey = decodeURIComponent(key);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
-  const [reloadTick, setReloadTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/sector-detail?key=${encodeURIComponent(sectorKey)}`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error || "Couldn't load this sector");
+      if (!res.ok) throw new Error(json?.error || "Couldn't load this page");
       setData(json);
       setError(null);
     } catch (err) {
@@ -157,17 +88,11 @@ export default function SectorPage({ params }) {
     return () => {
       cancelled = true;
     };
-  }, [load, reloadTick]);
+  }, [load]);
 
   const { sorted, sort, onSort } = useSortableRows(data?.stocks, "vsSectorPct", "desc");
 
-  async function removeAdded(symbol) {
-    await fetch(
-      `/api/sector-overrides?sector=${encodeURIComponent(sectorKey)}&symbol=${encodeURIComponent(symbol)}`,
-      { method: "DELETE" }
-    );
-    setReloadTick((t) => t + 1);
-  }
+  const groupWord = data?.kind === "theme" ? "theme" : "sector";
 
   return (
     <div className="min-h-screen px-4 md:px-8 py-6">
@@ -175,7 +100,12 @@ export default function SectorPage({ params }) {
         <BackButton />
         <div>
           <h1 className="font-display text-2xl font-semibold" style={{ color: "var(--text)" }}>
-            {data?.name ?? sectorKey}
+            {data?.name ?? sectorKey.replace(/^theme:/, "")}
+            {data?.kind === "theme" && (
+              <span className="ml-2 align-middle text-[11px] px-1.5 py-0.5 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+                theme
+              </span>
+            )}
           </h1>
           {data && (
             <p className="text-xs" style={{ color: "var(--text-faint)" }}>
@@ -187,16 +117,16 @@ export default function SectorPage({ params }) {
       </div>
 
       {error && <ErrorState>{error}</ErrorState>}
-      {!data && !error && <LoadingState>Building the sector picture from exchange data…</LoadingState>}
+      {!data && !error && <LoadingState>Building the picture from exchange data…</LoadingState>}
 
       {data && (
         <div className="flex flex-col gap-6">
           <div>
             <SectionTitle meta={`Equal-weighted across ${data.reportingCount} stocks`}>
-              Sector accumulation
+              {data.kind === "theme" ? "Theme" : "Sector"} accumulation
             </SectionTitle>
             <Panel>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-5">
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-5">
                 <Stat
                   label={`${data.windowDays}-day move`}
                   value={<Signed value={data.sector.returnPct} />}
@@ -208,6 +138,7 @@ export default function SectorPage({ params }) {
                   sub="volume-weighted over the window"
                 />
                 <Stat label="Volume today" value={vol(data.sector.volume)} />
+                <Stat label="Turnover today" value={fmtTurnover(data.sector.turnoverCr)} sub="all constituents" />
                 <Stat
                   label="vs 30d avg volume"
                   value={data.sector.volumeRatio == null ? "—" : `${fmt(data.sector.volumeRatio)}×`}
@@ -224,9 +155,9 @@ export default function SectorPage({ params }) {
                 />
               </div>
               <p className="text-[11px] mt-3" style={{ color: "var(--text-faint)" }}>
-                The move is equal-weighted so one heavyweight can&apos;t carry the sector, while delivery and
+                The move is equal-weighted so one heavyweight can&apos;t carry the {groupWord}, while delivery and
                 volume are volume-weighted because those genuinely add up across a basket.{" "}
-                {data.sector.outperformers} of {data.reportingCount} stocks beat the sector average.
+                {data.sector.outperformers} of {data.reportingCount} stocks beat the {groupWord} average.
                 {data.benchmark?.label === "NIFTY 50" && (
                   <> The NIFTY 500 didn&apos;t resolve, so the comparison uses the NIFTY 50 instead.</>
                 )}
@@ -235,7 +166,7 @@ export default function SectorPage({ params }) {
           </div>
 
           <div>
-            <SectionTitle meta="Sorted by outperformance vs the sector">
+            <SectionTitle meta={`Sorted by outperformance vs the ${data.kind === "theme" ? "theme" : "sector"}`}>
               Stocks — accumulation &amp; relative strength
             </SectionTitle>
             <Panel flush>
@@ -247,11 +178,11 @@ export default function SectorPage({ params }) {
                       <SortableTh label="Close" sortKey="close" sort={sort} onSort={onSort} />
                       <SortableTh label={`${data.windowDays}d move`} sortKey="returnPct" sort={sort} onSort={onSort} />
                       <SortableTh
-                        label="vs Sector"
+                        label={data.kind === "theme" ? "vs Theme" : "vs Sector"}
                         sortKey="vsSectorPct"
                         sort={sort}
                         onSort={onSort}
-                        title="This stock's window return minus the sector's average return"
+                        title={`This stock's window return minus the ${groupWord}'s average return`}
                       />
                       <SortableTh
                         label={data.benchmark ? `vs ${data.benchmark.label}` : "vs Index"}
@@ -265,7 +196,7 @@ export default function SectorPage({ params }) {
                         sortKey="weightedDeliveryPct"
                         sort={sort}
                         onSort={onSort}
-                        title="Volume-weighted delivery across the window — the same basis as the sector figure above"
+                        title={`Volume-weighted delivery across the window — the same basis as the ${groupWord} figure above`}
                       />
                       <SortableTh
                         label={`Days >${data.accumulationThreshold}%`}
@@ -276,7 +207,14 @@ export default function SectorPage({ params }) {
                       />
                       <SortableTh label="Volume" sortKey="volume" sort={sort} onSort={onSort} />
                       <SortableTh label="Vol ×" sortKey="volumeRatio" sort={sort} onSort={onSort} />
-                      <th className="py-2 pl-2 pr-4"></th>
+                      <SortableTh
+                        label="Turnover"
+                        sortKey="turnoverCr"
+                        sort={sort}
+                        onSort={onSort}
+                        className="pr-4"
+                        title={`Today's traded value (close × volume). Below it: the daily average over the ${data.windowDays}-day window.`}
+                      />
                     </tr>
                   </thead>
                   <tbody>
@@ -285,15 +223,6 @@ export default function SectorPage({ params }) {
                         <td className="py-2.5 pl-4 pr-2">
                           <div className="flex items-center gap-1.5">
                             <SymbolLink symbol={s.symbol} className="text-sm" />
-                            {s.isAdded && (
-                              <span
-                                className="text-[9px] px-1 py-0.5 rounded border"
-                                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
-                                title="Added to this sector manually"
-                              >
-                                added
-                              </span>
-                            )}
                           </div>
                         </td>
                         <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
@@ -323,17 +252,12 @@ export default function SectorPage({ params }) {
                         <td className="py-2.5 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                           {s.volumeRatio == null ? "—" : `${fmt(s.volumeRatio)}×`}
                         </td>
-                        <td className="py-2.5 pl-2 pr-4 text-right">
-                          {s.isAdded && (
-                            <button
-                              type="button"
-                              onClick={() => removeAdded(s.symbol)}
-                              className="text-[10px] px-1.5 py-0.5 rounded border"
-                              style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}
-                              title="Remove this manual addition"
-                            >
-                              Remove
-                            </button>
+                        <td className="py-2.5 pl-2 pr-4 text-right font-mono text-xs" style={{ color: "var(--text)" }}>
+                          {fmtTurnover(s.turnoverCr)}
+                          {s.avgTurnoverCr != null && (
+                            <div className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              avg {fmtTurnover(s.avgTurnoverCr)}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -344,23 +268,6 @@ export default function SectorPage({ params }) {
             </Panel>
           </div>
 
-          <div>
-            <SectionTitle meta="Compare against Zerodha's sector lists">Check for missing stocks</SectionTitle>
-            <SectorSyncPanel sectorKey={sectorKey} onApplied={() => setReloadTick((t) => t + 1)} />
-          </div>
-
-          <div>
-            <SectionTitle meta="Applies everywhere in the app">Add one manually</SectionTitle>
-            <Panel>
-              <AddStockForm sectorKey={sectorKey} onAdded={() => setReloadTick((t) => t + 1)} />
-              <p className="text-[11px] mt-3" style={{ color: "var(--text-faint)" }}>
-                Sector lists here are hand-maintained rather than NSE&apos;s official classification, so
-                genuine members can be missing. Anything you add is stored server-side and used by every
-                sector screen from then on. It won&apos;t alter the built-in list — additions are kept
-                separately and can be removed again from the table above.
-              </p>
-            </Panel>
-          </div>
         </div>
       )}
     </div>

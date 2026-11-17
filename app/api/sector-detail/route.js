@@ -1,5 +1,7 @@
 import { getRecentBhavcopies } from "@/lib/nseBhavcopy";
+import { serveCached } from "@/lib/precompute";
 import { getResolvedSectorList } from "@/lib/sectorOverrides";
+import { getGroups } from "@/lib/rotation";
 import { fetchIndexOHLCV } from "@/lib/screenerIndicators";
 import { ACCUMULATION_DELIVERY_THRESHOLD } from "@/lib/deliveryMetrics";
 
@@ -39,15 +41,18 @@ async function fetchBenchmark(windowDays) {
   return null;
 }
 
-export async function GET(request) {
+async function compute(request) {
   const { searchParams } = new URL(request.url);
   const key = searchParams.get("key");
   if (!key) return Response.json({ error: "A sector key is required" }, { status: 400 });
 
   try {
-    const sectors = await getResolvedSectorList();
-    const sector = sectors.find((s) => s.key === key);
-    if (!sector) return Response.json({ error: "Unknown sector" }, { status: 404 });
+    // Themes ("theme:<name>") open on the same page as sectors.
+    const isTheme = key.startsWith("theme:");
+    const list = isTheme ? await getGroups("themes") : await getResolvedSectorList();
+    const found = list.find((s) => s.key === key);
+    if (!found) return Response.json({ error: isTheme ? "Unknown theme" : "Unknown sector" }, { status: 404 });
+    const sector = { ...found, addedSymbols: found.addedSymbols ?? [] };
 
     const [days, benchmark] = await Promise.all([
       getRecentBhavcopies(BHAV_WINDOW, BHAV_WINDOW * 2 + 25),
@@ -121,6 +126,12 @@ export async function GET(request) {
         daysCounted: deliveries.length,
         volume: today.volume,
         avgVolume: avgVol != null ? Math.round(avgVol) : null,
+        // Traded value, ₹ crore: today's, and the daily average over the window.
+        turnoverCr: today.close && today.volume ? Math.round(((today.close * today.volume) / 1e7) * 100) / 100 : null,
+        avgTurnoverCr: (() => {
+          const vals = windowRows.filter((r) => r.close && r.volume).map((r) => (r.close * r.volume) / 1e7);
+          return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100 : null;
+        })(),
         volumeRatio: avgVol && avgVol > 0 ? Math.round((today.volume / avgVol) * 100) / 100 : null,
         windowVolume: wVol,
         isAdded: sector.addedSymbols.includes(symbol),
@@ -183,6 +194,7 @@ export async function GET(request) {
     return Response.json({
       key: sector.key,
       name: sector.name,
+      kind: isTheme ? "theme" : "sector",
       asOf: latest.date,
       windowDays: WINDOW_DAYS,
       avgWindow: AVG_WINDOW,
@@ -200,6 +212,7 @@ export async function GET(request) {
             ? Math.round((todayVolume / avgSectorVolume) * 100) / 100
             : null,
         outperformers: stocks.filter((s) => (s.vsSectorPct ?? 0) > 0).length,
+        turnoverCr: Math.round(stocks.reduce((a, x) => a + (x.turnoverCr ?? 0), 0) * 100) / 100,
       },
       benchmark: benchmark
         ? { ...benchmark, vsSectorPct: sectorReturnPct != null ? Math.round((sectorReturnPct - benchmark.returnPct) * 100) / 100 : null }
@@ -212,4 +225,10 @@ export async function GET(request) {
       { status: 502 }
     );
   }
+}
+
+// Cached per sector/theme for the session: the first open of a sector after
+// the close computes, every later open (and the back button) is instant.
+export async function GET(request) {
+  return serveCached(request, { name: "sector-detail", vary: ["key"], cacheable: (sp) => !!sp.get("key") }, compute);
 }

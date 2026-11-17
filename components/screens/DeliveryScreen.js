@@ -67,7 +67,8 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
                 borderColor: showStage ? "var(--accent)" : "var(--border)",
                 color: showStage ? "var(--accent)" : "var(--text-muted)",
               }}
-              title="Show each sector's composite stage and each stock's own Weinstein stage — reads weekly history per symbol, so it takes a moment the first time"
+              title="Show the Weinstein stage on every Delivery tab — each sector's and theme's composite, and each stock's own"
+              aria-pressed={showStage}
             >
               {showStage ? "Stage on" : "Show stage"}
             </button>
@@ -97,6 +98,7 @@ export default function DeliveryScreen({ onAddToWatchlist, watchlistSymbols }) {
           key={topTab.id}
           period={topTab.period}
           asOfDate={asOfDate}
+          showStage={showStage}
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
         />

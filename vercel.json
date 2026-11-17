@@ -5,6 +5,10 @@
       "schedule": "30 14 * * 1-5"
     },
     {
+      "path": "/api/cron/precompute?retry=1",
+      "schedule": "45 16 * * 1-5"
+    },
+    {
       "path": "/api/cron/alerts?mode=eod",
       "schedule": "15 15 * * 1-5"
     }

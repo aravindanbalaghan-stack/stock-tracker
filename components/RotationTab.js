@@ -238,13 +238,9 @@ export default function RotationTab() {
                         onClick={() => toggle(g.key)}
                       >
                         <td className="py-1.5 px-3">
-                          {group === "sectors" ? (
-                            <Link href={`/sector/${encodeURIComponent(g.key)}`} className="hover:underline" style={{ color: "var(--text)" }} onClick={(e) => e.stopPropagation()}>
-                              {g.name}
-                            </Link>
-                          ) : (
-                            <span style={{ color: "var(--text)" }}>{g.name}</span>
-                          )}
+                          <Link href={`/sector/${encodeURIComponent(g.key)}`} className="hover:underline" style={{ color: "var(--text)" }} onClick={(e) => e.stopPropagation()}>
+                            {g.name}
+                          </Link>
                         </td>
                         <td className="py-1.5 px-2">
                           <span className="text-xs font-medium" style={{ color: Q[g.quadrant].color }} title={Q[g.quadrant].hint}>

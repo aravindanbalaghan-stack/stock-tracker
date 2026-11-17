@@ -4,7 +4,7 @@
 // among stocks whose volume AND turnover also expanded. Logic:
 // app/api/delivery-top/route.js.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import SymbolLink from "@/components/SymbolLink";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
 import SortableTh from "@/components/SortableTh";
@@ -14,6 +14,8 @@ import { useSortableRows } from "@/lib/useSortableRows";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { formatDayLabel } from "@/lib/periodLabel";
 import TableFrame from "@/components/ui/TableFrame";
+import StageBadge, { STAGE_RANK } from "@/components/StageBadge";
+import { useStageMap } from "@/lib/useStageMap";
 
 const fmt = (n, d = 2) => (n == null || Number.isNaN(n) ? "—" : n.toLocaleString("en-IN", { maximumFractionDigits: d, minimumFractionDigits: d }));
 const cr = (n) => (n == null ? "—" : n >= 1000 ? `₹${Math.round(n).toLocaleString("en-IN")} Cr` : n >= 10 ? `₹${n.toFixed(1)} Cr` : `₹${n.toFixed(2)} Cr`);
@@ -36,7 +38,8 @@ function Spark({ history }) {
   );
 }
 
-export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, watchlistSymbols }) {
+export default function DeliveryTopTab({ period, asOfDate, showStage = false, onAddToWatchlist, watchlistSymbols }) {
+  const stages = useStageMap(showStage);
   const [minVolRatio, setMinVolRatio] = usePersistentState(`deliveryTop.${period}.vol`, 1.5);
   const [minTurnoverCr, setMinTurnoverCr] = usePersistentState(`deliveryTop.${period}.turnover`, 10);
   const key = `${period}|${asOfDate}|${minVolRatio}|${minTurnoverCr}`;
@@ -63,7 +66,12 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
     };
   }, [key, period, asOfDate, minVolRatio, minTurnoverCr]);
 
-  const { sorted, sort, onSort } = useSortableRows(data?.rows, "rank", "asc");
+  const stocksStage = stages.data?.stocks;
+  const rows = useMemo(
+    () => (showStage && data?.rows ? data.rows.map((r) => ({ ...r, stageRank: STAGE_RANK[stocksStage?.[r.symbol]?.stage] ?? 0 })) : data?.rows),
+    [data, showStage, stocksStage]
+  );
+  const { sorted, sort, onSort } = useSortableRows(rows, "rank", "asc");
   const label = period === "weekly" ? "week" : "month";
   const sel = { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" };
 
@@ -97,6 +105,14 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
         )}
       </div>
 
+      {stages.error && (
+        <p className="text-xs mb-3" style={{ color: "var(--loss)" }}>
+          Stages: {stages.error}{" "}
+          <button type="button" onClick={stages.retry} className="underline" style={{ color: "var(--accent)" }}>
+            Retry
+          </button>
+        </p>
+      )}
       {error ? (
         <ErrorState>{error}</ErrorState>
       ) : !data ? (
@@ -111,6 +127,7 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
                 <tr className="text-left border-b" style={{ borderColor: "var(--border)" }}>
                   <SortableTh label="#" sortKey="rank" sort={sort} onSort={onSort} align="left" className="pl-4" />
                   <SortableTh label="Symbol" sortKey="symbol" sort={sort} onSort={onSort} align="left" />
+                  {showStage && <SortableTh label="Stage" sortKey="stageRank" sort={sort} onSort={onSort} align="left" title="Weinstein stage: weekly close vs the 30-week MA and its slope. Sorts Stage 2 first." />}
                   <SortableTh label={`Deliv. % (${label})`} sortKey="deliveryPct" sort={sort} onSort={onSort} title="Shares delivered ÷ shares traded over the whole period" />
                   <SortableTh label={`vs last ${label}`} sortKey="deliveryChange" sort={sort} onSort={onSort} title="Change in delivery % from the previous period, in percentage points" />
                   <th className="py-2 px-2 text-xs font-medium" style={{ color: "var(--text-faint)" }}>
@@ -139,6 +156,11 @@ export default function DeliveryTopTab({ period, asOfDate, onAddToWatchlist, wat
                         </span>
                       )}
                     </td>
+                    {showStage && (
+                      <td className="py-2.5 px-2">
+                        <StageBadge info={stocksStage?.[r.symbol]} loading={stages.loading} />
+                      </td>
+                    )}
                     <td className="py-2.5 px-2 text-right font-mono text-sm" style={{ color: "var(--text)" }}>
                       {fmt(r.deliveryPct, 1)}%
                     </td>

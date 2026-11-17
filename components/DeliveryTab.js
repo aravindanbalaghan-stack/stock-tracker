@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
@@ -15,6 +15,8 @@ import { periodCoverageLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { fmt, fmtVolume, fmtCap } from "@/lib/format";
 import TableFrame from "@/components/ui/TableFrame";
+import StageBadge from "@/components/StageBadge";
+import { useStageMap } from "@/lib/useStageMap";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -180,24 +182,7 @@ function ExpandedRowDetail({ row }) {
   );
 }
 
-function StageBadge({ info }) {
-  if (!info) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>—</span>;
-  if (!info.available) return <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>n/a</span>;
-  return (
-    <span
-      className="text-[10px] px-1.5 py-0.5 rounded border whitespace-nowrap"
-      style={{
-        borderColor: info.stage === 2 ? "var(--gain)" : info.stage === 4 ? "var(--loss)" : "var(--border)",
-        color: info.stage === 2 ? "var(--gain)" : info.stage === 4 ? "var(--loss)" : "var(--text-muted)",
-      }}
-      title={`30-week MA slope ${info.ma30SlopePct >= 0 ? "+" : ""}${info.ma30SlopePct}%`}
-    >
-      {info.stageLabel}
-    </span>
-  );
-}
-
-function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, watchlistSymbols, periodLabel }) {
+function ResultTable({ rows, showCap, showStage, stageMap, stageLoading, onAddToWatchlist, watchlistSymbols, periodLabel }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
   const colCount = (showCap ? 16 : 14) + (showStage ? 1 : 0);
@@ -303,7 +288,7 @@ function ResultTable({ rows, showCap, showStage, stageMap, onAddToWatchlist, wat
                   </td>
                   {showStage && (
                     <td className="py-2.5 px-2 text-left">
-                      <StageBadge info={stageMap?.[r.symbol]} />
+                      <StageBadge info={stageMap?.[r.symbol]} loading={stageLoading} />
                     </td>
                   )}
                   <td className="py-2.5 px-2 text-left max-w-[220px]">
@@ -605,9 +590,14 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
   const [searchError, setSearchError] = useState(null);
   const [searching, setSearching] = useState(false);
 
-  const [stageMap, setStageMap] = useState({});
-  const [stageLoading, setStageLoading] = useState(false);
-  const [stageError, setStageError] = useState(null);
+  // Stages for every stock come precomputed from /api/stage-map; the
+  // per-symbol Yahoo lookup only fills the odd symbol it doesn't cover.
+  const stages = useStageMap(!!showStage);
+  const [extraStages, setExtraStages] = useState({});
+  const [extraError, setExtraError] = useState(null);
+  const stageMap = useMemo(() => ({ ...extraStages, ...(stages.data?.stocks ?? {}) }), [extraStages, stages.data]);
+  const stageLoading = stages.loading;
+  const stageError = stages.error || extraError;
 
   useEffect(() => {
     let cancelled = false;
@@ -630,38 +620,35 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
     };
   }, [period, asOfDate, bucket]);
 
-  // Stage classification (see app/api/stock-stage/route.js) for every
-  // stock this bucket currently shows — fetched once data loads, only
-  // when the shared "Show stage" toggle (owned by the parent
-  // DeliveryScreen, same switch the Sectors tab reacts to) is on.
-  // Keyed off the full stocks list, not the numeric-filtered view, so
-  // adjusting a numeric filter doesn't retrigger the fetch.
+  // Symbols the stage map doesn't cover (too little stored history) get
+  // one Yahoo lookup, capped — never the whole bucket.
   useEffect(() => {
-    if (!showStage || !data?.stocks?.length) return;
-    const symbols = data.stocks.map((r) => r.symbol);
-    const missing = symbols.filter((s) => !(s in stageMap));
+    if (!showStage || !stages.data || !data?.stocks?.length) return;
+    const covered = stages.data.stocks ?? {};
+    const missing = [...data.stocks, ...(data.other ?? [])]
+      .map((r) => r.symbol)
+      .filter((s) => !(s in covered) && !(s in extraStages))
+      .slice(0, 60);
     if (missing.length === 0) return;
     let cancelled = false;
-    setStageLoading(true);
-    setStageError(null);
     (async () => {
       try {
         const res = await fetch(`/api/stock-stage?symbols=${encodeURIComponent(missing.join(","))}`);
         const json = await res.json();
         if (cancelled) return;
         if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
-        setStageMap((prev) => ({ ...prev, ...json.results }));
+        // Mark every requested symbol so a miss isn't asked for again.
+        const got = Object.fromEntries(missing.map((s) => [s, json.results?.[s] ?? { available: false }]));
+        setExtraStages((prev) => ({ ...prev, ...got }));
       } catch (err) {
-        if (!cancelled) setStageError(err?.message || "Couldn't compute stock stages.");
-      } finally {
-        if (!cancelled) setStageLoading(false);
+        if (!cancelled) setExtraError(err?.message || "Couldn't compute some stock stages.");
       }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showStage, data]);
+  }, [showStage, data, stages.data]);
 
   async function runSearch(symbol) {
     const clean = symbol.trim().toUpperCase();
@@ -819,6 +806,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
           showCap
           showStage={showStage}
           stageMap={stageMap}
+          stageLoading={stageLoading}
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
           periodLabel={periodLabel}
@@ -827,8 +815,9 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
         <ResultTable
           rows={visibleOther}
           showCap={false}
-          showStage={false}
+          showStage={showStage}
           stageMap={stageMap}
+          stageLoading={stageLoading}
           onAddToWatchlist={onAddToWatchlist}
           watchlistSymbols={watchlistSymbols}
           periodLabel={periodLabel}

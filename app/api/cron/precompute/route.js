@@ -12,6 +12,10 @@ import { STATUS_KEY, expectedSession } from "@/lib/precompute";
 // is its own function invocation with its own time limit. Jobs run a few
 // at a time; if this invocation's own time runs low, it hands the rest to
 // a fresh invocation of itself (?resume=N) and returns.
+//
+// ?retry=1 (a second, later cron) re-runs only the views that failed or
+// were built before NSE had published the session's files — so a late
+// NSE file doesn't leave a tab on yesterday's data until the next night.
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -29,7 +33,9 @@ export async function GET(request) {
   if (!(await authorised(request))) return Response.json({ error: "Not allowed" }, { status: 401 });
   const url = new URL(request.url);
   const origin = url.origin;
-  const jobs = precomputeJobs();
+  const retry = url.searchParams.get("retry") === "1";
+  let retryTag = null;
+  let jobs = precomputeJobs();
   const resume = Math.max(0, Number(url.searchParams.get("resume")) || 0);
   const started = Date.now();
   // Leave headroom under this function's own limit (Vercel may cap it
@@ -37,7 +43,24 @@ export async function GET(request) {
   const budgetMs = Number(process.env.PRECOMPUTE_BUDGET_MS) || 50_000;
 
   let status = (await kv.get(STATUS_KEY).catch(() => null)) ?? {};
-  if (resume === 0) {
+  if (retry) {
+    const session = await expectedSession();
+    const prev = status?.session === session ? status.results ?? {} : {};
+    // One retry pass = one tag; a job already retried in this pass isn't
+    // picked again by its continuation, even if NSE still hasn't published.
+    retryTag = url.searchParams.get("tag") || new Date().toISOString();
+    jobs = jobs.filter((j) => {
+      const r = prev[j.id];
+      if (r?.retryTag === retryTag) return false;
+      return !r || !r.ok || (r.dataSession && r.dataSession < session);
+    });
+    if (status?.session !== session || !status.results) {
+      status = { runId: new Date().toISOString(), startedAt: new Date().toISOString(), session, total: precomputeJobs().length, results: {} };
+    } else {
+      status.retriedAt = new Date().toISOString();
+    }
+    if (jobs.length === 0) return Response.json({ finished: true, retried: 0 });
+  } else if (resume === 0) {
     status = { runId: new Date().toISOString(), startedAt: new Date().toISOString(), session: await expectedSession(), total: jobs.length, results: {} };
     await kv.set(STATUS_KEY, status);
   }
@@ -50,15 +73,17 @@ export async function GET(request) {
     const t0 = Date.now();
     let ok = false;
     let error = null;
+    let dataSession = null;
     try {
       const res = await fetch(`${origin}${job.path}`, { headers, cache: "no-store" });
       ok = res.ok;
       if (!ok) error = `HTTP ${res.status}`;
+      dataSession = res.headers.get("x-panel-session") || null;
       await res.arrayBuffer().catch(() => null);
     } catch (err) {
       error = String(err?.message || err);
     }
-    status.results[job.id] = { ok, ms: Date.now() - t0, at: new Date().toISOString(), ...(error ? { error } : {}) };
+    status.results[job.id] = { ok, ms: Date.now() - t0, at: new Date().toISOString(), ...(dataSession ? { dataSession } : {}), ...(retryTag ? { retryTag } : {}), ...(error ? { error } : {}) };
     await kv.set(STATUS_KEY, status).catch(() => {});
   };
 
@@ -72,7 +97,8 @@ export async function GET(request) {
 
   if (next < jobs.length) {
     // Out of time — continue in a fresh invocation after responding.
-    const resumeUrl = `${origin}/api/cron/precompute?resume=${next}`;
+    // A retry run works on its own filtered list, so it simply runs again.
+    const resumeUrl = retry ? `${origin}/api/cron/precompute?retry=1&tag=${encodeURIComponent(retryTag)}` : `${origin}/api/cron/precompute?resume=${next}`;
     after(async () => {
       await fetch(resumeUrl, { headers: process.env.SESSION_SECRET ? { "x-panel-internal": process.env.SESSION_SECRET } : {}, cache: "no-store" }).catch(() => {});
     });

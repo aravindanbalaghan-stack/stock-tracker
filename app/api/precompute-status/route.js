@@ -19,6 +19,9 @@ export async function GET() {
     total: jobs.length,
     done,
     failed,
+    // Built before NSE had published this session's files — still showing
+    // the previous session until the late retry run (or the next visit).
+    behind: jobs.filter((j) => results[j.id]?.ok && results[j.id].dataSession && results[j.id].dataSession < (status?.session ?? session)).map((j) => j.id),
     running: !!status?.startedAt && !status?.finishedAt && Date.now() - new Date(status.startedAt).getTime() < 30 * 60 * 1000,
     cronConfigured: !!process.env.CRON_SECRET,
   });

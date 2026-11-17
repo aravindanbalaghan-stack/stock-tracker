@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
 import WatchlistAddButton from "@/components/WatchlistAddButton";
@@ -14,6 +14,8 @@ import { periodCoverageLabel } from "@/lib/periodLabel";
 import { usePersistentState } from "@/lib/usePersistentState";
 import { fmt, fmtVolume } from "@/lib/format";
 import TableFrame from "@/components/ui/TableFrame";
+import StageBadge from "@/components/StageBadge";
+import { useStageMap } from "@/lib/useStageMap";
 
 const PERIOD_LABEL = { daily: "Day", weekly: "Week", monthly: "Month" };
 const HISTORY_LABEL = { daily: "10-day", weekly: "10-week", monthly: "10-month" };
@@ -49,7 +51,7 @@ function DeliveryPctBadge({ pct }) {
 // state (harmless to keep independent — at most one sector is expanded at
 // a time), and reuses the same expand-for-history pattern as Delivery
 // Leaders, plus the watchlist add button.
-function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel }) {
+function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, stocksStage }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expandedSymbol, setExpandedSymbol] = useState(null);
 
@@ -64,6 +66,11 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
             <SortableTh label={`Deliv. % (${periodLabel})`} sortKey="deliveryPct" sort={sort} onSort={onSort} />
             <SortableTh label={`Volume (${periodLabel})`} sortKey="volume" sort={sort} onSort={onSort} />
             <SortableTh label="vs Avg Vol" sortKey="volumeRatio" sort={sort} onSort={onSort} />
+            {stocksStage && (
+              <th className="py-2 px-2 text-xs font-medium uppercase tracking-wider text-left" style={{ color: "var(--text-faint)" }}>
+                Stage
+              </th>
+            )}
             <DebutHeaderCells sort={sort} onSort={onSort} />
             <th className="py-2 pl-2 pr-4"></th>
           </tr>
@@ -89,6 +96,11 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                   <td className="py-2 px-2 text-right font-mono text-xs" style={{ color: "var(--accent)" }}>
                     {c.volumeRatio ? `${c.volumeRatio.toFixed(1)}×` : "—"}
                   </td>
+                  {stocksStage && (
+                    <td className="py-2 px-2">
+                      <StageBadge info={stocksStage[c.symbol]} />
+                    </td>
+                  )}
                   <DebutCells row={c} />
                   <td className="py-2 pl-2 pr-4 text-right">
                     <WatchlistAddButton
@@ -101,7 +113,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
                 </tr>
                 {isExpanded && (
                   <tr style={{ background: "var(--surface-2)" }}>
-                    <td colSpan={9} className="p-0">
+                    <td colSpan={stocksStage ? 10 : 9} className="p-0">
                       <DeliveryHistoryPanel history={c.deliveryHistory} />
                     </td>
                   </tr>
@@ -115,7 +127,7 @@ function ConstituentTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabe
   );
 }
 
-function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel, showStage, isThemes }) {
+function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, historyLabel, showStage, isThemes, stocksStage }) {
   const { sorted, sort, onSort } = useSortableRows(rows, "deliveryPct", "desc");
   const [expanded, setExpanded] = useState(null);
 
@@ -156,23 +168,19 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                   <td className="py-2.5 pl-4 pr-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xs w-5" style={{ color: "var(--accent)" }}>{i + 1}</span>
-                      {isThemes ? (
-                        <span className="text-sm font-medium" style={{ color: "var(--text)" }}>
-                          {s.name}
-                          <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-faint)" }}>
-                            {s.constituentCount} stocks
-                          </span>
+                      <Link
+                        href={`/sector/${encodeURIComponent(s.key)}`}
+                        className="text-sm font-medium hover:underline"
+                        style={{ color: "var(--text)" }}
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Open ${s.name} — every stock, with accumulation, turnover and relative strength`}
+                      >
+                        {s.name}
+                      </Link>
+                      {isThemes && (
+                        <span className="text-[10px]" style={{ color: "var(--text-faint)" }}>
+                          {s.constituentCount} stocks
                         </span>
-                      ) : (
-                        <Link
-                          href={`/sector/${encodeURIComponent(s.key)}`}
-                          className="text-sm font-medium hover:underline"
-                          style={{ color: "var(--text)" }}
-                          onClick={(e) => e.stopPropagation()}
-                          title={`Open ${s.name} — every stock, with accumulation and relative strength`}
-                        >
-                          {s.name}
-                        </Link>
                       )}
                     </div>
                   </td>
@@ -260,6 +268,7 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
                         onAddToWatchlist={onAddToWatchlist}
                         watchlistSymbols={watchlistSymbols}
                         periodLabel={periodLabel}
+                        stocksStage={showStage ? stocksStage ?? {} : null}
                       />
                     </td>
                   </tr>
@@ -276,18 +285,13 @@ function SectorTable({ rows, onAddToWatchlist, watchlistSymbols, periodLabel, hi
 
 export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket, period, asOfDate, showStage: showStageProp, group = "sectors" }) {
   const isThemes = group === "themes";
-  // Composite stage is computed per built-in sector, not per theme.
-  const showStage = showStageProp && !isThemes;
+  const showStage = !!showStageProp;
+  const stages = useStageMap(showStage);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   // Filter for "sectors with accumulation above X%" — local to this
   // section, doesn't affect the Stocks section below it.
   const [minDelivery, setMinDelivery] = usePersistentState("sector.minDelivery", 0);
-  const [stageData, setStageData] = useState(null);
-  const [stageLoading, setStageLoading] = useState(false);
-  const [stageError, setStageError] = useState(null);
-  // Bumped to request a retry; the effect only runs when it changes.
-  const [stageAttempt, setStageAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -312,45 +316,6 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
     };
   }, [period, asOfDate, bucket, isThemes]);
 
-  // An attempt marker rather than deriving "should I fetch" from the
-  // loading flag. Previously stageLoading was both a dependency AND set
-  // inside the effect, so a failed fetch flipped it back to false, which
-  // re-fired the effect, which fetched again — an endless retry that left
-  // the button reading "Loading stages…" forever.
-  const stageAttemptRef = useRef(0);
-
-  useEffect(() => {
-    if (!showStage) return;
-    if (stageData) return; // already have it — the shared toggle in the parent doesn't need to refetch on every re-render
-    if (stageAttemptRef.current === stageAttempt) return;
-    stageAttemptRef.current = stageAttempt;
-
-    let cancelled = false;
-    setStageLoading(true);
-    setStageError(null);
-    (async () => {
-      try {
-        const res = await fetch("/api/sector-stage");
-        const json = await res.json();
-        if (cancelled) return;
-        if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
-        setStageData(json);
-      } catch (err) {
-        if (!cancelled) {
-          setStageError(
-            err?.name === "AbortError" || /timeout/i.test(err?.message ?? "")
-              ? "The stage scan timed out. It reads two years of weekly history for every constituent, which can exceed the request limit on a cold cache — try again and it should be quicker."
-              : err?.message || "Couldn't compute sector stages."
-          );
-        }
-      } finally {
-        if (!cancelled) setStageLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [showStage, stageAttempt, stageData]);
 
   if (error) {
     return <ErrorState>{error}</ErrorState>;
@@ -373,7 +338,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
   // Merge the stage overlay in by sector key, and apply the "accumulation
   // above X%" filter. Both are display-side: the API returns every sector
   // in the bucket, so toggling either never refetches.
-  const stageByKey = new Map((stageData?.sectors ?? []).map((s) => [s.key, s]));
+  const stageByKey = new Map(((isThemes ? stages.data?.themes : stages.data?.sectors) ?? []).map((s) => [s.key, s]));
   const visibleSectors = (data.sectors ?? [])
     .map((s) => ({ ...s, stageInfo: stageByKey.get(s.key) ?? null }))
     .filter((s) => (minDelivery > 0 ? (s.deliveryPct ?? 0) >= minDelivery : true));
@@ -391,7 +356,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
     <div>
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
         <h3 className="font-display text-base" style={{ color: "var(--text)" }}>
-          Sectors
+          {isThemes ? "Themes" : "Sectors"}
         </h3>
         <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-faint)" }}>
           Accum ≥
@@ -414,21 +379,20 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
         row for its {historyLabel} trend and constituent stocks
       </p>
 
-      {showStage && stageLoading && !stageData && (
+      {stages.loading && (
         <p className="text-xs mb-3" style={{ color: "var(--text-faint)" }}>
-          Loading sector stages — reads two years of weekly history per constituent, so this can take a
-          moment…
+          Loading stages…
         </p>
       )}
-      {stageError && (
+      {stages.error && (
         <div
           className="mb-3 rounded-[var(--radius-sm)] border px-3 py-2 text-xs flex items-start justify-between gap-3"
           style={{ borderColor: "var(--loss)", background: "var(--loss-dim)", color: "var(--text-muted)" }}
         >
-          <span>{stageError}</span>
+          <span>{stages.error}</span>
           <button
             type="button"
-            onClick={() => setStageAttempt((a) => a + 1)}
+            onClick={stages.retry}
             className="px-2 py-0.5 rounded border text-[11px] shrink-0"
             style={{ borderColor: "var(--border)", color: "var(--accent)" }}
           >
@@ -454,6 +418,7 @@ export default function SectorDeliveryTab({ onAddToWatchlist, watchlistSymbols, 
           periodLabel={periodLabel}
           historyLabel={historyLabel}
           isThemes={isThemes}
+          stocksStage={stages.data?.stocks}
         />
       )}
 
