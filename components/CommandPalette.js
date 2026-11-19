@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { TABS, SUB_VIEWS, tabHref, presetSubView, PALETTE_EVENT } from "@/lib/navigation";
 import { loadRecentSymbols } from "@/lib/recentSymbols";
 import { loadWatchlist } from "@/lib/watchlist";
-import { openAlerts } from "@/components/AlertsBell";
 import { applyTheme, readThemePref } from "@/lib/theme";
 
 // ⌘K / Ctrl+K command bar, mounted once for the whole app (app/layout.js).
@@ -191,8 +190,6 @@ export default function CommandPalette() {
 
     const onStock = pathname?.startsWith("/stock/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : null;
     const actions = [
-      ...(onStock ? [{ id: "a:alert-sym", label: `Create an alert for ${onStock}`, hint: "Price, MA cross, stage…", run: () => openAlerts({ symbol: onStock }) }] : []),
-      { id: "a:alerts", label: "Alerts", hint: "Inbox, your alerts, notifications", run: () => openAlerts() },
       {
         id: "a:theme",
         label: "Switch theme",

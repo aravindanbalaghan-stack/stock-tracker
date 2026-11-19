@@ -8,7 +8,6 @@ import TabBar from "@/components/TabBar";
 import { useRouter, useSearchParams } from "next/navigation";
 import CommandTrigger from "@/components/CommandTrigger";
 import ThemeToggle from "@/components/ThemeToggle";
-import AlertsBell from "@/components/AlertsBell";
 import InstallButton from "@/components/InstallButton";
 import { TABS } from "@/lib/navigation";
 import MarketScreen from "@/components/screens/MarketScreen";
@@ -361,7 +360,6 @@ function PageInner() {
         <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <CommandTrigger />
           <span className="flex items-center gap-1.5">
-            {identity && <AlertsBell />}
             <ThemeToggle />
             <InstallButton />
           </span>

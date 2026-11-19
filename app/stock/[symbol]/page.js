@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import CommandTrigger from "@/components/CommandTrigger";
 import ThemeToggle from "@/components/ThemeToggle";
-import AlertsBell, { openAlerts } from "@/components/AlertsBell";
 import { pushRecentSymbol } from "@/lib/recentSymbols";
 import { Panel, SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import StockDepthPanel from "@/components/StockDepthPanel";
@@ -174,17 +173,6 @@ function SearchAnotherStock({ symbol }) {
   return (
     <div className="shrink-0 flex items-center gap-1.5 flex-wrap">
       <CommandTrigger />
-      {symbol && (
-        <button
-          type="button"
-          onClick={() => openAlerts({ symbol })}
-          className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[var(--radius-sm)] border text-xs transition-colors hover:border-[var(--border-strong)]"
-          style={{ borderColor: "var(--border)", color: "var(--text-muted)", background: "var(--surface)" }}
-        >
-          + Alert
-        </button>
-      )}
-      <AlertsBell />
       <ThemeToggle />
     </div>
   );

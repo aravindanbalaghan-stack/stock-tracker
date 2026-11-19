@@ -4,7 +4,7 @@ export default function manifest() {
   return {
     name: "Panel — Indian stock market analysis",
     short_name: "Panel",
-    description: "Watchlist, screeners, breadth, rotation, portfolio analytics and alerts for NSE stocks.",
+    description: "Watchlist, screeners, breadth, rotation, and portfolio analytics for NSE stocks.",
     id: "/",
     start_url: "/",
     scope: "/",
@@ -22,7 +22,6 @@ export default function manifest() {
       { name: "Watchlist", url: "/?tab=watchlist" },
       { name: "Holdings", url: "/?tab=holdings" },
       { name: "Screeners", url: "/?tab=screeners" },
-      { name: "Alerts", url: "/?alerts=1" },
     ],
   };
 }

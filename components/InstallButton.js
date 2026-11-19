@@ -59,8 +59,8 @@ export default function InstallButton() {
           className="absolute right-0 top-full mt-2 z-40 w-64 rounded-[var(--radius-sm)] border p-3 text-xs shadow-xl"
           style={{ borderColor: "var(--border-strong)", background: "var(--surface-2)", color: "var(--text)" }}
         >
-          In Safari, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. Open Panel from the home
-          screen to get alerts as notifications.
+          In Safari, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. Panel then opens like
+          an app from your home screen.
         </span>
       )}
     </span>

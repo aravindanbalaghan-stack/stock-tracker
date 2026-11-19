@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScreenHeader, SectionTitle, Panel, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import TradeForm from "@/components/TradeForm";
+import { QualityBadge, ChecklistManager, gradeScale } from "@/components/TradeChecklist";
 import QuickCapture from "@/components/QuickCapture";
 import { describeParse, parseQuickNote } from "@/lib/quickNote";
 import SymbolLink from "@/components/SymbolLink";
@@ -130,7 +131,29 @@ export default function JournalTab() {
   const [statusFilter, setStatusFilter] = usePersistentState("journal.status", "all");
   const [marks, setMarks] = useState({});
   const [importMsg, setImportMsg] = useState(null);
+  const [checklist, setChecklist] = useState(null); // your checklist points
+  const [managing, setManaging] = useState(false);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/journal/checklist")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.points && setChecklist(j.points))
+      .catch(() => {});
+  }, []);
+
+  async function saveChecklist(points) {
+    const res = await fetch("/api/journal/checklist", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ points }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j?.error || "Couldn't save the checklist");
+    setChecklist(j.points);
+    return j.points;
+  }
+  // "+ Add point" in a trade with "Keep it for future trades" ticked.
+  async function addToChecklist(text) {
+    const points = await saveChecklist([...(checklist ?? []), { id: `custom-${Date.now().toString(36)}`, text }]);
+    return points[points.length - 1];
+  }
 
   useEffect(() => {
     fetch("/api/journal")
@@ -245,6 +268,16 @@ export default function JournalTab() {
               <option value="csv">CSV</option>
               <option value="json">JSON</option>
             </select>
+            <button
+              type="button"
+              onClick={() => setManaging(true)}
+              disabled={!checklist}
+              className="text-xs px-2.5 py-1 rounded border"
+              style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}
+              title="The points every trade is scored against"
+            >
+              ✓ Checklist{checklist ? ` (${checklist.length})` : ""}
+            </button>
             <button type="button" onClick={() => fileRef.current?.click()} className="text-xs px-2.5 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
               Import
             </button>
@@ -381,6 +414,13 @@ export default function JournalTab() {
                 <GroupTable title="Plan discipline" rows={[...(stats.byPlan ?? []), ...(stats.cleanVsMistake ?? [])]} empty="Mark whether you followed your plan." />
               </Panel>
               <Panel>
+                <GroupTable
+                  title={`By checklist quality${stats.avgQualityPct != null ? ` · avg ${stats.avgQualityPct}%` : ""}`}
+                  rows={stats.byQuality}
+                  empty="Score trades against your checklist to see whether higher-quality trades pay more."
+                />
+              </Panel>
+              <Panel>
                 <GroupTable title="By emotion" rows={stats.byEmotion} empty="Tag how you felt." />
               </Panel>
               <Panel>
@@ -389,6 +429,44 @@ export default function JournalTab() {
               <Panel>
                 <GroupTable title="By month" rows={[...(stats.monthly ?? [])].reverse()} empty="—" />
               </Panel>
+            </div>
+          )}
+
+          {stats.byPoint?.length > 0 && (
+            <div>
+              <SectionTitle meta={`Closed trades · ${stats.scored} scored · grade = share of points ticked (${gradeScale()})`}>
+                Checklist — which points earn their place
+              </SectionTitle>
+              <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                <TableFrame name="journal-checklist">
+                  <table className="w-full border-collapse text-xs">
+                    <thead>
+                      <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
+                        <th className="py-2 pl-4 pr-2 font-medium">Point</th>
+                        <th className="py-2 px-2 font-medium text-right">Ticked</th>
+                        <th className="py-2 px-2 font-medium text-right">Win % when ticked</th>
+                        <th className="py-2 px-2 font-medium text-right">Skipped</th>
+                        <th className="py-2 px-2 font-medium text-right">Win % when skipped</th>
+                        <th className="py-2 px-2 pr-4 font-medium text-right" title="Win rate when ticked minus when skipped, in percentage points">Edge</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stats.byPoint.map((p) => (
+                        <tr key={p.key} className="border-b last:border-b-0" style={{ borderColor: "var(--border)" }}>
+                          <td className="py-2 pl-4 pr-2" style={{ color: "var(--text)" }}>{p.key}</td>
+                          <td className="py-2 px-2 text-right font-mono" style={{ color: "var(--text-muted)" }}>{p.ticked}</td>
+                          <td className="py-2 px-2 text-right font-mono" style={{ color: "var(--text-muted)" }}>{p.winTicked != null ? `${p.winTicked}%` : "—"}</td>
+                          <td className="py-2 px-2 text-right font-mono" style={{ color: "var(--text-muted)" }}>{p.missed}</td>
+                          <td className="py-2 px-2 text-right font-mono" style={{ color: "var(--text-muted)" }}>{p.winMissed != null ? `${p.winMissed}%` : "—"}</td>
+                          <td className="py-2 px-2 pr-4 text-right font-mono" style={{ color: tone(p.edge) }}>
+                            {p.edge != null ? `${p.edge > 0 ? "+" : ""}${p.edge} pts` : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </TableFrame>
+              </div>
             </div>
           )}
 
@@ -418,7 +496,7 @@ export default function JournalTab() {
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
-                      {["Entry", "Symbol", "Side", "Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days", "Setup", "Review"].map((h) => (
+                      {["Entry", "Symbol", "Side", "Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days", "Setup", "Quality", "Review"].map((h) => (
                         <th key={h} className={`py-2 px-2 font-medium ${["Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days"].includes(h) ? "text-right" : ""} ${h === "Entry" ? "pl-4" : ""}`}>
                           {h}
                         </th>
@@ -459,6 +537,9 @@ export default function JournalTab() {
                           {t.setup || "—"}
                         </td>
                         <td className="py-2 px-2">
+                          <QualityBadge quality={t.quality} />
+                        </td>
+                        <td className="py-2 px-2">
                           <span className="flex flex-wrap gap-1">
                             {t.followedPlan === false && <span className="text-[10px] px-1 rounded" style={{ background: "var(--loss-dim)", color: "var(--loss)" }}>broke plan</span>}
                             {(t.mistakes ?? []).slice(0, 2).map((m) => (
@@ -479,7 +560,18 @@ export default function JournalTab() {
         </div>
       )}
 
-      {editing && <TradeForm initial={editing.id ? editing : null} onSave={saveTrade} onDelete={deleteTrade} onClose={() => setEditing(null)} />}
+      {editing && (
+        <TradeForm
+          initial={editing.id ? editing : null}
+          onSave={saveTrade}
+          onDelete={deleteTrade}
+          onClose={() => setEditing(null)}
+          template={checklist}
+          onAddToTemplate={addToChecklist}
+          onManageChecklist={() => setManaging(true)}
+        />
+      )}
+      {managing && checklist && <ChecklistManager points={checklist} onSave={saveChecklist} onClose={() => setManaging(false)} />}
     </div>
   );
 }

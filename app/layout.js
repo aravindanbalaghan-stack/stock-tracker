@@ -1,11 +1,10 @@
 import "./globals.css";
 import CommandPalette from "@/components/CommandPalette";
-import AlertsPanel from "@/components/AlertsPanel";
 import { THEME_BOOT } from "@/lib/theme";
 
 export const metadata = {
   title: "Panel | NSE/BSE Watchlist",
-  description: "Watchlist, screeners, breadth, rotation, portfolio analytics and alerts for Indian equities.",
+  description: "Watchlist, screeners, breadth, rotation, and portfolio analytics for Indian equities.",
   applicationName: "Panel",
   appleWebApp: { capable: true, title: "Panel", statusBarStyle: "black-translucent" },
   icons: {
@@ -48,7 +47,6 @@ export default function RootLayout({ children }) {
         </a>
         {children}
         <CommandPalette />
-        <AlertsPanel />
       </body>
     </html>
   );

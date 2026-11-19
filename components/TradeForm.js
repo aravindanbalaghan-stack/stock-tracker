@@ -6,6 +6,8 @@
 
 import { useState } from "react";
 import { EMOTIONS, MISTAKES, enrich } from "@/lib/journalStats";
+import { ChecklistSection } from "@/components/TradeChecklist";
+import { checklistFrom, scoreChecklist } from "@/lib/tradeChecklist";
 
 const SEGMENTS = ["Equity – delivery", "Equity – intraday", "Futures", "Options"];
 const TIMEFRAMES = ["Intraday", "Swing (days)", "Positional (weeks+)"];
@@ -85,7 +87,7 @@ export function blankTrade() {
   };
 }
 
-export default function TradeForm({ initial, onSave, onDelete, onClose }) {
+export default function TradeForm({ initial, onSave, onDelete, onClose, template, onAddToTemplate, onManageChecklist }) {
   const [t, setT] = useState(() => ({
     ...blankTrade(),
     ...initial,
@@ -94,6 +96,9 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
     emotions: initial?.emotions ?? [],
     mistakes: initial?.mistakes ?? [],
     quickNotes: initial?.quickNotes ?? [],
+    // New trades (and notes being completed) start with your checklist;
+    // existing trades keep theirs, or stay unscored until you choose to.
+    checklist: initial?.checklist?.length ? initial.checklist : (!initial?.id || initial?.draft) && template?.length ? checklistFrom(template) : null,
   }));
   const [newNote, setNewNote] = useState("");
   const [error, setError] = useState(null);
@@ -101,6 +106,7 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
   const set = (k) => (e) => setT((p) => ({ ...p, [k]: e?.target ? e.target.value : e }));
 
   const n = (v) => (v === "" || v == null ? null : Number(v));
+  const quality = scoreChecklist(t.checklist);
   const preview = enrich({ ...t, draft: false, quantity: n(t.quantity) ?? 0, entryPrice: n(t.entryPrice) ?? 0, stopLoss: n(t.stopLoss), target: n(t.target), exitPrice: n(t.exitPrice), fees: n(t.fees) ?? 0 });
 
   async function save() {
@@ -145,6 +151,7 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
             {preview.netPnl != null ? `${preview.netPnl >= 0 ? "+" : "−"}₹${Math.abs(preview.netPnl).toLocaleString("en-IN")}` : "open"}
             {preview.rMultiple != null ? ` · ${preview.rMultiple}R` : ""}
             {preview.plannedRR != null ? ` · planned ${preview.plannedRR}:1` : ""}
+            {quality ? <span style={{ color: quality.grade.tone }}>{` · quality ${quality.grade.id}`}</span> : ""}
           </span>
         </div>
 
@@ -189,6 +196,19 @@ export default function TradeForm({ initial, onSave, onDelete, onClose }) {
             <F label="Target ₹"><input type="number" step="0.05" value={t.target} onChange={set("target")} className={`${inputCls} font-mono`} style={field} /></F>
             <F label="Charges ₹" hint="brokerage, STT…"><input type="number" step="0.01" value={t.fees} onChange={set("fees")} className={`${inputCls} font-mono`} style={field} /></F>
           </div>
+        </section>
+
+        <section>
+          <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--text-muted)" }}>
+            CHECKLIST <span className="font-normal">— tick what was true when you took the trade</span>
+          </p>
+          <ChecklistSection
+            value={t.checklist}
+            onChange={(checklist) => setT((p) => ({ ...p, checklist }))}
+            template={template}
+            onAddToTemplate={onAddToTemplate}
+            onManage={onManageChecklist}
+          />
         </section>
 
         <section>
