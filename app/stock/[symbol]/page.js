@@ -1,6 +1,7 @@
 "use client";
 
 import CapBadge from "@/components/CapBadge";
+import { FiiBadge, FiiDealsPanel } from "@/components/FiiStockActivity";
 import { use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -282,6 +283,7 @@ export default function StockInsightPage({ params }) {
           </div>
           <p className="text-xs mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: "var(--text-faint)" }}>
             <CapBadge symbol={sym} />
+            <FiiBadge symbol={sym} />
             {data?.industry && (
               <span
                 className="px-1.5 py-0.5 rounded border"
@@ -585,6 +587,8 @@ export default function StockInsightPage({ params }) {
           </div>
 
           {/* ---- Holdings ---- */}
+
+          <FiiDealsPanel symbol={sym} />
 
           {/* ---- Block deals & volume spikes ---- */}
           <div>

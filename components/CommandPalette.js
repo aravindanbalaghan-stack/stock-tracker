@@ -225,7 +225,7 @@ export default function CommandPalette() {
     // holding the best match comes first ("pocket" → the Pocket pivot
     // screener, not a stock literally called POCKET); items inside a group
     // sort by match quality.
-    const ORDER = ["Recent", "Stocks", "Go to", "Holdings", "Market", "Screeners", "Delivery", "Actions"];
+    const ORDER = ["Recent", "Stocks", "Go to", "Holdings", "Market", "FII / DII", "Screeners", "Delivery", "Actions"];
     const best = {};
     out.forEach((it) => {
       best[it.group] = Math.max(best[it.group] ?? 0, it.score);

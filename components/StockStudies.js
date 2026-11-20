@@ -35,6 +35,37 @@ const PLAN_EXPLAIN = {
   "Time exit": "Triggered, but neither stop nor target was hit within the horizon — closed at the last session's price.",
 };
 
+// "10 sessions" column: the 10-session move once it exists, otherwise the
+// move so far with how many sessions have passed.
+function StudyMove({ g }) {
+  if (!g) return <span style={{ color: "var(--text-faint)" }} title="No price history found for this symbol">—</span>;
+  const final = g.move10 != null;
+  const v = final ? g.move10 : g.moveSince;
+  const color = v > 0 ? "var(--gain)" : v < 0 ? "var(--loss)" : "var(--text-faint)";
+  if (v == null) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  return (
+    <span style={{ color }} title={final ? "Close 10 sessions after the study vs the close on the study day" : `Move so far — ${g.sessionsSince} of 10 sessions`}>
+      {v > 0 ? "+" : ""}
+      {v}%{!final && <span className="text-[10px] ml-1" style={{ color: "var(--text-faint)" }}>({g.sessionsSince}/10)</span>}
+    </span>
+  );
+}
+
+// "Result": the verdict graded at its horizon; until then, how it's tracking.
+function StudyResult({ g, verdict }) {
+  if (!verdict || verdict === "Wait") return <span style={{ color: "var(--text-faint)" }} title="Wait verdicts aren't graded">not graded</span>;
+  if (!g) return <span style={{ color: "var(--text-faint)" }} title="No price history found for this symbol">no data</span>;
+  if (g.correct != null) return g.correct ? <span style={{ color: "var(--gain)" }}>✓ right</span> : <span style={{ color: "var(--loss)" }}>✗ wrong</span>;
+  if (g.provisional == null) return <span style={{ color: "var(--text-faint)" }} title="No session has closed since the study yet">pending</span>;
+  const left = Math.max(0, (g.horizon ?? 10) - (g.sessionsSince ?? 0));
+  return (
+    <span style={{ color: g.provisional ? "var(--gain)" : "var(--loss)", opacity: 0.75 }} title={`Provisional — final grade after ${left} more session${left === 1 ? "" : "s"}`}>
+      {g.provisional ? "on track" : "off track"}
+      <span className="text-[10px] ml-1" style={{ color: "var(--text-faint)" }}>· {left} left</span>
+    </span>
+  );
+}
+
 export function blankStudy(symbol) {
   return {
     id: crypto.randomUUID(),
@@ -506,10 +537,12 @@ export default function StockStudies({ date, studies, setStudies, entries, event
                         <span style={{ color: TONE[h.timeframes?.Daily?.trend] ?? "var(--text-faint)" }}>{h.timeframes?.Daily?.trend || "—"}</span>
                       </td>
                       <td className="py-2 px-2 max-w-[14rem] truncate" style={{ color: "var(--text-muted)" }}>{(h.patterns ?? []).join(", ") || "—"}</td>
-                      <td className="py-2 px-2 font-mono" style={{ color: h.verdictGrade?.move10 >= 0 ? "var(--gain)" : h.verdictGrade?.move10 < 0 ? "var(--loss)" : "var(--text-faint)" }}>
-                        {signed(h.verdictGrade?.move10 ?? null)}
+                      <td className="py-2 px-2 font-mono">
+                        <StudyMove g={h.verdictGrade} />
                       </td>
-                      <td className="py-2 px-2">{h.verdictGrade?.correct == null ? "—" : h.verdictGrade.correct ? <span style={{ color: "var(--gain)" }}>✓ right</span> : <span style={{ color: "var(--loss)" }}>✗ wrong</span>}</td>
+                      <td className="py-2 px-2">
+                        <StudyResult g={h.verdictGrade} verdict={h.verdict} />
+                      </td>
                       <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{h.planOutcome?.status ?? "—"}</td>
                     </tr>
                   ))}

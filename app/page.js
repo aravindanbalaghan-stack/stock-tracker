@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import TickerTape from "@/components/TickerTape";
 import AddStock from "@/components/AddStock";
@@ -11,6 +12,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import InstallButton from "@/components/InstallButton";
 import { TABS } from "@/lib/navigation";
 import MarketScreen from "@/components/screens/MarketScreen";
+import FiiTab from "@/components/FiiTab";
 import DeliveryScreen from "@/components/screens/DeliveryScreen";
 import ScreenersScreen from "@/components/screens/ScreenersScreen";
 import HoldingsTab from "@/components/HoldingsTab";
@@ -27,7 +29,7 @@ import AnalysisTab from "@/components/AnalysisTab";
 import StockDataTab from "@/components/StockDataTab";
 import { marketIsOpen } from "@/lib/marketHours";
 
-const REFRESH_MS = 12000;
+const REFRESH_MS = 60 * 1000;
 
 // Closely-related screens live together behind sub-navigation (see
 // components/screens/) rather than competing for space in one long row:
@@ -123,7 +125,7 @@ function PageInner() {
     fetchQuotes(symbols);
 
     if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => fetchQuotes(symbols), REFRESH_MS);
+    pollRef.current = setInterval(() => shouldPoll() && fetchQuotes(symbols), REFRESH_MS);
     return () => clearInterval(pollRef.current);
   }, [symbols, fetchQuotes]);
 
@@ -435,6 +437,7 @@ function PageInner() {
         )}
         {activeTab === "holdings" && <HoldingsTab />}
         {activeTab === "market" && <MarketScreen />}
+        {activeTab === "fii" && <FiiTab />}
         {activeTab === "delivery" && (
           <DeliveryScreen onAddToWatchlist={handleAdd} watchlistSymbols={symbols} />
         )}

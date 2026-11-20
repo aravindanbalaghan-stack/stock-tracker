@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
@@ -26,7 +27,7 @@ const SECTIONS = [
 ];
 
 // Same cadence as the Watchlist / Home's My Top 5 live prices.
-const QUOTE_REFRESH_MS = 12000;
+const QUOTE_REFRESH_MS = 60 * 1000;
 
 const tone = (v) => (v == null ? "var(--text-faint)" : v >= 0 ? "var(--gain)" : "var(--loss)");
 
@@ -429,6 +430,7 @@ export default function HoldingsTab() {
   useEffect(() => {
     if (!symbolKey) return;
     const id = setInterval(async () => {
+      if (!shouldPoll()) return;
       try {
         const res = await fetch(`/api/quote?symbols=${encodeURIComponent(symbolKey)}`);
         if (!res.ok) return;

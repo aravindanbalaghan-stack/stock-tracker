@@ -4,13 +4,18 @@
 // form, and the dialog where you edit the checklist itself.
 
 import { useState } from "react";
-import { GRADES, gradeOf, scoreChecklist } from "@/lib/tradeChecklist";
+import { GRADES, gradeOf, scoreChecklist, SCOPES } from "@/lib/tradeChecklist";
 
 const field = { background: "var(--surface-2)", borderColor: "var(--border)", color: "var(--text)" };
 const inputCls = "rounded px-2 py-1.5 text-sm outline-none border w-full";
 
 export function QualityBadge({ quality, compact = false }) {
-  if (!quality) return <span style={{ color: "var(--text-faint)" }}>—</span>;
+  if (!quality)
+    return (
+      <span className="text-[10px]" style={{ color: "var(--text-faint)" }} title="Not scored against your checklist — open the trade and click Score it now">
+        not scored
+      </span>
+    );
   const g = gradeOf(quality.pct);
   return (
     <span
@@ -30,7 +35,7 @@ export const gradeScale = () => GRADES.map((g) => `${g.id} ${g.min ? `≥${g.min
  * The tick-list inside the trade form. `value` is the trade's own checklist
  * ([{id, text, done}]) or null when it hasn't been scored.
  */
-export function ChecklistSection({ value, onChange, template, onAddToTemplate, onManage }) {
+export function ChecklistSection({ value, onChange, template, onAddToTemplate, onManage, instrument = "stock" }) {
   const [draft, setDraft] = useState("");
   const [saveToTemplate, setSaveToTemplate] = useState(true);
   const [msg, setMsg] = useState(null);
@@ -70,7 +75,7 @@ export function ChecklistSection({ value, onChange, template, onAddToTemplate, o
     setMsg(null);
     if (saveToTemplate && onAddToTemplate) {
       try {
-        point = (await onAddToTemplate(text)) ?? point;
+        point = (await onAddToTemplate(text, instrument)) ?? point;
       } catch (err) {
         setMsg(`Added to this trade only — ${err.message}`);
       }
@@ -140,7 +145,7 @@ export function ChecklistSection({ value, onChange, template, onAddToTemplate, o
         />
         <label className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
           <input type="checkbox" checked={saveToTemplate} onChange={(e) => setSaveToTemplate(e.target.checked)} />
-          Keep it for future trades
+          Keep it for future {instrument === "index" ? "index" : "stock"} trades
         </label>
         <button type="button" onClick={add} disabled={!draft.trim()} className="text-xs px-3 py-1.5 rounded border" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
           + Add point
@@ -169,9 +174,12 @@ export function ChecklistManager({ points, onSave, onClose }) {
   const add = () => {
     const text = draft.replace(/\s+/g, " ").trim();
     if (!text) return;
-    setList((l) => [...l, { id: `custom-${Date.now().toString(36)}`, text }]);
+    setList((l) => [...l, { id: `custom-${Date.now().toString(36)}`, text, scope: newScope }]);
     setDraft("");
   };
+  const [newScope, setNewScope] = useState("both");
+  const [show, setShow] = useState("all");
+  const count = (id) => list.filter((p) => (p.scope ?? "both") === "both" || (p.scope ?? "both") === id).length;
 
   async function save() {
     setError(null);
@@ -206,12 +214,32 @@ export function ChecklistManager({ points, onSave, onClose }) {
               Trade checklist
             </h3>
             <p className="text-xs mt-1 leading-relaxed" style={{ color: "var(--text-muted)" }}>
-              Every new trade starts with these points. Its quality grade is the share you tick — {gradeScale()}. Each trade keeps
-              its own copy, so changing this list doesn&apos;t change the grades of trades already logged.
+              Every new trade starts with the points for what it is — a stock, or an index like NIFTY / BANK NIFTY. Its quality
+              grade is the share you tick — {gradeScale()}. Each trade keeps its own copy, so changing this list doesn&apos;t change
+              the grades of trades already logged.
             </p>
+            <div className="flex items-center gap-1.5 mt-2 text-[11px]" role="group" aria-label="Show points for">
+              {[
+                ["all", `All ${list.length}`],
+                ["stock", `Stock trades see ${count("stock")}`],
+                ["index", `Index trades see ${count("index")}`],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setShow(id)}
+                  aria-pressed={show === id}
+                  className="px-2 py-0.5 rounded-full border"
+                  style={show === id ? { borderColor: "var(--accent)", color: "var(--accent)" } : { borderColor: "var(--border)", color: "var(--text-muted)" }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
           <ol className="flex flex-col gap-1">
-            {list.map((p, i) => (
+            {list.map((p, i) =>
+              show !== "all" && (p.scope ?? "both") !== "both" && p.scope !== show ? null : (
               <li key={p.id} className="flex items-center gap-1.5">
                 <span className="w-5 text-right text-[11px] font-mono shrink-0" style={{ color: "var(--text-faint)" }}>
                   {i + 1}
@@ -223,6 +251,20 @@ export function ChecklistManager({ points, onSave, onClose }) {
                   style={field}
                   aria-label={`Point ${i + 1}`}
                 />
+                <select
+                  value={p.scope ?? "both"}
+                  onChange={(e) => setList((l) => l.map((x, k) => (k === i ? { ...x, scope: e.target.value } : x)))}
+                  className="rounded px-1.5 py-1.5 text-xs border shrink-0 w-[5.5rem]"
+                  style={field}
+                  aria-label={`Point ${i + 1} applies to`}
+                  title="Which trades this point appears on"
+                >
+                  {SCOPES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
                 <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="text-xs px-1.5 py-1 rounded border" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }} aria-label="Move up">
                   ↑
                 </button>
@@ -233,7 +275,8 @@ export function ChecklistManager({ points, onSave, onClose }) {
                   ✕
                 </button>
               </li>
-            ))}
+              )
+            )}
           </ol>
           <div className="flex gap-2">
             <input
@@ -249,6 +292,13 @@ export function ChecklistManager({ points, onSave, onClose }) {
               className={inputCls}
               style={field}
             />
+            <select value={newScope} onChange={(e) => setNewScope(e.target.value)} className="rounded px-1.5 py-1.5 text-xs border shrink-0 w-[5.5rem]" style={field} aria-label="New point applies to">
+              {SCOPES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
             <button type="button" onClick={add} disabled={!draft.trim()} className="text-xs px-3 py-1.5 rounded border shrink-0" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
               + Add
             </button>

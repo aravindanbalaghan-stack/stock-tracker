@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useState } from "react";
 import { SectionTitle, ErrorState, LoadingState } from "@/components/ui/Chrome";
 import { fmt } from "@/lib/format";
@@ -129,7 +130,7 @@ export default function IndicesTab() {
       }
     }
     load();
-    const id = setInterval(load, 30000);
+    const id = setInterval(() => shouldPoll() && load(), 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

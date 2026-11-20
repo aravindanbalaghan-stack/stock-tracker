@@ -10,6 +10,7 @@ import { ScreenHeader, SectionTitle, Panel, ErrorState, LoadingState } from "@/c
 import TradeForm from "@/components/TradeForm";
 import { QualityBadge, ChecklistManager, gradeScale } from "@/components/TradeChecklist";
 import QuickCapture from "@/components/QuickCapture";
+import JournalCapital from "@/components/JournalCapital";
 import { describeParse, parseQuickNote } from "@/lib/quickNote";
 import SymbolLink from "@/components/SymbolLink";
 import { enrich, computeStats, insights, exportRows, EXPORT_COLUMNS, aiReviewPack } from "@/lib/journalStats";
@@ -133,7 +134,21 @@ export default function JournalTab() {
   const [importMsg, setImportMsg] = useState(null);
   const [checklist, setChecklist] = useState(null); // your checklist points
   const [managing, setManaging] = useState(false);
+  const [capital, setCapital] = useState(null);
   const fileRef = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/journal/settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.capital && setCapital(j.capital))
+      .catch(() => {});
+  }, []);
+  async function saveCapital(value) {
+    const res = await fetch("/api/journal/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ capital: value }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j?.error || "Couldn't save");
+    setCapital(j.capital);
+  }
 
   useEffect(() => {
     fetch("/api/journal/checklist")
@@ -150,8 +165,8 @@ export default function JournalTab() {
     return j.points;
   }
   // "+ Add point" in a trade with "Keep it for future trades" ticked.
-  async function addToChecklist(text) {
-    const points = await saveChecklist([...(checklist ?? []), { id: `custom-${Date.now().toString(36)}`, text }]);
+  async function addToChecklist(text, scope = "both") {
+    const points = await saveChecklist([...(checklist ?? []), { id: `custom-${Date.now().toString(36)}`, text, scope }]);
     return points[points.length - 1];
   }
 
@@ -167,7 +182,7 @@ export default function JournalTab() {
 
   // Live prices for open trades, so unrealised P&L shows.
   const openSymbols = useMemo(
-    () => [...new Set((trades ?? []).filter((t) => !t.draft && t.exitPrice == null && t.symbol).map((t) => t.symbol))].join(","),
+    () => [...new Set((trades ?? []).filter((t) => !t.draft && t.exitPrice == null && t.symbol && !/^(NIFTY|BANKNIFTY|FINNIFTY|MIDCPNIFTY|SENSEX)\d/.test(t.symbol)).map((t) => t.symbol))].join(","),
     [trades]
   );
   useEffect(() => {
@@ -185,7 +200,7 @@ export default function JournalTab() {
   const notes = insights(stats);
   const drafts = enriched.filter((t) => t.status === "Draft");
   const listed = inPeriod.filter((t) => t.status !== "Draft" && (statusFilter === "all" || t.status.toLowerCase() === statusFilter));
-  const unrealised = enriched.filter((t) => t.status === "Open" && t.netPnl != null).reduce((a, t) => a + t.netPnl, 0);
+  const unrealised = enriched.filter((t) => (t.status === "Open" || t.status === "Partial") && t.netPnl != null).reduce((a, t) => a + t.netPnl, 0);
 
   async function saveTrade(t) {
     const res = await fetch("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trade: t }) });
@@ -299,6 +314,7 @@ export default function JournalTab() {
 
       {trades && (
         <div className="mb-6 flex flex-col gap-3">
+          <JournalCapital capital={capital} onSaveCapital={saveCapital} enriched={enriched} />
           <QuickCapture trades={trades} onSaveTrade={saveTrade} />
           {drafts.length > 0 && (
             <div>
@@ -475,7 +491,7 @@ export default function JournalTab() {
             <SectionTitle
               meta={
                 <span className="inline-flex gap-1">
-                  {["all", "open", "closed"].map((s) => (
+                  {["all", "open", "partial", "closed"].map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -518,14 +534,44 @@ export default function JournalTab() {
                         <td className="py-2 px-2" style={{ color: t.side === "Long" ? "var(--gain)" : "var(--loss)" }}>
                           {t.side}
                         </td>
-                        <td className="py-2 px-2 text-right font-mono">{t.quantity}</td>
-                        <td className="py-2 px-2 text-right font-mono">{t.entryPrice}</td>
-                        <td className="py-2 px-2 text-right font-mono" style={{ color: t.status === "Open" ? "var(--text-faint)" : undefined }}>
-                          {t.exitPrice ?? (t.markPrice != null ? `${t.markPrice} now` : "open")}
+                        <td className="py-2 px-2 text-right font-mono">
+                          {t.quantity}
+                          {t.status === "Partial" && (
+                            <span className="block text-[10px]" style={{ color: "var(--accent)" }}>
+                              {t.openQty} open
+                            </span>
+                          )}
                         </td>
-                        <td className="py-2 px-2 text-right font-mono" style={{ color: tone(t.netPnl) }}>
-                          {inr(t.netPnl)}
+                        <td className="py-2 px-2 text-right font-mono" title={t.adds ? `Average of ${t.adds + 1} buys` : undefined}>
+                          {Math.round(t.entryPrice * 100) / 100}
+                          {t.adds > 0 && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              avg · {t.adds + 1} fills
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: t.status === "Open" ? "var(--text-faint)" : undefined }}>
+                          {t.status === "Closed"
+                            ? Math.round(t.exitPrice * 100) / 100
+                            : t.status === "Partial"
+                            ? `${t.exitedQty} @ ${Math.round(t.exitAvg * 100) / 100}`
+                            : t.markPrice != null
+                            ? `${t.markPrice} now`
+                            : "open"}
+                          {t.status === "Closed" && t.exitsCount > 1 && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              avg · {t.exitsCount} exits
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-right font-mono" style={{ color: tone(t.netPnl ?? t.realisedPnl) }}>
+                          {t.netPnl != null ? inr(t.netPnl) : t.realisedPnl != null ? inr(t.realisedPnl) : inr(null)}
                           {t.status === "Open" && t.netPnl != null && <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>unrealised</span>}
+                          {t.status === "Partial" && (
+                            <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                              {t.netPnl != null ? `booked ${inr(t.realisedPnl)}` : "booked so far"}
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right font-mono" style={{ color: tone(t.rMultiple) }}>
                           {t.rMultiple == null ? "—" : `${t.rMultiple}R`}
@@ -567,6 +613,7 @@ export default function JournalTab() {
           onDelete={deleteTrade}
           onClose={() => setEditing(null)}
           template={checklist}
+          capital={capital}
           onAddToTemplate={addToChecklist}
           onManageChecklist={() => setManaging(true)}
         />

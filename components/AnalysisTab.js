@@ -1027,6 +1027,10 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                       {entries.map((e) => {
                         const g = (id) => e.biasGrade?.[id];
                         const res = e.ideas.map((i) => ideaWon(i.outcome)).filter((x) => x != null);
+                        const live = e.ideas.filter((i) => i.outcome?.status === "Open").length;
+                        const waiting = e.ideas.filter((i) => !i.outcome || i.outcome.status === "Waiting").length;
+                        const missed = e.ideas.filter((i) => i.outcome?.status === "Not triggered").length;
+                        const studies = (e.studies ?? []).filter((s) => s.verdictGrade?.correct != null);
                         return (
                           <tr key={e.date} onClick={() => setDate(e.date)} className="border-b last:border-b-0 cursor-pointer hover:bg-[var(--hover-soft)]" style={{ borderColor: "var(--border)", background: e.date === date ? "var(--surface-2)" : undefined }}>
                             <td className="py-2 pl-4 pr-2 font-mono" style={{ color: "var(--text)" }}>
@@ -1040,13 +1044,20 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
                             ))}
                             <td className="py-2 px-2 font-mono">{e.ideas.length}</td>
                             <td className="py-2 px-2 font-mono">
-                              {res.length ? (
+                              {res.length > 0 && (
                                 <>
-                                  <span style={{ color: "var(--gain)" }}>{res.filter(Boolean).length}✓</span> <span style={{ color: "var(--loss)" }}>{res.filter((x) => !x).length}✗</span>
+                                  <span style={{ color: "var(--gain)" }}>{res.filter(Boolean).length}✓</span> <span style={{ color: "var(--loss)" }}>{res.filter((x) => !x).length}✗</span>{" "}
                                 </>
-                              ) : (
-                                "—"
                               )}
+                              {live > 0 && <span className="text-[10px] mr-1" style={{ color: "var(--accent)" }}>{live} open</span>}
+                              {waiting > 0 && <span className="text-[10px] mr-1" style={{ color: "var(--text-faint)" }}>{waiting} waiting</span>}
+                              {missed > 0 && <span className="text-[10px] mr-1" style={{ color: "var(--text-faint)" }}>{missed} not triggered</span>}
+                              {studies.length > 0 && (
+                                <span className="text-[10px]" style={{ color: "var(--text-muted)" }} title="Stock studies graded at their horizon">
+                                  studies {studies.filter((s) => s.verdictGrade.correct).length}/{studies.length}✓
+                                </span>
+                              )}
+                              {!res.length && !live && !waiting && !missed && !studies.length && <span style={{ color: "var(--text-faint)" }} title="No ideas or studies on this day">—</span>}
                             </td>
                             <td className="py-2 px-2 max-w-[24rem] truncate" style={{ color: "var(--text-muted)" }} title={e.lessons}>
                               {e.lessons || "—"}

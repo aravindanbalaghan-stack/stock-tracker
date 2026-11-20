@@ -613,10 +613,9 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
       }
     }
     load();
-    const id = setInterval(load, 5 * 60 * 1000);
+    // End-of-day data: no auto-refresh (it changes once a day, after the close).
     return () => {
       cancelled = true;
-      clearInterval(id);
     };
   }, [period, asOfDate, bucket]);
 

@@ -1,4 +1,28 @@
 import { currentPlanDate } from "@/lib/planDate";
+import { kv } from "@/lib/kv";
+import { expectedSession } from "@/lib/precompute";
+
+// Grading fetches price history for every idea and study, so the result is
+// kept until either your entries change or a new trading session closes —
+// opening Analysis again costs one small database read, not a recompute.
+function hashOf(s) {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+async function gradeCached(user, scope, entries) {
+  const key = `analysis-graded:v1:${user}:${scope}`;
+  const [session, hash] = await Promise.all([expectedSession().catch(() => null), Promise.resolve(hashOf(JSON.stringify(entries)))]);
+  try {
+    const hit = await kv.get(key);
+    if (hit && hit.hash === hash && hit.session === session && Array.isArray(hit.graded)) return hit.graded;
+  } catch {
+    // no cache — grade below
+  }
+  const graded = await gradeEntries(entries);
+  kv.set(key, { hash, session, graded, at: new Date().toISOString() }).catch(() => {});
+  return graded;
+}
 import { getSessionUser } from "@/lib/auth";
 import {
   getEntries,
@@ -71,14 +95,14 @@ export async function GET(request) {
     const symbol = searchParams.get("symbol")?.trim().toUpperCase();
     if (symbol) {
       const mine = entries.filter((e) => e.ideas.some((i) => i.symbol === symbol) || (e.studies ?? []).some((st) => st.symbol === symbol));
-      const graded = await gradeEntries(mine);
+      const graded = await gradeCached(user, `sym:${symbol}`, mine);
       return Response.json({
         symbol,
         ideas: graded.flatMap((e) => e.ideas.filter((i) => i.symbol === symbol).map((i) => ({ ...i, date: e.date }))),
         studies: graded.flatMap((e) => (e.studies ?? []).filter((st) => st.symbol === symbol).map((st) => ({ ...st, date: e.date }))),
       });
     }
-    const [graded, prefs] = await Promise.all([gradeEntries(entries), getPrefs(user)]);
+    const [graded, prefs] = await Promise.all([gradeCached(user, "all", entries), getPrefs(user)]);
     return Response.json({ entries: graded, prefs });
   });
 }

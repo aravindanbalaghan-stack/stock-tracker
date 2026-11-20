@@ -5,11 +5,12 @@
 // holidays and outside hours it holds still and says Closed, since the
 // values are just the last close.
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useState } from "react";
 import { marketIsOpen } from "@/lib/marketHours";
 import { fmt } from "@/lib/format";
 
-const REFRESH_MS = 30 * 1000;
+const REFRESH_MS = 2 * 60 * 1000;
 
 function TickerItem({ q }) {
   const up = (q.change ?? 0) >= 0;
@@ -58,7 +59,7 @@ export default function TickerTape() {
         cancelled = true;
       };
     }
-    const id = setInterval(load, REFRESH_MS);
+    const id = setInterval(() => shouldPoll() && load(), REFRESH_MS);
     return () => {
       cancelled = true;
       clearInterval(id);

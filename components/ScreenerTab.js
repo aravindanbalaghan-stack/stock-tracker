@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
@@ -575,7 +576,7 @@ export default function ScreenerTab({ screen, archived = false, onAddToWatchlist
   // because a full screen re-run is a heavy request, not a quote poll.
   useEffect(() => {
     if (!liveMode || asOfDate) return;
-    const id = setInterval(() => setRefreshTick((t) => t + 1), 90 * 1000);
+    const id = setInterval(() => shouldPoll() && setRefreshTick((t) => t + 1), 3 * 60 * 1000);
     return () => clearInterval(id);
   }, [liveMode, asOfDate]);
 

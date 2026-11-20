@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
@@ -76,7 +77,7 @@ function LiveCard() {
     // setup like this one — wiring up minute-level background alerts
     // would need a more frequent scheduled job than what's currently set
     // up in vercel.json.
-    const id = setInterval(load, 60 * 1000);
+    const id = setInterval(() => shouldPoll() && load(), 2 * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(id);

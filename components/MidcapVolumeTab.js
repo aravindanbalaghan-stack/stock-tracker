@@ -1,5 +1,6 @@
 "use client";
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useState } from "react";
 import { useSortableRows } from "@/lib/useSortableRows";
 import SortableTh from "@/components/SortableTh";
@@ -26,7 +27,7 @@ export default function MidcapVolumeTab() {
       }
     }
     load();
-    const id = setInterval(load, 45000); // live data now — refresh roughly as often as the watchlist
+    const id = setInterval(() => shouldPoll() && load(), 2 * 60 * 1000); // only while visible, in market hours
     return () => {
       cancelled = true;
       clearInterval(id);

@@ -3,6 +3,7 @@
 // Header badge: has tonight's precompute run for the latest session?
 // Click for details and a "Prepare now" button (lib/precompute.js).
 
+import { shouldPoll } from "@/lib/usePolling";
 import { useEffect, useRef, useState } from "react";
 
 function fmtTime(iso) {
@@ -26,7 +27,7 @@ export default function DataStatus() {
 
   useEffect(() => {
     Promise.resolve().then(load);
-    const id = setInterval(load, s?.running ? 5000 : 60000);
+    const id = setInterval(() => shouldPoll({ marketHoursOnly: false }) && load(), s?.running ? 15000 : 10 * 60 * 1000);
     return () => clearInterval(id);
   }, [s?.running]);
 
