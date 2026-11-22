@@ -11,7 +11,7 @@ function hashOf(s) {
   return (h >>> 0).toString(36);
 }
 async function gradeCached(user, scope, entries) {
-  const key = `analysis-graded:v1:${user}:${scope}`;
+  const key = `analysis-graded:v2:${user}:${scope}`; // v2: index grades from NSE's own file
   const [session, hash] = await Promise.all([expectedSession().catch(() => null), Promise.resolve(hashOf(JSON.stringify(entries)))]);
   try {
     const hit = await kv.get(key);

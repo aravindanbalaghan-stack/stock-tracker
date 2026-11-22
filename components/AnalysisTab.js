@@ -217,11 +217,18 @@ function Scorecard({ s, notes, entries, onPick }) {
   );
 }
 
-function Snapshot({ snap }) {
+function Snapshot({ snap, date }) {
   if (!snap) return <LoadingState>Loading the market snapshot…</LoadingState>;
   if (!snap.available) return <p className="text-xs" style={{ color: "var(--text-faint)" }}>No NSE data for this day.</p>;
   const b = snap.breadth;
   return (
+    <>
+    {date && snap.date !== date && (
+      <p className="text-xs mb-3 rounded-[var(--radius-sm)] px-2.5 py-1.5" style={{ background: "var(--surface-2)", color: "var(--tier-mid)" }}>
+        NSE hasn&apos;t published the files for {date} yet — showing the last session available ({snap.date}). It updates once they&apos;re out
+        (usually by 7–8 pm), and only that day&apos;s snapshot is saved with this entry.
+      </p>
+    )}
     <div className="grid gap-3 md:grid-cols-3">
       <div>
         <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--text-faint)" }}>
@@ -279,6 +286,7 @@ function Snapshot({ snap }) {
         ))}
       </div>
     </div>
+    </>
   );
 }
 
@@ -409,9 +417,13 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
   const dirty = planDirty || reviewDirty;
   const resetEdits = () => setEdit({ plan: null, review: null });
 
-  // Market snapshot for the day (saved snapshot first, else live).
+  // Market snapshot for the day: the saved one only when it really is this
+  // session's (an entry can carry one saved on another evening — a plan
+  // written days earlier used to store that evening's market here, which
+  // pinned the snapshot to the wrong date). Otherwise fetched live.
+  const savedSnap = saved?.snapshot?.date === date ? saved.snapshot : null;
   useEffect(() => {
-    if (saved?.snapshot) return;
+    if (savedSnap) return;
     let alive = true;
     fetch(`/api/analysis?snapshot=${date}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -420,8 +432,8 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
     return () => {
       alive = false;
     };
-  }, [date, saved?.snapshot]);
-  const snapshot = saved?.snapshot ?? (snap.date === date ? snap.data : null);
+  }, [date, savedSnap]);
+  const snapshot = savedSnap ?? (snap.date === date ? snap.data : null);
 
   // Latest prices for the day's ideas.
   const ideaSymbols = (draft?.ideas ?? []).map((i) => i.symbol).filter(Boolean).join(",");
@@ -453,11 +465,13 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
     setSaving(true);
     setMsg(null);
     try {
-      // The evening's snapshot (the session's close) is stored with both:
-      // it's what the market looked like when you wrote them.
+      // The session's snapshot is stored with that session's own entry, and
+      // only once NSE's files for it are out (its date matches). The plan
+      // for the next day isn't given one — its own evening will save it.
+      const ownSnap = (d, current) => (current?.date === d ? current : snapshot?.date === d ? snapshot : null);
       const toSave = [];
-      if (reviewDirty) toSave.push({ ...reviewDraft, snapshot: reviewDraft.snapshot ?? snapshot ?? null });
-      if (planDirty) toSave.push({ ...draft, snapshot: draft.snapshot ?? snapshot ?? null });
+      if (reviewDirty) toSave.push({ ...reviewDraft, snapshot: ownSnap(date, reviewDraft.snapshot) });
+      if (planDirty) toSave.push({ ...draft, snapshot: ownSnap(planDate, draft.snapshot) });
       for (const entry of toSave) {
         const res = await fetch("/api/analysis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ entry }) });
         const j = await res.json();
@@ -743,7 +757,7 @@ export default function AnalysisTab({ onAddToWatchlist, watchlistSymbols = [] })
           <div>
             <SectionTitle meta="Saved with the day, so you can see later what the market looked like when you wrote it">Market snapshot</SectionTitle>
             <Panel>
-              <Snapshot snap={snapshot} />
+              <Snapshot snap={snapshot} date={date} />
             </Panel>
             </div>
 
