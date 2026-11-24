@@ -9,6 +9,7 @@ import { EMOTIONS, MISTAKES, enrich } from "@/lib/journalStats";
 import { ChecklistSection } from "@/components/TradeChecklist";
 import { checklistFrom, scoreChecklist, instrumentOf, reshapeChecklist, appliesTo } from "@/lib/tradeChecklist";
 import { legsOf, positionOf } from "@/lib/tradeLegs";
+import TradeScreenshots from "@/components/TradeScreenshots";
 
 const today = () => new Date(Date.now() + 19800 * 1000).toISOString().slice(0, 10);
 const inr = (n, d = 0) => `₹${Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: d })}`;
@@ -123,6 +124,8 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
     // existing trades keep theirs, or stay unscored until you choose to.
     checklist: initial?.checklist?.length ? initial.checklist : null,
     instrument: initial?.instrument ?? "",
+    paper: initial?.paper === true, // unticked for every new trade
+    screenshots: initial?.screenshots ?? [],
     // Fills as strings for the inputs. A draft or an old single-entry trade
     // starts from its entry / exit fields.
     legs: (() => {
@@ -163,7 +166,8 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
   const stop = n(t.stopLoss);
   const dir = t.side === "Short" ? -1 : 1;
   const atRisk = pos.openQty && stop != null ? Math.max(0, (pos.openAvg - stop) * dir) * pos.openQty : null;
-  const pctOf = (v) => (capital > 0 && v != null ? Math.round((v / capital) * 1000) / 10 : null);
+  // Paper trades use no real capital, so nothing is shown as a % of it.
+  const pctOf = (v) => (!t.paper && capital > 0 && v != null ? Math.round((v / capital) * 1000) / 10 : null);
 
   async function save() {
     setError(null);
@@ -189,6 +193,8 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
         ...t,
         legs,
         instrument,
+        paper: !!t.paper,
+        screenshots: t.screenshots,
         symbol: t.symbol.trim().toUpperCase(),
         // Saving the full form completes a draft.
         draft: false,
@@ -210,11 +216,22 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
     <div className="fixed inset-0 z-50 overflow-y-auto" style={{ background: "var(--scrim)" }} onClick={onClose}>
       <div className="min-h-full flex justify-center px-3 py-6">
       <div role="dialog" aria-modal="true" aria-label="Trade" className="w-full max-w-3xl my-auto rounded-lg border p-4 flex flex-col gap-4" style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-baseline justify-between">
-          <h3 className="font-display text-lg" style={{ color: "var(--text)" }}>
-            {initial?.draft ? `Complete ${initial.symbol || "trade"}` : initial?.id ? `Edit ${initial.symbol}` : "New trade"}
-          </h3>
-          <span className="text-xs font-mono" style={{ color: preview.netPnl == null ? "var(--text-faint)" : preview.netPnl >= 0 ? "var(--gain)" : "var(--loss)" }}>
+        <div className="flex items-baseline justify-between gap-3 flex-wrap">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <h3 className="font-display text-lg" style={{ color: "var(--text)" }}>
+              {initial?.draft ? `Complete ${initial.symbol || "trade"}` : initial?.id ? `Edit ${initial.symbol}` : "New trade"}
+            </h3>
+            <label
+              className="inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded border cursor-pointer"
+              style={t.paper ? { borderColor: "var(--tier-mid)", color: "var(--tier-mid)" } : { borderColor: "var(--border)", color: "var(--text-muted)" }}
+              title="Practice trade: its result is tracked on its own and never counted in your real P&L, returns or capital"
+            >
+              <input type="checkbox" checked={t.paper} onChange={(e) => setT((p) => ({ ...p, paper: e.target.checked }))} />
+              Paper trade
+            </label>
+          </div>
+          <span className="text-xs font-mono" style={{ color: preview.netPnl == null ? "var(--text-faint)" : t.paper ? "var(--text-muted)" : preview.netPnl >= 0 ? "var(--gain)" : "var(--loss)" }}>
+            {t.paper && (preview.netPnl != null || preview.realisedPnl != null) ? "paper " : ""}
             {preview.netPnl != null
               ? `${preview.netPnl >= 0 ? "+" : "−"}${inr(preview.netPnl)}`
               : preview.realisedPnl != null
@@ -225,6 +242,13 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
             {quality ? <span style={{ color: quality.grade.tone }}>{` · quality ${quality.grade.id}`}</span> : ""}
           </span>
         </div>
+
+        <section>
+          <p className="text-[11px] font-semibold mb-2" style={{ color: "var(--text-muted)" }}>
+            SCREENSHOTS <span className="font-normal">— charts at entry, exit, anything worth seeing again</span>
+          </p>
+          <TradeScreenshots shots={t.screenshots} onChange={(screenshots) => setT((p) => ({ ...p, screenshots }))} />
+        </section>
 
         {(t.quickNotes.length > 0 || initial?.id) && (
           <section className="rounded-[var(--radius-sm)] p-3" style={{ background: "var(--surface-2)" }}>
@@ -321,19 +345,19 @@ export default function TradeForm({ initial, onSave, onDelete, onClose, template
               <Readout
                 label="Capital deployed"
                 value={pos.openQty ? inr(deployed) : "₹0"}
-                sub={capital > 0 ? `${pctOf(deployed)}% of your ₹${capital.toLocaleString("en-IN")}` : "set your trading capital in Journal to see the %"}
+                sub={t.paper ? "paper — no real money in it" : capital > 0 ? `${pctOf(deployed)}% of your ₹${capital.toLocaleString("en-IN")}` : "set your trading capital in Journal to see the %"}
                 tone={pctOf(deployed) > 25 ? "var(--tier-mid)" : undefined}
               />
               <Readout
                 label="At risk to stop"
                 value={atRisk != null ? inr(atRisk) : "—"}
-                sub={atRisk != null ? (capital > 0 ? `${pctOf(atRisk)}% of capital` : "of capital: set it in Journal") : "add a stop-loss"}
+                sub={atRisk != null ? (t.paper ? "if this were real" : capital > 0 ? `${pctOf(atRisk)}% of capital` : "of capital: set it in Journal") : "add a stop-loss"}
                 tone={pctOf(atRisk) > 2 ? "var(--loss)" : atRisk != null ? "var(--gain)" : undefined}
               />
               <Readout
                 label="Booked so far"
                 value={preview.realisedPnl != null ? `${preview.realisedPnl >= 0 ? "+" : "−"}${inr(preview.realisedPnl)}` : "—"}
-                sub={preview.realisedPnl != null && capital > 0 ? `${pctOf(preview.realisedPnl)}% of capital` : pos.exited ? "after charges" : "nothing exited yet"}
+                sub={t.paper && pos.exited ? "paper — not counted in your profit" : preview.realisedPnl != null && capital > 0 && !t.paper ? `${pctOf(preview.realisedPnl)}% of capital` : pos.exited ? "after charges" : "nothing exited yet"}
                 tone={preview.realisedPnl > 0 ? "var(--gain)" : preview.realisedPnl < 0 ? "var(--loss)" : undefined}
               />
             </div>

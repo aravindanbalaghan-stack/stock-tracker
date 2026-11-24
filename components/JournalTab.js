@@ -130,6 +130,10 @@ export default function JournalTab() {
   const [editing, setEditing] = useState(null); // trade object, {} for new
   const [period, setPeriod] = usePersistentState("journal.period", "all");
   const [statusFilter, setStatusFilter] = usePersistentState("journal.status", "all");
+  // Real trades and paper (practice) trades are kept apart: every figure on
+  // the page is for the book you're looking at, and paper never mixes into
+  // your real P&L, returns or capital.
+  const [book, setBook] = usePersistentState("journal.book", "real");
   const [marks, setMarks] = useState({});
   const [importMsg, setImportMsg] = useState(null);
   const [checklist, setChecklist] = useState(null); // your checklist points
@@ -195,12 +199,15 @@ export default function JournalTab() {
 
   const start = periodStart(period);
   const enriched = useMemo(() => (trades ?? []).map((t) => enrich(t, marks)), [trades, marks]);
-  const inPeriod = enriched.filter((t) => !start || (t.exitDate ?? t.entryDate) >= start);
+  const isPaperBook = book === "paper";
+  const bookTrades = useMemo(() => enriched.filter((t) => !!t.paper === isPaperBook), [enriched, isPaperBook]);
+  const counts = { real: enriched.filter((t) => !t.paper && t.status !== "Draft").length, paper: enriched.filter((t) => t.paper && t.status !== "Draft").length };
+  const inPeriod = useMemo(() => bookTrades.filter((t) => !start || (t.exitDate ?? t.entryDate) >= start), [bookTrades, start]);
   const stats = useMemo(() => computeStats(inPeriod), [inPeriod]);
   const notes = insights(stats);
   const drafts = enriched.filter((t) => t.status === "Draft");
   const listed = inPeriod.filter((t) => t.status !== "Draft" && (statusFilter === "all" || t.status.toLowerCase() === statusFilter));
-  const unrealised = enriched.filter((t) => (t.status === "Open" || t.status === "Partial") && t.netPnl != null).reduce((a, t) => a + t.netPnl, 0);
+  const unrealised = bookTrades.filter((t) => (t.status === "Open" || t.status === "Partial") && t.netPnl != null).reduce((a, t) => a + t.netPnl, 0);
 
   async function saveTrade(t) {
     const res = await fetch("/api/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trade: t }) });
@@ -314,7 +321,35 @@ export default function JournalTab() {
 
       {trades && (
         <div className="mb-6 flex flex-col gap-3">
-          <JournalCapital capital={capital} onSaveCapital={saveCapital} enriched={enriched} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="inline-flex rounded-[var(--radius-sm)] border overflow-hidden" style={{ borderColor: "var(--border)" }} role="group" aria-label="Which trades to show">
+              {[
+                ["real", `Real trades · ${counts.real}`],
+                ["paper", `Paper trades · ${counts.paper}`],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={book === id}
+                  onClick={() => setBook(id)}
+                  className="px-3 py-1.5 text-xs"
+                  style={
+                    book === id
+                      ? { background: id === "paper" ? "var(--tier-mid)" : "var(--accent)", color: "var(--on-accent)" }
+                      : { background: "var(--surface)", color: "var(--text-muted)" }
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {isPaperBook && (
+              <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Practice trades. Their results below are what they <i>would</i> have made — never counted in your real profit, returns or capital.
+              </span>
+            )}
+          </div>
+          {!isPaperBook && <JournalCapital capital={capital} onSaveCapital={saveCapital} enriched={enriched} />}
           <QuickCapture trades={trades} onSaveTrade={saveTrade} />
           {drafts.length > 0 && (
             <div>
@@ -381,7 +416,7 @@ export default function JournalTab() {
         <div className="flex flex-col gap-6">
           {/* Headline numbers */}
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
-            <Metric label="Net P&L" value={inr(stats.netPnl)} color={tone(stats.netPnl)} sub={stats.fees ? `after ${inr(stats.fees)} charges` : null} />
+            <Metric label={isPaperBook ? "Paper P&L (not real)" : "Net P&L"} value={inr(stats.netPnl)} color={tone(stats.netPnl)} sub={stats.fees ? `after ${inr(stats.fees)} charges` : null} />
             <Metric label="Win rate" value={stats.winRate != null ? `${stats.winRate}%` : "—"} sub={`${stats.closed ?? 0} closed`} />
             <Metric label="Expectancy" value={inr(stats.expectancy)} color={tone(stats.expectancy)} sub="per trade" />
             <Metric label="Avg R" value={stats.avgR != null ? `${stats.avgR}R` : "—"} color={tone(stats.avgR)} sub={stats.rCoverage != null ? `${stats.rCoverage}% have a stop` : null} />
@@ -505,7 +540,7 @@ export default function JournalTab() {
                 </span>
               }
             >
-              Trades
+              {isPaperBook ? "Paper trades" : "Trades"}
             </SectionTitle>
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
               <TableFrame name="journal">
@@ -528,6 +563,16 @@ export default function JournalTab() {
                         <td className="py-2 px-2">
                           <SymbolLink symbol={t.symbol} className="text-xs" showEvents={false} />
                           <span className="block text-[10px]" style={{ color: "var(--text-faint)" }}>
+                            {t.paper && (
+                              <span className="mr-1 px-1 rounded" style={{ background: "var(--tier-mid)", color: "var(--on-accent)" }}>
+                                PAPER
+                              </span>
+                            )}
+                            {t.screenshots?.length > 0 && (
+                              <span className="mr-1" title={`${t.screenshots.length} screenshot${t.screenshots.length === 1 ? "" : "s"} — open the trade to view`}>
+                                ▣ {t.screenshots.length}
+                              </span>
+                            )}
                             {t.segment}
                           </span>
                         </td>
