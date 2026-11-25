@@ -123,20 +123,143 @@ function Legend() {
 
 // ---------------------------------------------------------------------
 
+const pct = (n, d = 2) => (n == null ? "—" : `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(d)}%`);
+const lakhs = (n) => (n == null ? "—" : `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toLocaleString("en-IN")}`);
+
+function ExpiryTag({ kind }) {
+  if (!kind) return null;
+  return (
+    <span
+      className="ml-1.5 px-1 rounded text-[9px] font-sans font-semibold uppercase tracking-wide align-middle"
+      style={kind === "monthly" ? { background: "var(--loss)", color: "#fff" } : { background: "var(--tier-mid)", color: "var(--on-accent)" }}
+      title={`${kind === "monthly" ? "Monthly" : "Weekly"} NIFTY expiry — open interest and flows this day are distorted by positions expiring and rolling over`}
+    >
+      {kind === "monthly" ? "M-expiry" : "expiry"}
+    </span>
+  );
+}
+
+function Mkt({ nifty, vix }) {
+  return (
+    <>
+      <td className="py-2 px-2 text-right">{nifty?.c != null ? Math.round(nifty.c).toLocaleString("en-IN") : "—"}</td>
+      <td className="py-2 px-2 text-right" style={{ color: tone(nifty?.chg) }}>{pct(nifty?.chg)}</td>
+      <td className="py-2 px-2 text-right">{vix?.c != null ? vix.c.toFixed(2) : "—"}</td>
+      <td className="py-2 px-2 text-right" style={{ color: tone(-(vix?.chg ?? 0)) }} title="VIX up = fear rising">{pct(vix?.chg)}</td>
+    </>
+  );
+}
+
+const Chg = ({ v, invert = false }) =>
+  v == null || v === 0 ? null : (
+    <span className="block text-[10px]" style={{ color: tone(invert ? -v : v) }}>
+      {lakhs(v)}
+    </span>
+  );
+
+/** FII index-futures long % (left axis) against NIFTY (right axis), with the 20 / 30 / 60 % zones and expiry days. */
+function LongPctChart({ days }) {
+  const rows = days.filter((d) => d.fii?.longPct != null).slice(-60);
+  if (rows.length < 3) return null;
+  const W = 760;
+  const H = 230;
+  const L = 34;
+  const R = 52;
+  const T = 10;
+  const B = 24;
+  const iw = W - L - R;
+  const ih = H - T - B;
+  const x = (i) => L + (rows.length === 1 ? iw / 2 : (i / (rows.length - 1)) * iw);
+  const lp = rows.map((d) => d.fii.longPct);
+  const lo = Math.max(0, Math.floor(Math.min(15, ...lp) / 5) * 5);
+  const hi = Math.min(100, Math.ceil(Math.max(65, ...lp) / 5) * 5);
+  const yL = (v) => T + ih - ((v - lo) / (hi - lo)) * ih;
+  const nv = rows.map((d) => d.nifty?.c).filter((v) => v != null);
+  const nlo = nv.length ? Math.min(...nv) : 0;
+  const nhi = nv.length ? Math.max(...nv) : 1;
+  const pad = (nhi - nlo) * 0.08 || 1;
+  const yR = (v) => T + ih - ((v - (nlo - pad)) / (nhi + pad - (nlo - pad))) * ih;
+  const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  const lpPath = path(rows.map((d, i) => [x(i), yL(d.fii.longPct)]));
+  const nPath = path(rows.map((d, i) => (d.nifty?.c != null ? [x(i), yR(d.nifty.c)] : null)).filter(Boolean));
+  const band = (a, b, color) => <rect x={L} width={iw} y={yL(Math.min(b, hi))} height={Math.max(0, yL(Math.max(a, lo)) - yL(Math.min(b, hi)))} fill={color} opacity="0.08" />;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto" role="img" aria-label="FII index futures long percentage against NIFTY 50">
+      {band(lo, 20, "var(--loss)")}
+      {band(20, 30, "var(--tier-mid)")}
+      {band(60, hi, "var(--gain)")}
+      {[20, 30, 50, 60].filter((v) => v > lo && v < hi).map((v) => (
+        <g key={v}>
+          <line x1={L} x2={L + iw} y1={yL(v)} y2={yL(v)} stroke="var(--border)" strokeDasharray={v === 50 ? "0" : "3 3"} />
+          <text x={L - 4} y={yL(v) + 3} fontSize="9" textAnchor="end" fill="var(--text-faint)">{v}%</text>
+        </g>
+      ))}
+      {rows.map((d, i) =>
+        d.expiry ? <line key={d.date} x1={x(i)} x2={x(i)} y1={T} y2={T + ih} stroke={d.expiry === "monthly" ? "var(--loss)" : "var(--tier-mid)"} strokeOpacity="0.45" strokeDasharray="2 3" /> : null
+      )}
+      <path d={nPath} fill="none" stroke="var(--text-muted)" strokeWidth="1.5" />
+      <path d={lpPath} fill="none" stroke={FII_COLOR} strokeWidth="2.25" />
+      {rows.map((d, i) => (
+        <circle key={d.date} cx={x(i)} cy={yL(d.fii.longPct)} r="2.2" fill={FII_COLOR}>
+          <title>{`${d.date}${d.expiry ? ` (${d.expiry} expiry)` : ""} · FII long ${d.fii.longPct}% · NIFTY ${d.nifty?.c != null ? Math.round(d.nifty.c).toLocaleString("en-IN") : "—"} ${pct(d.nifty?.chg)}`}</title>
+        </circle>
+      ))}
+      {nv.length > 0 && (
+        <>
+          <text x={L + iw + 4} y={yR(nhi) + 3} fontSize="9" fill="var(--text-faint)">{Math.round(nhi).toLocaleString("en-IN")}</text>
+          <text x={L + iw + 4} y={yR(nlo) + 3} fontSize="9" fill="var(--text-faint)">{Math.round(nlo).toLocaleString("en-IN")}</text>
+        </>
+      )}
+      {[0, Math.floor(rows.length / 2), rows.length - 1].map((i) => (
+        <text key={i} x={x(i)} y={H - 6} fontSize="9" textAnchor="middle" fill="var(--text-faint)">{shortDate(rows[i].date)}</text>
+      ))}
+    </svg>
+  );
+}
+
+const WHO = [
+  ["fii", "FII"],
+  ["client", "Client (retail)"],
+  ["pro", "Pro (prop desks)"],
+  ["dii", "DII"],
+];
+
 function FlowsView({ data }) {
   const c = data.cash;
   const o = data.oi;
   const l = c.latest;
+  const ol = o.latest;
   const streak = c.fiiStreak;
+  const s = c.sinceStart;
+  const lp = ol?.fii?.longPct;
   return (
     <div className="flex flex-col gap-6">
       {l ? (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
-          <Tile label={`FII · ${shortDate(l.date)}`} value={crore(l.fii?.net)} color={tone(l.fii?.net)} sub={`bought ${crore(l.fii?.buy, { sign: false })} · sold ${crore(l.fii?.sell, { sign: false })}`} />
+          <Tile label={<>FII · {shortDate(l.date)}<ExpiryTag kind={l.expiry} /></>} value={crore(l.fii?.net)} color={tone(l.fii?.net)} sub={`bought ${crore(l.fii?.buy, { sign: false })} · sold ${crore(l.fii?.sell, { sign: false })}`} />
           <Tile label={`DII · ${shortDate(l.date)}`} value={crore(l.dii?.net)} color={tone(l.dii?.net)} sub={`bought ${crore(l.dii?.buy, { sign: false })} · sold ${crore(l.dii?.sell, { sign: false })}`} />
-          <Tile label="FII this month" value={crore(c.mtd.fii)} color={tone(c.mtd.fii)} sub={`${c.mtd.sessions} session${c.mtd.sessions === 1 ? "" : "s"} recorded`} />
-          <Tile label="DII this month" value={crore(c.mtd.dii)} color={tone(c.mtd.dii)} sub={`${c.mtd.sessions} session${c.mtd.sessions === 1 ? "" : "s"} recorded`} />
-          <Tile label={`Last ${c.last5.sessions} sessions`} value={crore(c.last5.fii)} color={tone(c.last5.fii)} sub={`DII ${crore(c.last5.dii)}`} />
+          <Tile
+            label={`NIFTY 50 · ${shortDate(l.date)}`}
+            value={l.nifty?.c != null ? Math.round(l.nifty.c).toLocaleString("en-IN") : "—"}
+            color={tone(l.nifty?.chg)}
+            sub={l.nifty?.chg != null ? `${pct(l.nifty.chg)} on the day` : "close not in yet"}
+          />
+          <Tile
+            label={`India VIX · ${shortDate(l.date)}`}
+            value={l.vix?.c != null ? l.vix.c.toFixed(2) : "—"}
+            color={tone(-(l.vix?.chg ?? 0))}
+            sub={l.vix?.chg != null ? `${pct(l.vix.chg)} — ${l.vix.chg > 0 ? "fear rising" : "fear easing"}` : null}
+          />
+          {s ? (
+            <Tile
+              label={`Since tracking began · ${s.sessions} session${s.sessions === 1 ? "" : "s"}`}
+              value={crore(s.fii)}
+              color={tone(s.fii)}
+              sub={`FII since ${shortDate(s.from)} · DII ${crore(s.dii)}`}
+            />
+          ) : (
+            <Tile label="FII this month" value={crore(c.mtd.fii)} color={tone(c.mtd.fii)} sub={`DII ${crore(c.mtd.dii)} · last 5 sessions FII ${crore(c.last5.fii)}`} />
+          )}
           <Tile
             label="FII streak"
             value={streak ? `${Math.abs(streak)} day${Math.abs(streak) === 1 ? "" : "s"}` : "—"}
@@ -147,9 +270,15 @@ function FlowsView({ data }) {
       ) : (
         <Panel>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-            NSE&apos;s FII/DII cash figures haven&apos;t been fetched yet — they&apos;re picked up by the nightly run after the close.
+            NSE&apos;s FII/DII cash figures haven&apos;t been fetched yet — they&apos;re picked up after the close.
           </p>
         </Panel>
+      )}
+      {l?.expiry && (
+        <p className="text-xs rounded-[var(--radius-sm)] px-3 py-2 -mt-3" style={{ background: "var(--surface-2)", color: "var(--tier-mid)" }}>
+          ⚠ {shortDate(l.date)} was a {l.expiry} NIFTY expiry. Flows and especially derivatives positions that day are dominated by contracts
+          expiring and rolling over — read the next session before drawing conclusions.
+        </p>
       )}
 
       {c.days.length > 0 && (
@@ -159,8 +288,8 @@ function FlowsView({ data }) {
             {c.days.length >= 3 ? <NetBars days={c.days} /> : null}
             {c.historyDays < 20 && (
               <p className="text-[11px] mt-2" style={{ color: "var(--text-faint)" }}>
-                NSE only publishes the latest day&apos;s FII/DII figures, so Panel stores each day as it comes — {c.historyDays} session
-                {c.historyDays === 1 ? "" : "s"} so far. The history fills in automatically every trading day.
+                NSE only publishes the latest day&apos;s FII/DII cash figures, so Panel stores each day as it comes — {c.historyDays} session
+                {c.historyDays === 1 ? "" : "s"}{" "}so far. NIFTY, VIX and the derivatives data below are backfilled from NSE&apos;s archive.
               </p>
             )}
           </Panel>
@@ -170,30 +299,34 @@ function FlowsView({ data }) {
       {c.days.length > 0 && (
         <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
           <TableFrame name="fii-cash">
-            <table className="w-full text-xs border-collapse">
+            <table className="w-full text-xs border-collapse font-mono">
               <thead>
-                <tr className="text-right border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
+                <tr className="text-right border-b font-sans" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
                   <th className="py-2 pl-4 pr-2 font-medium text-left">Date</th>
-                  <th className="py-2 px-2 font-medium">FII buy</th>
-                  <th className="py-2 px-2 font-medium">FII sell</th>
                   <th className="py-2 px-2 font-medium">FII net</th>
-                  <th className="py-2 px-2 font-medium">DII buy</th>
-                  <th className="py-2 px-2 font-medium">DII sell</th>
                   <th className="py-2 px-2 font-medium">DII net</th>
-                  <th className="py-2 px-2 pr-4 font-medium">Combined</th>
+                  <th className="py-2 px-2 font-medium">Combined</th>
+                  <th className="py-2 px-2 font-medium">NIFTY</th>
+                  <th className="py-2 px-2 font-medium">%</th>
+                  <th className="py-2 px-2 font-medium">VIX</th>
+                  <th className="py-2 px-2 font-medium">%</th>
+                  <th className="py-2 px-2 font-medium">FII buy</th>
+                  <th className="py-2 px-2 pr-4 font-medium">FII sell</th>
                 </tr>
               </thead>
               <tbody>
                 {[...c.days].reverse().slice(0, 40).map((d) => (
-                  <tr key={d.date} className="border-b last:border-b-0 text-right font-mono" style={{ borderColor: "var(--border)" }}>
-                    <td className="py-2 pl-4 pr-2 text-left" style={{ color: "var(--text-muted)" }}>{d.date}</td>
-                    <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{crore(d.fii?.buy, { sign: false })}</td>
-                    <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{crore(d.fii?.sell, { sign: false })}</td>
+                  <tr key={d.date} className="border-b last:border-b-0 text-right" style={{ borderColor: "var(--border)" }}>
+                    <td className="py-2 pl-4 pr-2 text-left whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                      {d.date}
+                      <ExpiryTag kind={d.expiry} />
+                    </td>
                     <td className="py-2 px-2" style={{ color: tone(d.fii?.net) }}>{crore(d.fii?.net)}</td>
-                    <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{crore(d.dii?.buy, { sign: false })}</td>
-                    <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{crore(d.dii?.sell, { sign: false })}</td>
                     <td className="py-2 px-2" style={{ color: tone(d.dii?.net) }}>{crore(d.dii?.net)}</td>
-                    <td className="py-2 px-2 pr-4" style={{ color: tone((d.fii?.net ?? 0) + (d.dii?.net ?? 0)) }}>{crore((d.fii?.net ?? 0) + (d.dii?.net ?? 0))}</td>
+                    <td className="py-2 px-2" style={{ color: tone((d.fii?.net ?? 0) + (d.dii?.net ?? 0)) }}>{crore((d.fii?.net ?? 0) + (d.dii?.net ?? 0))}</td>
+                    <Mkt nifty={d.nifty} vix={d.vix} />
+                    <td className="py-2 px-2" style={{ color: "var(--text-muted)" }}>{crore(d.fii?.buy, { sign: false })}</td>
+                    <td className="py-2 px-2 pr-4" style={{ color: "var(--text-muted)" }}>{crore(d.fii?.sell, { sign: false })}</td>
                   </tr>
                 ))}
               </tbody>
@@ -203,56 +336,139 @@ function FlowsView({ data }) {
       )}
 
       <div>
-        <SectionTitle meta="NSE participant-wise open interest, contracts">FII positioning in index derivatives</SectionTitle>
-        {o.latest ? (
+        <SectionTitle meta="NSE participant-wise open interest, index derivatives, contracts">Who is positioned how</SectionTitle>
+        {ol ? (
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <Tile
-                label={`Index futures long % · ${shortDate(o.latest.date)}`}
-                value={o.latest.longPct != null ? `${o.latest.longPct}%` : "—"}
-                color={o.latest.longPct >= 50 ? "var(--gain)" : "var(--loss)"}
-                sub={o.change ? `${o.change.longPct >= 0 ? "+" : ""}${o.change.longPct} pts vs previous day` : "share of FII index futures that are long"}
+                label={<>FII index futures long % · {shortDate(ol.date)}<ExpiryTag kind={ol.expiry} /></>}
+                value={lp != null ? `${lp}%` : "—"}
+                color={lp >= 60 ? "var(--gain)" : lp <= 30 ? "var(--loss)" : "var(--text)"}
+                sub={ol.chg?.fii?.longPct != null ? `${ol.chg.fii.longPct >= 0 ? "+" : ""}${ol.chg.fii.longPct} pts vs previous day` : null}
               />
-              <Tile label="Index futures net" value={contracts(o.latest.futNet)} color={tone(o.latest.futNet)} sub={o.change ? `${contracts(o.change.futNet)} vs previous day` : null} />
-              <Tile label="Index calls net" value={contracts(o.latest.callNet)} color={tone(o.latest.callNet)} sub="long − short calls" />
-              <Tile label="Index puts net" value={contracts(o.latest.putNet)} color={tone(-o.latest.putNet)} sub="long puts = hedging / bearish" />
+              <Tile label="FII futures net" value={contracts(ol.fii?.futNet)} color={tone(ol.fii?.futNet)} sub={ol.chg?.fii ? `${contracts(ol.chg.fii.futNet)} vs previous day` : null} />
+              <Tile label="FII calls net" value={contracts(ol.fii?.callNet)} color={tone(ol.fii?.callNet)} sub={ol.chg?.fii ? `${contracts(ol.chg.fii.callNet)} vs previous day` : null} />
+              <Tile label="FII puts net" value={contracts(ol.fii?.putNet)} color={tone(-(ol.fii?.putNet ?? 0))} sub={ol.chg?.fii ? `${contracts(ol.chg.fii.putNet)} vs previous day · long puts = hedging` : null} />
             </div>
             <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
-              Reading it: FIIs holding more than ~60% of their index futures long has historically gone with a supportive market; under
-              ~30% means they are heavily hedged or bearish. Retail (&quot;Client&quot;) usually sits on the other side —{" "}
-              {o.latest.clientLongPct != null ? `clients are ${o.latest.clientLongPct}% long today.` : "not reported today."}
+              <b>Reading FII long %:</b> above ~60% has historically gone with a supportive market; under ~30% means FIIs are heavily hedged or
+              bearish. <b>At ~20% or lower it turns into a contrarian warning</b> — shorts that crowded can fuel sharp short-covering rallies when
+              the market refuses to fall. Retail (Client) usually sits on the other side.
+              {lp != null && lp <= 20 && <span style={{ color: "var(--loss)" }}> FIIs are at {lp}% now — crowded-short territory.</span>}
             </p>
+
+            <Panel>
+              <p className="text-[11px] mb-1 flex items-center gap-3 flex-wrap" style={{ color: "var(--text-muted)" }}>
+                <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: FII_COLOR }} /> FII index futures long %</span>
+                <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-0.5" style={{ background: "var(--text-muted)" }} /> NIFTY 50 (right axis)</span>
+                <span>dashed lines = expiry days</span>
+              </p>
+              <LongPctChart days={o.days} />
+            </Panel>
+
             <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-              <TableFrame name="fii-oi">
-                <table className="w-full text-xs border-collapse">
+              <div className="px-4 pt-3 text-xs font-medium" style={{ color: "var(--text)" }}>
+                {shortDate(ol.date)} — every participant, with the change from the previous session
+              </div>
+              <TableFrame name="fii-parties">
+                <table className="w-full text-xs border-collapse font-mono">
                   <thead>
-                    <tr className="text-right border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
-                      <th className="py-2 pl-4 pr-2 font-medium text-left">Date</th>
-                      <th className="py-2 px-2 font-medium">Fut long</th>
-                      <th className="py-2 px-2 font-medium">Fut short</th>
+                    <tr className="text-right border-b font-sans" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
+                      <th className="py-2 pl-4 pr-2 font-medium text-left">Participant</th>
+                      <th className="py-2 px-2 font-medium">Futures net</th>
                       <th className="py-2 px-2 font-medium">Long %</th>
-                      <th className="py-2 px-2 font-medium">Net futures</th>
                       <th className="py-2 px-2 font-medium">Calls net</th>
                       <th className="py-2 px-2 font-medium">Puts net</th>
-                      <th className="py-2 px-2 pr-4 font-medium">Stock fut net</th>
+                      <th className="py-2 px-2 pr-4 font-medium">Stock fut Δ</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {[...o.days].reverse().slice(0, 20).map((d) => (
-                      <tr key={d.date} className="border-b last:border-b-0 text-right font-mono" style={{ borderColor: "var(--border)" }}>
-                        <td className="py-2 pl-4 pr-2 text-left" style={{ color: "var(--text-muted)" }}>{d.date}</td>
-                        <td className="py-2 px-2">{d.futLong.toLocaleString("en-IN")}</td>
-                        <td className="py-2 px-2">{d.futShort.toLocaleString("en-IN")}</td>
-                        <td className="py-2 px-2" style={{ color: d.longPct >= 50 ? "var(--gain)" : "var(--loss)" }}>{d.longPct != null ? `${d.longPct}%` : "—"}</td>
-                        <td className="py-2 px-2" style={{ color: tone(d.futNet) }}>{contracts(d.futNet)}</td>
-                        <td className="py-2 px-2" style={{ color: tone(d.callNet) }}>{contracts(d.callNet)}</td>
-                        <td className="py-2 px-2" style={{ color: tone(-d.putNet) }}>{contracts(d.putNet)}</td>
-                        <td className="py-2 px-2 pr-4" style={{ color: tone(d.stkFutNet) }}>{contracts(d.stkFutNet)}</td>
-                      </tr>
-                    ))}
+                    {WHO.map(([k, label]) => {
+                      const p = ol[k];
+                      const ch = ol.chg?.[k];
+                      if (!p) return null;
+                      return (
+                        <tr key={k} className="border-b last:border-b-0 text-right align-top" style={{ borderColor: "var(--border)" }}>
+                          <td className="py-2 pl-4 pr-2 text-left font-sans" style={{ color: k === "fii" ? FII_COLOR : "var(--text)" }}>{label}</td>
+                          <td className="py-2 px-2" style={{ color: tone(p.futNet) }}>{contracts(p.futNet)}<Chg v={ch?.futNet} /></td>
+                          <td className="py-2 px-2">{p.longPct != null ? `${p.longPct}%` : "—"}{ch?.longPct ? <span className="block text-[10px]" style={{ color: tone(ch.longPct) }}>{ch.longPct > 0 ? "+" : ""}{ch.longPct} pts</span> : null}</td>
+                          <td className="py-2 px-2" style={{ color: tone(p.callNet) }}>{contracts(p.callNet)}<Chg v={ch?.callNet} /></td>
+                          <td className="py-2 px-2" style={{ color: tone(-p.putNet) }}>{contracts(p.putNet)}<Chg v={ch?.putNet} invert /></td>
+                          <td className="py-2 px-2 pr-4" style={{ color: tone(ch?.stkFutNet) }} title="Day-on-day change only — the level is distorted by arbitrage funds">{ch ? contracts(ch.stkFutNet) : "—"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </TableFrame>
+              <div className="px-4 py-2 text-[11px] border-t" style={{ borderColor: "var(--border)", color: ol.check?.ok ? "var(--gain)" : "var(--loss)" }}>
+                {ol.check?.ok
+                  ? "✓ Data check passed — the four participants' nets add up to zero (every contract has a buyer and a seller)."
+                  : ol.check?.missing
+                  ? `✗ Data check: ${ol.check.missing.join(", ")} missing from NSE's file for this day — figures may be incomplete.`
+                  : `✗ Data check failed — the nets add up to futures ${contracts(ol.check?.fut)}, calls ${contracts(ol.check?.call)}, puts ${contracts(ol.check?.put)} instead of 0. NSE's file may have changed format; treat this day's figures with caution.`}
+                {o.checkFailures?.length > 0 && !(o.checkFailures.length === 1 && o.checkFailures[0] === ol.date) && (
+                  <span style={{ color: "var(--loss)" }}> Other days failing: {o.checkFailures.filter((d) => d !== ol.date).slice(-5).join(", ")}.</span>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[var(--radius)] border overflow-hidden" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+              <div className="px-4 pt-3 text-xs font-medium" style={{ color: "var(--text)" }}>
+                FII gross positions — adding or covering? <span className="font-normal" style={{ color: "var(--text-faint)" }}>(small number = change from the previous session)</span>
+              </div>
+              <TableFrame name="fii-oi">
+                <table className="w-full text-xs border-collapse font-mono">
+                  <thead>
+                    <tr className="text-right border-b font-sans" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
+                      <th className="py-2 pl-4 pr-2 font-medium text-left">Date</th>
+                      <th className="py-2 px-2 font-medium">Long %</th>
+                      <th className="py-2 px-2 font-medium">Fut long</th>
+                      <th className="py-2 px-2 font-medium">Fut short</th>
+                      <th className="py-2 px-2 font-medium">Call long</th>
+                      <th className="py-2 px-2 font-medium">Call short</th>
+                      <th className="py-2 px-2 font-medium">Put long</th>
+                      <th className="py-2 px-2 font-medium">Put short</th>
+                      <th className="py-2 px-2 font-medium">Client fut net</th>
+                      <th className="py-2 px-2 font-medium">Stock fut Δ</th>
+                      <th className="py-2 px-2 font-medium">NIFTY %</th>
+                      <th className="py-2 px-2 pr-4 font-medium">VIX</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...o.days].reverse().slice(0, 25).map((d) => {
+                      const f = d.fii;
+                      const ch = d.chg?.fii;
+                      if (!f) return null;
+                      return (
+                        <tr key={d.date} className="border-b last:border-b-0 text-right align-top" style={{ borderColor: "var(--border)", background: d.expiry ? "var(--hover-soft)" : undefined }}>
+                          <td className="py-2 pl-4 pr-2 text-left whitespace-nowrap" style={{ color: "var(--text-muted)" }}>
+                            {d.date}
+                            <ExpiryTag kind={d.expiry} />
+                            {!d.check?.ok && <span className="ml-1" style={{ color: "var(--loss)" }} title="Participants' nets don't add up to zero for this day">⚠</span>}
+                          </td>
+                          <td className="py-2 px-2" style={{ color: f.longPct >= 60 ? "var(--gain)" : f.longPct <= 30 ? "var(--loss)" : undefined }}>{f.longPct != null ? `${f.longPct}%` : "—"}</td>
+                          <td className="py-2 px-2">{f.futLong.toLocaleString("en-IN")}<Chg v={ch?.futLong} /></td>
+                          <td className="py-2 px-2">{f.futShort.toLocaleString("en-IN")}<Chg v={ch?.futShort} invert /></td>
+                          <td className="py-2 px-2">{f.callLong.toLocaleString("en-IN")}<Chg v={ch?.callLong} /></td>
+                          <td className="py-2 px-2">{f.callShort.toLocaleString("en-IN")}<Chg v={ch?.callShort} invert /></td>
+                          <td className="py-2 px-2">{f.putLong.toLocaleString("en-IN")}<Chg v={ch?.putLong} invert /></td>
+                          <td className="py-2 px-2">{f.putShort.toLocaleString("en-IN")}<Chg v={ch?.putShort} /></td>
+                          <td className="py-2 px-2" style={{ color: tone(d.client?.futNet) }}>{contracts(d.client?.futNet)}<Chg v={d.chg?.client?.futNet} /></td>
+                          <td className="py-2 px-2" style={{ color: tone(ch?.stkFutNet) }}>{ch ? contracts(ch.stkFutNet) : "—"}</td>
+                          <td className="py-2 px-2" style={{ color: tone(d.nifty?.chg) }}>{pct(d.nifty?.chg)}</td>
+                          <td className="py-2 px-2 pr-4">{d.vix?.c != null ? d.vix.c.toFixed(1) : "—"}<span className="block text-[10px]" style={{ color: tone(-(d.vix?.chg ?? 0)) }}>{d.vix?.chg != null ? pct(d.vix.chg, 1) : ""}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableFrame>
+              <p className="px-4 py-2 text-[11px] leading-relaxed border-t" style={{ borderColor: "var(--border)", color: "var(--text-muted)" }}>
+                <b>Adding vs covering:</b> futures net rising with <i>fut long</i> going up = fresh buying; with <i>fut short</i> going down = short
+                covering (weaker conviction). The same for options — a call net change driven by <i>call short</i> falling is FIIs covering short
+                calls, not buying calls. Green / red on the small numbers is bullish / bearish for the market, not up / down.
+              </p>
             </div>
           </div>
         ) : (

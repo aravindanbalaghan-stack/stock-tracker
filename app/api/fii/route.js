@@ -1,5 +1,5 @@
 import { serveCached } from "@/lib/precompute";
-import { refreshAll, loadStored, loadDeals, cashView, oiView, sectorView, dealViews } from "@/lib/fii";
+import { refreshAll, loadStored, loadDeals, cashView, oiView, sectorView, dealViews, expiryFlags } from "@/lib/fii";
 import { getResolvedSectorList } from "@/lib/sectorOverrides";
 
 // FII / DII tab: cash flows, derivatives positioning, NSDL sector flows and
@@ -25,8 +25,10 @@ async function compute() {
   for (const s of sectorList) for (const sym of s.symbols ?? []) if (!sectorBySymbol.has(sym)) sectorBySymbol.set(sym, s.name);
   const sectorOf = (sym) => sectorBySymbol.get(sym) ?? null;
 
-  const cash = cashView(stored.cash);
-  const oi = oiView(stored.oi);
+  const allDates = [...new Set([...Object.keys(stored.cash), ...Object.keys(stored.oi), ...Object.keys(stored.idx)])];
+  const expiry = expiryFlags(allDates, stored.holidays);
+  const cash = cashView(stored.cash, stored.idx, expiry);
+  const oi = oiView(stored.oi, stored.idx, expiry);
   const sectors = sectorView(stored.sectors);
   const windows = Object.fromEntries(WINDOWS.map((w) => [w.id, dealViews(deals.filter((x) => x.d >= since(w.days)), sectorOf)]));
   const recent = [...deals].sort((a, b) => (a.d < b.d ? 1 : -1)).slice(0, 60).map((x) => ({ ...x, sector: sectorOf(x.s) }));
@@ -43,5 +45,5 @@ async function compute() {
 }
 
 export async function GET(request) {
-  return serveCached(request, { name: "fii", vary: [], cacheable: () => true }, compute);
+  return serveCached(request, { name: "fii-v2", vary: [], cacheable: () => true }, compute);
 }
