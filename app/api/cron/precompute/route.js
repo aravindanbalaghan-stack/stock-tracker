@@ -34,7 +34,10 @@ export async function GET(request) {
   // Saver mode (env PANEL_SAVER=1): no nightly precompute at all — each view
   // is built the first time it's opened after the close, then cached for the
   // day. Uses the least CPU; the first open of a view each day is slower.
-  if (process.env.PANEL_SAVER === "1") return Response.json({ skipped: "saver mode" });
+  // Only the scheduled call is skipped — "Prepare now" (a signed-in user) and
+  // a run's own continuations still go ahead.
+  const scheduled = /vercel-cron/i.test(request.headers.get("user-agent") ?? "");
+  if (process.env.PANEL_SAVER === "1" && scheduled) return Response.json({ skipped: "saver mode" });
   const url = new URL(request.url);
   const origin = url.origin;
   const retry = url.searchParams.get("retry") === "1";

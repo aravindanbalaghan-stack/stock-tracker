@@ -547,7 +547,7 @@ export default function JournalTab() {
                 <table className="w-full border-collapse text-xs">
                   <thead>
                     <tr className="text-left border-b" style={{ borderColor: "var(--border)", color: "var(--text-faint)" }}>
-                      {["Entry", "Symbol", "Side", "Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days", "Setup", "Quality", "Review"].map((h) => (
+                      {["Entry", "Symbol", "Side", "Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days", "Setup", "Quality", "Review", "Lesson"].map((h) => (
                         <th key={h} className={`py-2 px-2 font-medium ${["Qty", "Entry ₹", "Exit ₹", "Net P&L", "R", "Days"].includes(h) ? "text-right" : ""} ${h === "Entry" ? "pl-4" : ""}`}>
                           {h}
                         </th>
@@ -638,8 +638,18 @@ export default function JournalTab() {
                                 {m}
                               </span>
                             ))}
-                            {t.lessons && <span className="text-[10px]" title={t.lessons} style={{ color: "var(--accent)" }}>✎ lesson</span>}
                           </span>
+                        </td>
+                        <td className="py-2 px-2 max-w-[16rem]">
+                          {t.lessons ? (
+                            <span className="text-[11px] leading-snug line-clamp-2" style={{ color: "var(--text)" }} title={t.lessons}>
+                              {t.lessons}
+                            </span>
+                          ) : (
+                            <span className="text-[10px]" style={{ color: "var(--text-faint)" }} title="Open the trade to write what it taught you">
+                              —
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}

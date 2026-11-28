@@ -17,7 +17,6 @@ import { fetchWma30, fetchWma30Batch } from "@/lib/wma";
 import { fetchDebut, fetchDebutBatch, withDebut } from "@/lib/debut";
 import { getMembershipForSymbols } from "@/lib/screenerMembership";
 import { recordAccumulationSnapshot } from "@/lib/accumulationHistory";
-import { ensureScreenerFreshness } from "@/lib/screenerFreshness";
 import { SCREEN_ORDER, SCREENS } from "@/lib/screens";
 
 // See app/api/midcap-volume/route.js — freshness is controlled per-file
@@ -33,7 +32,9 @@ const MAX_ASOF_TRADING_DAYS = 23;
 // each day's file is cached (see lib/nseBhavcopy.js). If your Vercel plan
 // caps below 60s, lower this and consider trimming HISTORY_PERIODS in
 // lib/deliveryMetrics.js instead.
-export const maxDuration = 60;
+// The lower buckets hold hundreds of stocks; their first build of the day
+// (market caps, 30-week MAs, listing data) can take longer than a minute.
+export const maxDuration = 300;
 
 const WMA_LOOKUP_CAP = 60; // Yahoo's chart endpoint tolerates more volume than NSE's session-based
 // lookup, but there's no reason to fetch it for rows nobody will scroll to — same cap as market cap,
@@ -69,7 +70,7 @@ async function withScreenerMembership(rows) {
 }
 
 async function compute(request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const searchSymbol = searchParams.get("symbol");
   const periodParam = searchParams.get("period");
   const dateParam = searchParams.get("date");
@@ -239,9 +240,11 @@ async function compute(request) {
     // accumulation bookkeeping above: browsing a historical date or a
     // non-daily period shouldn't kick off a same-day screener recompute.
     // Runs alongside the other three lookups rather than blocking them.
-    const freshnessPromise = isRealtimeDaily
-      ? ensureScreenerFreshness(origin, latest.date).catch(() => null)
-      : Promise.resolve(null);
+    // No longer triggered from here: it rebuilt every stale screener (a
+    // dozen heavy requests) on each bucket's first open and waited for
+    // them, which pushed the larger buckets past the time limit. Rows still
+    // carry the screener tags Panel last stored.
+    const freshnessPromise = Promise.resolve(null);
 
     const [marketCaps, wmaMap, debutMap, freshness] = await Promise.all([
       marketCapsPromise,

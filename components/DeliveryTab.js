@@ -599,14 +599,23 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
   const stageLoading = stages.loading;
   const stageError = stages.error || extraError;
 
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
     setData(null); // show the loading state immediately on period/bucket change rather than stale data
+    setError(null); // an earlier tab's error mustn't stick to this one
     async function load() {
       try {
         const res = await fetch(`/api/delivery?period=${period}&bucket=${bucket}${asOfDate ? `&date=${asOfDate}` : ""}`);
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Failed to load delivery screen");
+        const json = await res.json().catch(() => null);
+        if (!res.ok || !json) {
+          throw new Error(
+            json?.error ||
+              (res.status === 504 || res.status === 502
+                ? "This bucket took too long to build. It usually finishes in the background — try again in a minute."
+                : `Couldn't load this bucket (${res.status}).`)
+          );
+        }
         if (!cancelled) setData(json);
       } catch (err) {
         if (!cancelled) setError(err.message);
@@ -617,7 +626,7 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
     return () => {
       cancelled = true;
     };
-  }, [period, asOfDate, bucket]);
+  }, [period, asOfDate, bucket, attempt]);
 
   // Symbols the stage map doesn't cover (too little stored history) get
   // one Yahoo lookup, capped — never the whole bucket.
@@ -671,7 +680,14 @@ export default function DeliveryTab({ onAddToWatchlist, watchlistSymbols, bucket
   }
 
   if (error) {
-    return <ErrorState>{error}</ErrorState>;
+    return (
+      <ErrorState>
+        {error}{" "}
+        <button type="button" onClick={() => setAttempt((a) => a + 1)} className="underline ml-1" style={{ color: "var(--accent)" }}>
+          Try again
+        </button>
+      </ErrorState>
+    );
   }
 
   if (!data) {
